@@ -3,6 +3,9 @@ import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
 import cookie from '@fastify/cookie';
+import { initializeDatabase } from './db';
+import authRoutes from './routes/auth';
+import publisherRoutes from './routes/publishers';
 
 const app = Fastify({
   logger: {
@@ -17,11 +20,11 @@ app.register(cors, {
 });
 
 app.register(jwt, {
-  secret: process.env.JWT_SECRET || 'dev-jwt-secret',
+  secret: process.env.JWT_SECRET || 'dev-jwt-secret-change-in-production',
 });
 
 app.register(cookie, {
-  secret: process.env.COOKIE_SECRET || 'dev-cookie-secret',
+  secret: process.env.COOKIE_SECRET || 'dev-cookie-secret-change-in-production',
 });
 
 app.register(rateLimit, {
@@ -34,9 +37,11 @@ app.get('/health', async () => {
   return { status: 'ok', timestamp: new Date().toISOString() };
 });
 
-// API routes will be registered here
-// app.register(authRoutes, { prefix: '/api/auth' });
-// app.register(publisherRoutes, { prefix: '/api/publishers' });
+// Register API routes
+app.register(authRoutes, { prefix: '/api/auth' });
+app.register(publisherRoutes, { prefix: '/api/publishers' });
+
+// Placeholder for other routes
 // app.register(userRoutes, { prefix: '/api/users' });
 // app.register(configRoutes, { prefix: '/api/config' });
 // app.register(analyticsRoutes, { prefix: '/api/analytics' });
@@ -57,6 +62,11 @@ app.post('/b', async (request, reply) => {
 // Start server
 const start = async () => {
   try {
+    // Initialize database
+    console.log('Initializing database...');
+    initializeDatabase();
+    console.log('Database initialized');
+
     const host = process.env.API_HOST || '0.0.0.0';
     const port = parseInt(process.env.API_PORT || '3001', 10);
 

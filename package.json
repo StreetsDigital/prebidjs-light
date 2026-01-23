@@ -1,0 +1,34 @@
+{
+  "name": "pbjs-engine",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Prebid.js Wrapper Platform with Server-Managed Configurations",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev:docker && concurrently \"npm run dev:api\" \"npm run dev:admin\"",
+    "dev:api": "npm -w apps/api run dev",
+    "dev:admin": "npm -w apps/admin run dev",
+    "dev:docker": "docker compose up -d",
+    "build": "npm run build:api && npm run build:admin",
+    "build:api": "npm -w apps/api run build",
+    "build:admin": "npm -w apps/admin run build",
+    "lint": "eslint . --ext .ts,.tsx",
+    "test": "npm run test --workspaces --if-present",
+    "db:migrate": "npm -w apps/api run db:migrate",
+    "db:seed": "npm -w apps/api run db:seed",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

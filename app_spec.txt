@@ -1,0 +1,953 @@
+<project_specification>
+  <project_name>pbjs_engine</project_name>
+
+  <overview>
+    A lightweight Prebid.js wrapper platform that enables publishers to run header bidding with server-managed configurations. Publishers receive a minified JS file with a unique identifier that fetches their config from your server and initializes Prebid accordingly. The platform includes a full admin dashboard for managing publisher configs, a self-service publisher portal, dynamic Prebid module bundling, and a real-time analytics pipeline capable of handling 1B+ impressions. The wrapper exposes a clean `pb` namespace for publishers while providing access to the underlying `pbjs` object for advanced users.
+  </overview>
+
+  <namespace>
+    <primary>pb</primary>
+    <description>
+      The `pb` namespace is the clean public API for publishers:
+      - pb.init() - Initialize and run auction
+      - pb.refresh(adUnitCodes) - Refresh specific ad slots
+      - pb.getConfig() - Get current configuration
+      - pb.setConfig(config) - Update configuration
+      - pb.on(event, callback) - Event listeners
+      - pb.version - Wrapper version
+      - pb.publisherId - Current publisher ID
+      - pb.pbjs - Access to underlying Prebid.js instance (window.pbjs)
+    </description>
+    <underlying>pbjs</underlying>
+  </namespace>
+
+  <technology_stack>
+    <frontend>
+      <framework>React 18 with Vite</framework>
+      <styling>Tailwind CSS</styling>
+      <state_management>Zustand</state_management>
+      <charts>Recharts (for analytics dashboards)</charts>
+      <forms>React Hook Form with Zod validation</forms>
+      <ui_components>Headless UI + custom components</ui_components>
+    </frontend>
+    <backend>
+      <runtime>Node.js 20 LTS</runtime>
+      <framework>Fastify</framework>
+      <database>PostgreSQL 15 (config, users, publishers)</database>
+      <analytics_database>ClickHouse (event storage, 1B+ scale)</analytics_database>
+      <cache>Redis (config caching, sessions, rate limiting)</cache>
+      <message_queue>Redis Streams (analytics event buffering)</message_queue>
+      <orm>Drizzle ORM</orm>
+    </backend>
+    <prebid_builder>
+      <bundler>Webpack 5</bundler>
+      <prebid_version>Latest stable</prebid_version>
+      <output>Minified custom builds per publisher</output>
+    </prebid_builder>
+    <communication>
+      <api>REST API with OpenAPI spec</api>
+      <realtime>Server-Sent Events (for dashboard updates)</realtime>
+    </communication>
+    <deployment>
+      <containerization>Docker + Docker Compose</containerization>
+      <reverse_proxy>Nginx (static assets, config caching, SSL termination)</reverse_proxy>
+      <hosting>Bare metal optimized</hosting>
+    </deployment>
+  </technology_stack>
+
+  <prerequisites>
+    <environment_setup>
+      - Node.js 20 LTS
+      - PostgreSQL 15
+      - ClickHouse (latest stable)
+      - Redis 7
+      - Docker and Docker Compose
+      - Git
+    </environment_setup>
+  </prerequisites>
+
+  <feature_count>250</feature_count>
+
+  <security_and_access_control>
+    <user_roles>
+      <role name="super_admin">
+        <description>Platform owner - full access to everything</description>
+        <permissions>
+          - Manage all publishers
+          - Create/edit/delete admin users
+          - Access all analytics across all publishers
+          - System configuration
+          - View audit logs
+          - Manage Prebid module library
+          - Generate API keys
+        </permissions>
+        <protected_routes>
+          - /admin/* (all admin routes)
+          - /system/* (system configuration)
+        </protected_routes>
+      </role>
+      <role name="admin">
+        <description>Staff member - can manage assigned publishers</description>
+        <permissions>
+          - Manage assigned publishers
+          - View analytics for assigned publishers
+          - Cannot create other admin users
+          - Cannot access system configuration
+        </permissions>
+        <protected_routes>
+          - /admin/publishers (assigned only)
+          - /admin/analytics (assigned publishers only)
+        </protected_routes>
+      </role>
+      <role name="publisher">
+        <description>Publisher user - self-service access to their own config</description>
+        <permissions>
+          - View and edit their own ad units
+          - View and edit their own bidder configuration
+          - View and edit their own Prebid settings
+          - View their own analytics
+          - Download their embed code
+          - Cannot access other publishers' data
+          - Cannot access admin features
+        </permissions>
+        <protected_routes>
+          - /publisher/* (own data only)
+        </protected_routes>
+      </role>
+    </user_roles>
+    <authentication>
+      <method>Email/password with JWT tokens</method>
+      <session_timeout>24 hours (configurable per role)</session_timeout>
+      <password_requirements>Minimum 8 characters, mixed case, number required</password_requirements>
+      <refresh_tokens>Yes, 7-day expiry</refresh_tokens>
+    </authentication>
+    <api_security>
+      <publisher_api_keys>Per-publisher API keys for config fetch</publisher_api_keys>
+      <rate_limiting>Redis-based rate limiting</rate_limiting>
+      <cors>Configurable per publisher domain</cors>
+    </api_security>
+    <sensitive_operations>
+      - Delete publisher requires confirmation dialog
+      - Delete ad unit requires confirmation
+      - Regenerate API key requires confirmation
+      - Bulk operations require confirmation
+    </sensitive_operations>
+  </security_and_access_control>
+
+  <core_features>
+    <authentication_and_users>
+      - User registration (admin-created for now)
+      - Email/password login
+      - JWT token authentication
+      - Refresh token rotation
+      - Password reset flow
+      - Session management
+      - Role-based access control
+      - User profile management
+      - Audit logging of user actions
+    </authentication_and_users>
+
+    <publisher_management>
+      - Create publisher account
+      - Edit publisher details (name, domains, contact)
+      - Delete publisher (with cascade)
+      - Publisher status (active/paused/disabled)
+      - Allowed domains configuration
+      - Publisher API key generation
+      - Publisher API key rotation
+      - Embed code generation (minified JS with ID)
+      - Publisher notes/metadata
+      - Bulk publisher operations
+      - Publisher search and filtering
+      - Publisher list with pagination
+      - Assign admin users to publishers
+    </publisher_management>
+
+    <ad_unit_management>
+      - Create ad unit
+      - Edit ad unit
+      - Delete ad unit
+      - Ad unit naming and code
+      - Media types (banner, video, native)
+      - Banner sizes configuration (multiple sizes per unit)
+      - Video player size configuration
+      - Video context (instream, outstream, adpod)
+      - Video mimes, protocols, playback methods
+      - Native asset configuration
+      - Floor price per ad unit
+      - Ad unit targeting (key-values)
+      - Ad unit status (active/paused)
+      - Duplicate ad unit
+      - Bulk ad unit operations
+      - Size mapping for responsive ads
+      - Ad unit preview
+    </ad_unit_management>
+
+    <bidder_management>
+      - View all available Prebid bidder adapters
+      - Search/filter bidder list
+      - Enable/disable bidders per publisher
+      - Bidder parameter configuration (per bidder, per publisher)
+      - Bidder-specific timeout override
+      - Bidder priority ordering
+      - Bidder alias support
+      - Test mode per bidder
+      - Bidder documentation links
+      - Required vs optional parameter indication
+      - Validate bidder parameters before save
+      - Bulk enable/disable bidders
+      - Copy bidder config between publishers
+    </bidder_management>
+
+    <prebid_configuration>
+      - bidderTimeout setting
+      - priceGranularity (low/medium/high/auto/dense/custom)
+      - customPriceBucket configuration
+      - mediaTypePriceGranularity (per media type)
+      - enableSendAllBids toggle
+      - bidderSequence (random/fixed)
+      - userSync configuration (iframes, pixels, delay)
+      - userSync.filterSettings
+      - targetingControls (key length limits)
+      - sendBidsControl settings
+      - useBidCache toggle
+      - deviceAccess toggle
+      - auctionOptions configuration
+      - disableAjaxTimeout toggle
+      - timeoutBuffer setting
+      - maxNestedIframes setting
+      - s2sConfig (Prebid Server settings)
+      - currency conversion settings
+      - sizeMapping rules (responsive)
+      - debugging toggle
+    </prebid_configuration>
+
+    <price_floors>
+      - Enable/disable floors module
+      - Floor data location (fetch vs inline)
+      - Floor endpoint URL configuration
+      - Default floor price
+      - Floor rules by media type
+      - Floor rules by ad unit
+      - Floor rules by bidder
+      - Floor rules by size
+      - Floor rules by geo
+      - Dynamic floor adjustment
+      - Floor enforcement mode
+      - Floor analytics
+    </price_floors>
+
+    <user_id_modules>
+      - View all available User ID modules
+      - Enable/disable User ID modules per publisher
+      - Module-specific configuration
+      - Storage settings (cookie vs localStorage)
+      - Unified ID 2.0 configuration
+      - ID5 configuration
+      - LiveRamp ATS configuration
+      - SharedID configuration
+      - Criteo ID configuration
+      - PubCommon ID configuration
+      - Custom User ID configuration
+      - User ID sync delay settings
+    </user_id_modules>
+
+    <consent_management>
+      - GDPR TCF configuration
+      - CMP API selection (iab/static)
+      - GDPR timeout setting
+      - Default GDPR scope
+      - USP/CCPA configuration
+      - GPP configuration
+      - Consent enforcement settings
+      - Purpose consent handling
+      - Vendor consent handling
+    </consent_management>
+
+    <video_configuration>
+      - Video module settings
+      - Instream video support
+      - Outstream video support
+      - Video cache URL configuration
+      - Video ad pod settings
+      - Video player integration settings
+      - VAST/VPAID support
+      - Video event tracking
+    </video_configuration>
+
+    <analytics_module>
+      - Custom analytics adapter (private, not submitted to Prebid)
+      - Beacon endpoint configuration
+      - Event selection (which events to track)
+      - Sampling rate configuration
+      - Batch size settings
+      - Retry logic configuration
+      - Publisher-specific analytics settings
+    </analytics_module>
+
+    <prebid_build_service>
+      - Dynamic Prebid.js compilation per publisher
+      - Include only active modules (no code bloat)
+      - Module dependency resolution
+      - Build caching (same config = cached build)
+      - Build versioning
+      - Source map generation (debug mode)
+      - Minification settings
+      - Build queue management
+      - Build status monitoring
+      - Force rebuild option
+      - Prebid version selection
+    </prebid_build_service>
+
+    <config_api>
+      - Fetch publisher config by ID
+      - Config versioning
+      - Config caching (Redis + CDN headers)
+      - Cache invalidation on config change
+      - Config diff/changelog
+      - Config rollback to previous version
+      - Config validation before save
+      - Config preview mode
+      - Config A/B testing support
+    </config_api>
+
+    <publisher_js_wrapper>
+      - Lightweight loader script
+      - Publisher ID extraction from script URL
+      - Config fetch with caching (localStorage + TTL)
+      - Dynamic module loading
+      - pb namespace implementation
+      - pb.init() - main initialization
+      - pb.refresh() - refresh specific ad units
+      - pb.getConfig() - get current config
+      - pb.setConfig() - update config
+      - pb.on() - event listeners
+      - pb.pbjs - access to underlying Prebid
+      - Error handling and fallbacks
+      - Debug mode
+      - GAM integration helpers
+      - Auction lifecycle management
+      - Analytics beacon sending
+    </publisher_js_wrapper>
+
+    <gam_integration>
+      - Define GPT slots helper
+      - Send targeting to GAM
+      - Bid rendering
+      - Refresh handling
+      - Safe frame support
+      - Test mode for GAM
+    </gam_integration>
+
+    <analytics_pipeline>
+      - High-throughput beacon endpoint
+      - Redis Streams for event buffering
+      - Stream processor for aggregation
+      - ClickHouse storage for raw events
+      - Pre-aggregated metrics tables
+      - Real-time counters (impressions, bids)
+    </analytics_pipeline>
+
+    <analytics_dashboard>
+      - Overview dashboard (key metrics)
+      - Revenue metrics (by publisher, bidder, ad unit)
+      - Fill rate charts
+      - Bid latency analysis
+      - Timeout rate tracking
+      - Win rate by bidder
+      - CPM trends over time
+      - Geo breakdown
+      - Device breakdown
+      - Date range selection
+      - Comparison periods
+      - Export reports (CSV, JSON)
+      - Scheduled reports
+      - Real-time metrics (last 5 minutes)
+      - Custom date ranges
+      - Filtering by publisher, bidder, ad unit
+    </analytics_dashboard>
+
+    <publisher_portal>
+      - Publisher login
+      - Publisher dashboard (their analytics)
+      - Ad unit management (their own)
+      - Bidder configuration (their own)
+      - Prebid settings (their own)
+      - Download embed code
+      - View implementation guide
+      - Support contact
+    </publisher_portal>
+
+    <audit_and_logging>
+      - User action audit log
+      - Config change history
+      - Login/logout logging
+      - API access logging
+      - Error logging
+      - Audit log search and filtering
+      - Audit log export
+    </audit_and_logging>
+
+    <system_administration>
+      - Prebid module library management
+      - Update module list from Prebid
+      - System health monitoring
+      - Cache management
+      - Build queue monitoring
+      - Database maintenance
+      - Backup configuration
+    </system_administration>
+  </core_features>
+
+  <prebid_modules>
+    <bidder_adapters>
+      All 200+ bidder adapters from Prebid.js library including:
+      33Across, AdColony, Adform, AdKernel, Adloox, AdMixer, Adnuntius, AdPrime, AdsWizz,
+      Amazon TAM, AppNexus/Xandr, Beachfront, Brightcom, Colossus, Consumable, Conversant,
+      Criteo, DeepIntent, E-Planning, EMX, Epsilon, FreeWheel, GumGum, Improve Digital,
+      Index Exchange, InMobi, Kargo, LiveRamp, Magnite/Rubicon, Media.net, MGID, Nativo,
+      OpenX, Outbrain, PubMatic, Quantcast, RTB House, Sharethrough, Smaato, Smart AdServer,
+      Sonobi, Sovrn, SpotX, Taboola, Teads, TripleLift, Unruly, Verizon Media, YieldMo,
+      Zeta Global, and all others available in Prebid.js download page
+    </bidder_adapters>
+    <user_id_modules>
+      Unified ID 2.0, ID5, LiveRamp ATS, SharedID, PubCommon ID, Criteo ID, Lotame,
+      Merkle, Tapad, Verizon ConnectID, Zeotap, Audigent, NetID, Parrable, QuantcastID,
+      and all others available
+    </user_id_modules>
+    <analytics_adapters>
+      Custom private adapter (not submitted to Prebid), plus optional: Google Analytics,
+      Prebid Analytics, and others as needed
+    </analytics_adapters>
+    <rtd_modules>
+      1plusX, Adloox, AuDigent, Browsi, Captify, Confiant, CriteoRTD, DoubleVerify,
+      Geoedge, Hadron, IAS, JWPlayer, Magnite, Permutive, and all others available
+    </rtd_modules>
+    <other_modules>
+      Currency, Consent Management (GDPR/TCF, USP/CCPA, GPP), Price Floors, Size Mapping,
+      Video (Instream, Outstream), Native, Video Cache, PAAPI/Fledge, Adpod
+    </other_modules>
+  </prebid_modules>
+
+  <database_schema>
+    <postgresql_tables>
+      <users>
+        - id (uuid, primary key)
+        - email (unique)
+        - password_hash
+        - role (super_admin, admin, publisher)
+        - name
+        - publisher_id (nullable, for publisher role)
+        - created_at
+        - updated_at
+        - last_login_at
+        - status (active, disabled)
+      </users>
+      <publishers>
+        - id (uuid, primary key)
+        - name
+        - slug (unique, URL-friendly)
+        - api_key (unique, for config fetch)
+        - domains (array of allowed domains)
+        - status (active, paused, disabled)
+        - notes
+        - created_at
+        - updated_at
+        - created_by (user_id)
+      </publishers>
+      <publisher_admins>
+        - publisher_id (fk)
+        - user_id (fk)
+        - created_at
+      </publisher_admins>
+      <ad_units>
+        - id (uuid, primary key)
+        - publisher_id (fk)
+        - code (unique per publisher)
+        - name
+        - media_types (jsonb: banner, video, native configs)
+        - floor_price (decimal, nullable)
+        - targeting (jsonb)
+        - size_mapping (jsonb)
+        - status (active, paused)
+        - created_at
+        - updated_at
+      </ad_units>
+      <publisher_bidders>
+        - id (uuid, primary key)
+        - publisher_id (fk)
+        - bidder_code
+        - enabled (boolean)
+        - params (jsonb)
+        - timeout_override (integer, nullable)
+        - priority (integer)
+        - created_at
+        - updated_at
+      </publisher_bidders>
+      <publisher_config>
+        - id (uuid, primary key)
+        - publisher_id (fk, unique)
+        - bidder_timeout (integer)
+        - price_granularity (string)
+        - custom_price_bucket (jsonb)
+        - enable_send_all_bids (boolean)
+        - bidder_sequence (string)
+        - user_sync (jsonb)
+        - targeting_controls (jsonb)
+        - currency_config (jsonb)
+        - consent_management (jsonb)
+        - floors_config (jsonb)
+        - user_id_modules (jsonb)
+        - video_config (jsonb)
+        - s2s_config (jsonb)
+        - debug_mode (boolean)
+        - custom_config (jsonb for additional settings)
+        - created_at
+        - updated_at
+        - version (integer, auto-increment on update)
+      </publisher_config>
+      <config_versions>
+        - id (uuid, primary key)
+        - publisher_id (fk)
+        - version (integer)
+        - config_snapshot (jsonb)
+        - changed_by (user_id)
+        - change_summary (text)
+        - created_at
+      </config_versions>
+      <prebid_modules>
+        - id (uuid, primary key)
+        - code (unique)
+        - name
+        - type (bidder, userId, analytics, rtd, other)
+        - description
+        - params_schema (jsonb)
+        - documentation_url
+        - maintainer
+        - is_active (boolean)
+        - created_at
+        - updated_at
+      </prebid_modules>
+      <publisher_builds>
+        - id (uuid, primary key)
+        - publisher_id (fk)
+        - config_hash (unique per publisher)
+        - prebid_version
+        - modules_included (array)
+        - build_path (file path)
+        - file_size (integer)
+        - status (building, ready, failed)
+        - created_at
+        - expires_at
+      </publisher_builds>
+      <audit_logs>
+        - id (uuid, primary key)
+        - user_id (fk)
+        - action (string)
+        - entity_type (string)
+        - entity_id (uuid)
+        - old_values (jsonb)
+        - new_values (jsonb)
+        - ip_address
+        - user_agent
+        - created_at
+      </audit_logs>
+    </postgresql_tables>
+    <clickhouse_tables>
+      <analytics_events>
+        - event_id (UUID)
+        - publisher_id (String)
+        - event_type (String: auctionInit, auctionEnd, bidRequested, bidResponse, bidWon, bidTimeout, noBid, adRenderSucceeded, adRenderFailed)
+        - auction_id (String)
+        - ad_unit_code (String)
+        - bidder_code (String)
+        - cpm (Float64)
+        - currency (String)
+        - latency_ms (UInt32)
+        - timeout (Boolean)
+        - won (Boolean)
+        - rendered (Boolean)
+        - page_url (String)
+        - domain (String)
+        - device_type (String)
+        - country (String)
+        - timestamp (DateTime)
+        - received_at (DateTime)
+      </analytics_events>
+      <hourly_aggregates>
+        - hour (DateTime)
+        - publisher_id (String)
+        - bidder_code (String)
+        - ad_unit_code (String)
+        - impressions (UInt64)
+        - bids_requested (UInt64)
+        - bids_received (UInt64)
+        - bids_won (UInt64)
+        - bids_timeout (UInt64)
+        - no_bids (UInt64)
+        - revenue (Float64)
+        - avg_cpm (Float64)
+        - avg_latency (Float64)
+        - fill_rate (Float64)
+        - win_rate (Float64)
+      </hourly_aggregates>
+      <daily_aggregates>
+        - Similar to hourly but aggregated by day
+      </daily_aggregates>
+    </clickhouse_tables>
+    <redis_keys>
+      - config:{publisher_id} - cached publisher config (5 min TTL)
+      - session:{token} - user session data
+      - rate_limit:{ip} - rate limiting counters
+      - build_queue - build job queue
+      - realtime:{publisher_id} - real-time counters
+    </redis_keys>
+  </database_schema>
+
+  <api_endpoints_summary>
+    <authentication>
+      - POST /api/auth/login
+      - POST /api/auth/logout
+      - POST /api/auth/refresh
+      - POST /api/auth/forgot-password
+      - POST /api/auth/reset-password
+      - GET /api/auth/me
+    </authentication>
+    <users>
+      - GET /api/users
+      - POST /api/users
+      - GET /api/users/:id
+      - PUT /api/users/:id
+      - DELETE /api/users/:id
+    </users>
+    <publishers>
+      - GET /api/publishers
+      - POST /api/publishers
+      - GET /api/publishers/:id
+      - PUT /api/publishers/:id
+      - DELETE /api/publishers/:id
+      - POST /api/publishers/:id/regenerate-key
+      - GET /api/publishers/:id/embed-code
+    </publishers>
+    <ad_units>
+      - GET /api/publishers/:id/ad-units
+      - POST /api/publishers/:id/ad-units
+      - GET /api/ad-units/:id
+      - PUT /api/ad-units/:id
+      - DELETE /api/ad-units/:id
+      - POST /api/ad-units/:id/duplicate
+    </ad_units>
+    <bidders>
+      - GET /api/modules/bidders (all available)
+      - GET /api/publishers/:id/bidders (publisher's config)
+      - PUT /api/publishers/:id/bidders/:code
+      - DELETE /api/publishers/:id/bidders/:code
+    </bidders>
+    <config>
+      - GET /api/publishers/:id/config
+      - PUT /api/publishers/:id/config
+      - GET /api/publishers/:id/config/versions
+      - POST /api/publishers/:id/config/rollback/:version
+      - GET /api/publishers/:id/config/preview
+    </config>
+    <modules>
+      - GET /api/modules (all modules)
+      - GET /api/modules/user-id
+      - GET /api/modules/rtd
+      - GET /api/modules/analytics
+    </modules>
+    <builds>
+      - POST /api/publishers/:id/build
+      - GET /api/publishers/:id/build/status
+      - GET /api/publishers/:id/build/download
+    </builds>
+    <analytics>
+      - GET /api/analytics/overview
+      - GET /api/analytics/revenue
+      - GET /api/analytics/bidders
+      - GET /api/analytics/latency
+      - GET /api/analytics/fill-rate
+      - POST /api/analytics/export
+    </analytics>
+    <public_config>
+      - GET /c/:api_key (public config endpoint, CDN cached)
+    </public_config>
+    <analytics_beacon>
+      - POST /b (analytics beacon, high throughput)
+    </analytics_beacon>
+    <audit>
+      - GET /api/audit-logs
+    </audit>
+  </api_endpoints_summary>
+
+  <ui_layout>
+    <admin_dashboard>
+      <structure>
+        - Left sidebar navigation (collapsible)
+        - Top header with user menu, notifications
+        - Main content area
+        - Right panel for context actions (optional)
+      </structure>
+      <pages>
+        - Dashboard (overview metrics, quick actions)
+        - Publishers list (table with search, filters, pagination)
+        - Publisher detail (tabbed: config, ad units, bidders, analytics)
+        - Ad Unit editor (form with media type tabs)
+        - Bidder manager (toggle grid, params modal)
+        - Config editor (grouped settings with validation)
+        - Analytics dashboard (charts, filters, date picker)
+        - Users management
+        - Audit logs
+        - System settings
+        - Module library
+      </pages>
+    </admin_dashboard>
+    <publisher_portal>
+      <structure>
+        - Simplified left sidebar
+        - Header with account menu
+        - Main content area
+      </structure>
+      <pages>
+        - Dashboard (their key metrics)
+        - Ad Units (their own)
+        - Bidders (their own)
+        - Settings (their config)
+        - Get Code (embed code, implementation guide)
+        - Analytics (their own data)
+        - Support
+      </pages>
+    </publisher_portal>
+  </ui_layout>
+
+  <design_system>
+    <color_palette>
+      - Primary: Blue (#3B82F6)
+      - Secondary: Slate (#64748B)
+      - Success: Green (#22C55E)
+      - Warning: Amber (#F59E0B)
+      - Error: Red (#EF4444)
+      - Background: White/Gray (#F8FAFC)
+      - Dark mode support
+    </color_palette>
+    <typography>
+      - Font: Inter (system fallbacks)
+      - Monospace: JetBrains Mono (for code/configs)
+    </typography>
+    <components>
+      - Consistent form inputs
+      - Data tables with sorting, filtering, pagination
+      - Modal dialogs
+      - Toast notifications
+      - Loading states
+      - Empty states
+      - Error states
+    </components>
+  </design_system>
+
+  <implementation_steps>
+    <step number="1">
+      <title>Project Setup and Core Infrastructure</title>
+      <tasks>
+        - Initialize monorepo structure (apps/admin, apps/api, packages/shared)
+        - Set up Docker Compose for local development
+        - Configure PostgreSQL, Redis, ClickHouse containers
+        - Set up Fastify API with basic health check
+        - Set up React admin app with Vite
+        - Configure Tailwind CSS
+        - Set up Drizzle ORM with PostgreSQL connection
+      </tasks>
+    </step>
+    <step number="2">
+      <title>Authentication and User Management</title>
+      <tasks>
+        - Implement user database schema
+        - Build authentication endpoints (login, logout, refresh)
+        - Implement JWT token handling
+        - Build login page UI
+        - Implement role-based access control middleware
+        - Build user management UI (admin only)
+      </tasks>
+    </step>
+    <step number="3">
+      <title>Publisher Management</title>
+      <tasks>
+        - Implement publisher database schema
+        - Build publisher CRUD API endpoints
+        - Build publisher list page with search/filter
+        - Build publisher create/edit forms
+        - Implement API key generation
+        - Build embed code generation
+      </tasks>
+    </step>
+    <step number="4">
+      <title>Ad Unit Management</title>
+      <tasks>
+        - Implement ad_units database schema
+        - Build ad unit CRUD API endpoints
+        - Build ad unit list view (per publisher)
+        - Build ad unit editor (banner, video, native tabs)
+        - Implement size mapping configuration
+        - Build floor price settings
+      </tasks>
+    </step>
+    <step number="5">
+      <title>Bidder Management</title>
+      <tasks>
+        - Implement prebid_modules database schema
+        - Seed all available Prebid bidder adapters
+        - Build bidder list API with search/filter
+        - Implement publisher_bidders schema
+        - Build bidder toggle grid UI
+        - Build bidder params configuration modal
+        - Implement params validation
+      </tasks>
+    </step>
+    <step number="6">
+      <title>Prebid Configuration</title>
+      <tasks>
+        - Implement publisher_config database schema
+        - Build config API endpoints
+        - Build config editor UI (grouped settings)
+        - Implement User ID modules configuration
+        - Implement consent management configuration
+        - Implement price floors configuration
+        - Build config versioning and rollback
+      </tasks>
+    </step>
+    <step number="7">
+      <title>Prebid Build Service</title>
+      <tasks>
+        - Set up Webpack build pipeline
+        - Implement module dependency resolution
+        - Build dynamic Prebid.js compilation
+        - Implement build caching by config hash
+        - Build queue processing for concurrent builds
+        - Implement build status API
+      </tasks>
+    </step>
+    <step number="8">
+      <title>Publisher JS Wrapper (pb namespace)</title>
+      <tasks>
+        - Build lightweight loader script
+        - Implement config fetch with caching
+        - Implement pb.init() with full initialization
+        - Implement pb.refresh(), pb.getConfig(), pb.setConfig()
+        - Build GAM integration helpers
+        - Implement analytics beacon sending
+        - Build error handling and fallbacks
+      </tasks>
+    </step>
+    <step number="9">
+      <title>Public Config API</title>
+      <tasks>
+        - Build /c/:api_key endpoint
+        - Implement Redis caching with 5-min TTL
+        - Configure CDN cache headers
+        - Build config transformation (DB → Prebid format)
+        - Implement cache invalidation on config save
+      </tasks>
+    </step>
+    <step number="10">
+      <title>Analytics Pipeline</title>
+      <tasks>
+        - Build beacon endpoint (/b)
+        - Set up Redis Streams for event buffering
+        - Implement stream processor for ClickHouse ingestion
+        - Create ClickHouse tables and materialized views
+        - Build aggregation jobs (hourly, daily)
+        - Implement real-time counters
+      </tasks>
+    </step>
+    <step number="11">
+      <title>Analytics Dashboard</title>
+      <tasks>
+        - Build analytics API endpoints (query ClickHouse)
+        - Build overview dashboard with key metrics
+        - Build revenue charts (by publisher, bidder, time)
+        - Build latency analysis charts
+        - Build fill rate and win rate visualizations
+        - Implement date range selection
+        - Implement filtering and drill-down
+        - Build export functionality
+      </tasks>
+    </step>
+    <step number="12">
+      <title>Publisher Portal</title>
+      <tasks>
+        - Create publisher-specific routes and layout
+        - Build publisher login flow
+        - Build publisher dashboard (their metrics)
+        - Build publisher ad unit management
+        - Build publisher bidder configuration
+        - Build publisher settings page
+        - Build embed code / implementation guide page
+      </tasks>
+    </step>
+    <step number="13">
+      <title>Video Support</title>
+      <tasks>
+        - Extend ad unit schema for video
+        - Build video configuration UI (instream, outstream)
+        - Implement video params in config API
+        - Add video modules to build service
+        - Test video auction flow
+      </tasks>
+    </step>
+    <step number="14">
+      <title>Audit Logging and System Admin</title>
+      <tasks>
+        - Implement audit log schema
+        - Add audit logging middleware
+        - Build audit log viewer UI
+        - Build system health dashboard
+        - Implement module library management
+        - Build cache management UI
+      </tasks>
+    </step>
+    <step number="15">
+      <title>Testing and Polish</title>
+      <tasks>
+        - Write API tests
+        - Write frontend component tests
+        - End-to-end testing with real GAM integration
+        - Performance testing (beacon endpoint, build service)
+        - Security audit
+        - Documentation
+        - Docker production configuration
+      </tasks>
+    </step>
+  </implementation_steps>
+
+  <success_criteria>
+    <functionality>
+      - Publishers can receive a minified JS with their unique ID
+      - Config changes reflect on publisher sites within 5 minutes
+      - All Prebid modules can be toggled on/off per publisher
+      - Video and banner auctions run correctly
+      - Analytics capture all key events at 1B+ impression scale
+      - GAM integration works correctly
+    </functionality>
+    <user_experience>
+      - Admin can manage publishers and configs without technical knowledge
+      - Publishers can self-service their configuration
+      - Analytics dashboards provide actionable insights
+      - Config editor validates before save
+      - Clear feedback for all actions
+    </user_experience>
+    <technical_quality>
+      - API response times under 100ms (config fetch)
+      - Beacon endpoint handles 10k+ requests/second
+      - Build service compiles custom Prebid in under 60 seconds
+      - Zero data loss in analytics pipeline
+      - Proper error handling throughout
+    </technical_quality>
+    <design_polish>
+      - Consistent visual design across all pages
+      - Responsive layout (desktop and tablet)
+      - Accessible (WCAG AA compliant)
+      - Dark mode support
+      - Professional, clean interface
+    </design_polish>
+  </success_criteria>
+</project_specification>

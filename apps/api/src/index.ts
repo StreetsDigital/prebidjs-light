@@ -6,6 +6,7 @@ import cookie from '@fastify/cookie';
 import { initializeDatabase } from './db';
 import authRoutes from './routes/auth';
 import publisherRoutes from './routes/publishers';
+import userRoutes from './routes/users';
 
 const app = Fastify({
   logger: {
@@ -41,8 +42,9 @@ app.get('/health', async () => {
 app.register(authRoutes, { prefix: '/api/auth' });
 app.register(publisherRoutes, { prefix: '/api/publishers' });
 
+app.register(userRoutes, { prefix: '/api/users' });
+
 // Placeholder for other routes
-// app.register(userRoutes, { prefix: '/api/users' });
 // app.register(configRoutes, { prefix: '/api/config' });
 // app.register(analyticsRoutes, { prefix: '/api/analytics' });
 

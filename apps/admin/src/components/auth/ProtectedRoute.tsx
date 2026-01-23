@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore, UserRole } from '../../stores/authStore';
 
@@ -38,16 +39,41 @@ function LoadingSpinner() {
 }
 
 export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
-  const { isAuthenticated, user, isHydrated } = useAuthStore();
+  const { isAuthenticated, user, isHydrated, token, checkAuth, logout } = useAuthStore();
   const location = useLocation();
+  const [isValidating, setIsValidating] = useState(true);
+  const [isValid, setIsValid] = useState(false);
+
+  useEffect(() => {
+    const validateSession = async () => {
+      if (!isHydrated) return;
+
+      if (!token || !isAuthenticated) {
+        setIsValid(false);
+        setIsValidating(false);
+        return;
+      }
+
+      // Verify the token is still valid with the backend
+      const valid = await checkAuth();
+      if (!valid) {
+        // Token is invalid or expired, log out
+        logout();
+      }
+      setIsValid(valid);
+      setIsValidating(false);
+    };
+
+    validateSession();
+  }, [isHydrated, token, isAuthenticated, checkAuth, logout]);
 
   // Wait for zustand to rehydrate from localStorage
-  if (!isHydrated) {
+  if (!isHydrated || isValidating) {
     return <LoadingSpinner />;
   }
 
-  // If not authenticated, redirect to login
-  if (!isAuthenticated) {
+  // If not authenticated or session invalid, redirect to login
+  if (!isAuthenticated || !isValid) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

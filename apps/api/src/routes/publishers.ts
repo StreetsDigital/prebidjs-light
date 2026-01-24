@@ -1034,4 +1034,177 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       newVersion,
     };
   });
+
+  // Copy bidders from one publisher to another
+  fastify.post<{ Params: { id: string }; Body: { fromPublisherId: string } }>('/:id/bidders/copy-from', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
+    const { id: targetPublisherId } = request.params;
+    const { fromPublisherId: sourcePublisherId } = request.body;
+    const user = request.user as TokenPayload;
+
+    if (!sourcePublisherId) {
+      return reply.code(400).send({ error: 'Source publisher ID is required' });
+    }
+
+    if (sourcePublisherId === targetPublisherId) {
+      return reply.code(400).send({ error: 'Cannot copy bidders to the same publisher' });
+    }
+
+    // Check if target publisher exists
+    const targetPublisher = db.select().from(publishers).where(eq(publishers.id, targetPublisherId)).get();
+    if (!targetPublisher) {
+      return reply.code(404).send({ error: 'Target publisher not found' });
+    }
+
+    // Check if source publisher exists
+    const sourcePublisher = db.select().from(publishers).where(eq(publishers.id, sourcePublisherId)).get();
+    if (!sourcePublisher) {
+      return reply.code(404).send({ error: 'Source publisher not found' });
+    }
+
+    // Get bidders from source publisher
+    const sourceBidders = db.select().from(publisherBidders)
+      .where(eq(publisherBidders.publisherId, sourcePublisherId))
+      .all();
+
+    if (sourceBidders.length === 0) {
+      return reply.code(400).send({ error: 'Source publisher has no bidders configured' });
+    }
+
+    // Get existing bidders for target publisher to avoid duplicates
+    const existingBidders = db.select().from(publisherBidders)
+      .where(eq(publisherBidders.publisherId, targetPublisherId))
+      .all();
+    const existingBidderCodes = new Set(existingBidders.map(b => b.bidderCode));
+
+    const now = new Date().toISOString();
+    const copiedBidders: typeof sourceBidders = [];
+    const skippedBidders: string[] = [];
+
+    for (const bidder of sourceBidders) {
+      if (existingBidderCodes.has(bidder.bidderCode)) {
+        // Skip if bidder already exists in target publisher
+        skippedBidders.push(bidder.bidderCode);
+        continue;
+      }
+
+      const newBidderId = uuidv4();
+
+      db.insert(publisherBidders).values({
+        id: newBidderId,
+        publisherId: targetPublisherId,
+        bidderCode: bidder.bidderCode,
+        enabled: bidder.enabled,
+        params: bidder.params, // Copy the exact same params JSON
+        timeoutOverride: bidder.timeoutOverride,
+        priority: bidder.priority,
+        createdAt: now,
+        updatedAt: now,
+      }).run();
+
+      copiedBidders.push({
+        ...bidder,
+        id: newBidderId,
+        publisherId: targetPublisherId,
+      });
+    }
+
+    // Log audit entry
+    db.insert(auditLogs).values({
+      id: uuidv4(),
+      userId: user.userId,
+      action: 'COPY_BIDDERS',
+      entityType: 'publisher_bidders',
+      entityId: targetPublisherId,
+      oldValues: null,
+      newValues: JSON.stringify({
+        fromPublisher: sourcePublisher.name,
+        fromPublisherId: sourcePublisherId,
+        toPublisher: targetPublisher.name,
+        copiedCount: copiedBidders.length,
+        skippedCount: skippedBidders.length,
+        copiedBidders: copiedBidders.map(b => b.bidderCode),
+        skippedBidders,
+      }),
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'] || null,
+      createdAt: now,
+    }).run();
+
+    return {
+      success: true,
+      message: `Copied ${copiedBidders.length} bidder(s) from ${sourcePublisher.name}${skippedBidders.length > 0 ? `. ${skippedBidders.length} bidder(s) skipped (already exist)` : ''}`,
+      copied: copiedBidders.map(b => ({
+        ...b,
+        params: b.params ? JSON.parse(b.params) : null,
+      })),
+      skipped: skippedBidders,
+    };
+  });
+
+  // Bulk update publisher status - admin only
+  fastify.post<{ Body: { ids: string[]; status: 'active' | 'paused' | 'disabled' } }>('/bulk/status', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
+    const { ids, status } = request.body;
+    const user = request.user as TokenPayload;
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return reply.code(400).send({ error: 'No publisher IDs provided' });
+    }
+
+    if (!status || !['active', 'paused', 'disabled'].includes(status)) {
+      return reply.code(400).send({ error: 'Invalid status. Must be active, paused, or disabled' });
+    }
+
+    const now = new Date().toISOString();
+    const results: { id: string; success: boolean; error?: string }[] = [];
+
+    for (const id of ids) {
+      try {
+        const publisher = db.select().from(publishers).where(eq(publishers.id, id)).get();
+
+        if (!publisher) {
+          results.push({ id, success: false, error: 'Publisher not found' });
+          continue;
+        }
+
+        const oldStatus = publisher.status;
+
+        // Update the publisher status
+        db.update(publishers)
+          .set({ status, updatedAt: now })
+          .where(eq(publishers.id, id))
+          .run();
+
+        // Log audit entry
+        db.insert(auditLogs).values({
+          id: uuidv4(),
+          userId: user.userId,
+          action: 'BULK_UPDATE_STATUS',
+          entityType: 'publisher',
+          entityId: id,
+          oldValues: JSON.stringify({ status: oldStatus }),
+          newValues: JSON.stringify({ status }),
+          ipAddress: request.ip,
+          userAgent: request.headers['user-agent'] || null,
+          createdAt: now,
+        }).run();
+
+        results.push({ id, success: true });
+      } catch (err) {
+        results.push({ id, success: false, error: 'Failed to update' });
+      }
+    }
+
+    const successCount = results.filter(r => r.success).length;
+    const failureCount = results.filter(r => !r.success).length;
+
+    return {
+      success: failureCount === 0,
+      message: `Updated ${successCount} publisher(s)${failureCount > 0 ? `, ${failureCount} failed` : ''}`,
+      results,
+    };
+  });
 }

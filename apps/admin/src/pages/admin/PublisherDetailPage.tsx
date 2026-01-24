@@ -304,6 +304,16 @@ export function PublisherDetailPage() {
   const [importError, setImportError] = useState<string | null>(null);
   const [importValidation, setImportValidation] = useState<{ valid: boolean; errors: string[]; warnings: string[] } | null>(null);
 
+  // Copy bidders state
+  const [copyBiddersModal, setCopyBiddersModal] = useState({
+    isOpen: false,
+    isLoading: false,
+  });
+  const [copyFromPublisherId, setCopyFromPublisherId] = useState('');
+  const [allPublishers, setAllPublishers] = useState<{ id: string; name: string; slug: string }[]>([]);
+  const [copyBiddersError, setCopyBiddersError] = useState<string | null>(null);
+  const [copyBiddersSuccess, setCopyBiddersSuccess] = useState<string | null>(null);
+
   const fetchPublisher = async () => {
     if (!id) return;
 
@@ -459,12 +469,31 @@ export function PublisherDetailPage() {
     setAvailableBidders(AVAILABLE_BIDDERS);
   };
 
+  const fetchAllPublishers = async () => {
+    try {
+      const response = await fetch(`/api/publishers?limit=1000`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Filter out the current publisher from the list
+        setAllPublishers(data.publishers.filter((p: { id: string; name: string; slug: string }) => p.id !== id));
+      }
+    } catch (err) {
+      console.error('Failed to fetch all publishers:', err);
+    }
+  };
+
   useEffect(() => {
     fetchPublisher();
     fetchAdUnits();
     fetchConfig();
     fetchPublisherBidders();
     fetchAvailableBidders();
+    fetchAllPublishers();
   }, [id, token]);
 
   const handleRegenerateClick = () => {
@@ -1221,6 +1250,61 @@ export function PublisherDetailPage() {
     }
   };
 
+  // Copy bidders handlers
+  const handleCopyBiddersClick = () => {
+    setCopyFromPublisherId('');
+    setCopyBiddersError(null);
+    setCopyBiddersSuccess(null);
+    setCopyBiddersModal({ isOpen: true, isLoading: false });
+  };
+
+  const handleCopyBiddersClose = () => {
+    setCopyBiddersModal({ isOpen: false, isLoading: false });
+    setCopyBiddersError(null);
+    setCopyBiddersSuccess(null);
+    setCopyFromPublisherId('');
+  };
+
+  const handleCopyBiddersSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!publisher || !copyFromPublisherId) return;
+
+    setCopyBiddersModal((prev) => ({ ...prev, isLoading: true }));
+    setCopyBiddersError(null);
+    setCopyBiddersSuccess(null);
+
+    try {
+      const response = await fetch(`/api/publishers/${publisher.id}/bidders/copy-from`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          fromPublisherId: copyFromPublisherId,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to copy bidders');
+      }
+
+      setCopyBiddersSuccess(data.message);
+      // Refresh the bidder list
+      await fetchPublisherBidders();
+
+      // Close modal after a short delay to show success message
+      setTimeout(() => {
+        handleCopyBiddersClose();
+      }, 1500);
+    } catch (err) {
+      setCopyBiddersError(err instanceof Error ? err.message : 'Failed to copy bidders');
+      setCopyBiddersModal((prev) => ({ ...prev, isLoading: false }));
+    }
+  };
+
   const filteredAvailableBidders = availableBidders.filter(
     (b) =>
       (b.name.toLowerCase().includes(bidderSearchQuery.toLowerCase()) ||
@@ -1875,16 +1959,29 @@ export function PublisherDetailPage() {
                 Configure bidder adapters for this publisher.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleAddBidderClick}
-              className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
-            >
-              <svg className="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" />
-              </svg>
-              Add Bidder
-            </button>
+            <div className="flex space-x-2">
+              <button
+                type="button"
+                onClick={handleCopyBiddersClick}
+                className="inline-flex items-center rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-200 ring-1 ring-inset ring-gray-300"
+              >
+                <svg className="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M7 9a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9z" />
+                  <path d="M5 3a2 2 0 00-2 2v6a2 2 0 002 2V5h8a2 2 0 00-2-2H5z" />
+                </svg>
+                Copy from Publisher
+              </button>
+              <button
+                type="button"
+                onClick={handleAddBidderClick}
+                className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
+              >
+                <svg className="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" />
+                </svg>
+                Add Bidder
+              </button>
+            </div>
           </div>
 
           {publisherBidders.length === 0 ? (
@@ -2690,6 +2787,87 @@ export function PublisherDetailPage() {
         variant="danger"
         isLoading={deleteBidderDialog.isLoading}
       />
+
+      {/* Copy Bidders Modal */}
+      <FormModal
+        isOpen={copyBiddersModal.isOpen}
+        onClose={handleCopyBiddersClose}
+        title="Copy Bidders from Publisher"
+      >
+        <form onSubmit={handleCopyBiddersSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="sourcePublisher" className="block text-sm font-medium text-gray-700">
+              Select Source Publisher
+            </label>
+            <p className="text-sm text-gray-500 mb-2">
+              Choose a publisher to copy bidder configurations from. Only bidders not already configured for the current publisher will be copied.
+            </p>
+            <select
+              id="sourcePublisher"
+              value={copyFromPublisherId}
+              onChange={(e) => setCopyFromPublisherId(e.target.value)}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              required
+            >
+              <option value="">Select a publisher...</option>
+              {allPublishers.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.slug})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {copyBiddersError && (
+            <div className="rounded-md bg-red-50 p-3">
+              <div className="flex">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-red-800">{copyBiddersError}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {copyBiddersSuccess && (
+            <div className="rounded-md bg-green-50 p-3">
+              <div className="flex">
+                <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-green-800">{copyBiddersSuccess}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end space-x-3 pt-4">
+            <button
+              type="button"
+              onClick={handleCopyBiddersClose}
+              className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={copyBiddersModal.isLoading || !copyFromPublisherId}
+              className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50"
+            >
+              {copyBiddersModal.isLoading && (
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              )}
+              Copy Bidders
+            </button>
+          </div>
+        </form>
+      </FormModal>
 
       {/* Import Config Modal */}
       <FormModal

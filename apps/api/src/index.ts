@@ -9,6 +9,7 @@ import publisherRoutes from './routes/publishers';
 import userRoutes from './routes/users';
 import dashboardRoutes from './routes/dashboard';
 import auditLogsRoutes from './routes/audit-logs';
+import scheduledReportsRoutes from './routes/scheduled-reports';
 
 const app = Fastify({
   logger: {
@@ -47,6 +48,7 @@ app.register(publisherRoutes, { prefix: '/api/publishers' });
 app.register(userRoutes, { prefix: '/api/users' });
 app.register(dashboardRoutes, { prefix: '/api/dashboard' });
 app.register(auditLogsRoutes, { prefix: '/api/audit-logs' });
+app.register(scheduledReportsRoutes, { prefix: '/api/scheduled-reports' });
 
 // Placeholder for other routes
 // app.register(configRoutes, { prefix: '/api/config' });

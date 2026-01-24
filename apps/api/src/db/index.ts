@@ -172,6 +172,23 @@ export function initializeDatabase() {
       created_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS scheduled_reports (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      report_type TEXT NOT NULL DEFAULT 'all' CHECK(report_type IN ('revenue', 'latency', 'fill_rate', 'all')),
+      schedule TEXT NOT NULL DEFAULT 'daily' CHECK(schedule IN ('daily', 'weekly', 'monthly')),
+      recipients TEXT NOT NULL,
+      publisher_id TEXT,
+      date_range TEXT NOT NULL DEFAULT 'last_7_days' CHECK(date_range IN ('last_7_days', 'last_30_days', 'last_90_days', 'this_month', 'last_month')),
+      format TEXT NOT NULL DEFAULT 'csv' CHECK(format IN ('csv', 'json', 'pdf')),
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'paused')),
+      last_sent_at TEXT,
+      next_send_at TEXT,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     -- Create indexes
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
@@ -182,6 +199,8 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);
     CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_scheduled_reports_status ON scheduled_reports(status);
+    CREATE INDEX IF NOT EXISTS idx_scheduled_reports_created_by ON scheduled_reports(created_by);
   `);
 }
 

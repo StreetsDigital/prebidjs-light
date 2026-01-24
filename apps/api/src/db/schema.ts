@@ -151,3 +151,21 @@ export const sessions = sqliteTable('sessions', {
   expiresAt: text('expires_at').notNull(),
   createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
 });
+
+// Scheduled reports table
+export const scheduledReports = sqliteTable('scheduled_reports', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  reportType: text('report_type', { enum: ['revenue', 'latency', 'fill_rate', 'all'] }).notNull().default('all'),
+  schedule: text('schedule', { enum: ['daily', 'weekly', 'monthly'] }).notNull().default('daily'),
+  recipients: text('recipients').notNull(), // JSON array of email addresses
+  publisherId: text('publisher_id'), // Optional filter by publisher
+  dateRange: text('date_range', { enum: ['last_7_days', 'last_30_days', 'last_90_days', 'this_month', 'last_month'] }).notNull().default('last_7_days'),
+  format: text('format', { enum: ['csv', 'json', 'pdf'] }).notNull().default('csv'),
+  status: text('status', { enum: ['active', 'paused'] }).notNull().default('active'),
+  lastSentAt: text('last_sent_at'),
+  nextSendAt: text('next_send_at'),
+  createdBy: text('created_by').notNull(),
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
+});

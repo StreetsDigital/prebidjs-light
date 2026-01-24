@@ -1,4 +1,52 @@
+import { useState, useEffect } from 'react';
+import { useAuthStore } from '../../stores/authStore';
+
+interface DashboardStats {
+  publishers: {
+    total: number;
+    active: number;
+  };
+  adUnits: {
+    total: number;
+    active: number;
+  };
+  users: {
+    total: number;
+  };
+  today: {
+    impressions: number;
+    revenue: number;
+  };
+}
+
 export function DashboardPage() {
+  const { token } = useAuthStore();
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await fetch('/api/dashboard/stats', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setStats(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch dashboard stats:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, [token]);
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Dashboard</h1>
@@ -16,7 +64,7 @@ export function DashboardPage() {
               Total Publishers
             </dt>
             <dd className="mt-1 text-3xl font-semibold tracking-tight text-gray-900">
-              0
+              {isLoading ? '...' : stats?.publishers.total ?? 0}
             </dd>
           </div>
           <div className="bg-gray-50 overflow-hidden rounded-lg px-4 py-5 sm:p-6">
@@ -24,7 +72,7 @@ export function DashboardPage() {
               Active Ad Units
             </dt>
             <dd className="mt-1 text-3xl font-semibold tracking-tight text-gray-900">
-              0
+              {isLoading ? '...' : stats?.adUnits.active ?? 0}
             </dd>
           </div>
           <div className="bg-gray-50 overflow-hidden rounded-lg px-4 py-5 sm:p-6">
@@ -32,7 +80,7 @@ export function DashboardPage() {
               Today's Impressions
             </dt>
             <dd className="mt-1 text-3xl font-semibold tracking-tight text-gray-900">
-              0
+              {isLoading ? '...' : stats?.today.impressions ?? 0}
             </dd>
           </div>
           <div className="bg-gray-50 overflow-hidden rounded-lg px-4 py-5 sm:p-6">
@@ -40,7 +88,7 @@ export function DashboardPage() {
               Revenue (Today)
             </dt>
             <dd className="mt-1 text-3xl font-semibold tracking-tight text-gray-900">
-              $0
+              ${isLoading ? '...' : stats?.today.revenue ?? 0}
             </dd>
           </div>
         </div>

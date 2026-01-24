@@ -24,6 +24,8 @@ interface ListPublishersQuery {
   limit?: string;
   status?: 'active' | 'paused' | 'disabled';
   search?: string;
+  sortBy?: 'name' | 'status' | 'createdAt';
+  sortOrder?: 'asc' | 'desc';
 }
 
 export default async function publisherRoutes(fastify: FastifyInstance) {
@@ -32,7 +34,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     preHandler: requireAdmin,
   }, async (request: FastifyRequest<{ Querystring: ListPublishersQuery }>, reply: FastifyReply) => {
     const user = request.user as TokenPayload;
-    const { page = '1', limit = '10', status, search } = request.query;
+    const { page = '1', limit = '10', status, search, sortBy = 'name', sortOrder = 'asc' } = request.query;
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
@@ -55,6 +57,19 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
         p.slug.toLowerCase().includes(searchLower)
       );
     }
+
+    // Apply sorting
+    allPublishers.sort((a, b) => {
+      let comparison = 0;
+      if (sortBy === 'name') {
+        comparison = a.name.localeCompare(b.name);
+      } else if (sortBy === 'status') {
+        comparison = a.status.localeCompare(b.status);
+      } else if (sortBy === 'createdAt') {
+        comparison = a.createdAt.localeCompare(b.createdAt);
+      }
+      return sortOrder === 'desc' ? -comparison : comparison;
+    });
 
     const total = allPublishers.length;
     const totalPages = Math.ceil(total / limitNum);

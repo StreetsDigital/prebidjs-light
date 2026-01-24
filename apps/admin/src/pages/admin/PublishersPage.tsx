@@ -3,6 +3,9 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import { ConfirmDialog, Pagination } from '../../components/ui';
 
+type SortField = 'name' | 'status' | 'createdAt';
+type SortOrder = 'asc' | 'desc';
+
 interface Publisher {
   id: string;
   name: string;
@@ -44,6 +47,8 @@ export function PublishersPage() {
   const currentPage = parseInt(searchParams.get('page') || '1', 10);
   const statusFilter = searchParams.get('status') || '';
   const searchQuery = searchParams.get('search') || '';
+  const sortField = (searchParams.get('sortBy') || 'name') as SortField;
+  const sortOrder = (searchParams.get('sortOrder') || 'asc') as SortOrder;
 
   const fetchPublishers = async () => {
     setIsLoading(true);
@@ -54,6 +59,8 @@ export function PublishersPage() {
       params.set('limit', '10');
       if (statusFilter) params.set('status', statusFilter);
       if (searchQuery) params.set('search', searchQuery);
+      params.set('sortBy', sortField);
+      params.set('sortOrder', sortOrder);
 
       const response = await fetch(`/api/publishers?${params.toString()}`, {
         headers: {
@@ -77,7 +84,7 @@ export function PublishersPage() {
 
   useEffect(() => {
     fetchPublishers();
-  }, [token, currentPage, statusFilter, searchQuery]);
+  }, [token, currentPage, statusFilter, searchQuery, sortField, sortOrder]);
 
   const handlePageChange = (page: number) => {
     const newParams = new URLSearchParams(searchParams);
@@ -105,6 +112,39 @@ export function PublishersPage() {
     }
     newParams.set('page', '1'); // Reset to first page when search changes
     setSearchParams(newParams);
+  };
+
+  const handleSort = (field: SortField) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (sortField === field) {
+      // Toggle order if same field
+      newParams.set('sortOrder', sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      // New field, start with ascending
+      newParams.set('sortBy', field);
+      newParams.set('sortOrder', 'asc');
+    }
+    newParams.set('page', '1'); // Reset to first page when sort changes
+    setSearchParams(newParams);
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return (
+        <svg className="ml-1 w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+        </svg>
+      );
+    }
+    return sortOrder === 'asc' ? (
+      <svg className="ml-1 w-3 h-3 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+      </svg>
+    ) : (
+      <svg className="ml-1 w-3 h-3 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      </svg>
+    );
   };
 
   const handleDeleteClick = (publisher: Publisher) => {
@@ -307,9 +347,13 @@ export function PublishersPage() {
             <tr>
               <th
                 scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('name')}
               >
-                Publisher
+                <div className="flex items-center">
+                  Publisher
+                  {getSortIcon('name')}
+                </div>
               </th>
               <th
                 scope="col"
@@ -319,15 +363,23 @@ export function PublishersPage() {
               </th>
               <th
                 scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('status')}
               >
-                Status
+                <div className="flex items-center">
+                  Status
+                  {getSortIcon('status')}
+                </div>
               </th>
               <th
                 scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('createdAt')}
               >
-                Created
+                <div className="flex items-center">
+                  Created
+                  {getSortIcon('createdAt')}
+                </div>
               </th>
               <th scope="col" className="relative px-6 py-3">
                 <span className="sr-only">Actions</span>

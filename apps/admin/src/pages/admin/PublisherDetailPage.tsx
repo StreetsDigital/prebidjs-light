@@ -77,6 +77,7 @@ interface Build {
   fileSize: string | null;
   modules: number;
   bidders: number;
+  scriptUrl?: string;
 }
 
 interface PublisherBidder {
@@ -132,6 +133,7 @@ const MOCK_BUILDS: Build[] = [
     fileSize: '245 KB',
     modules: 12,
     bidders: 5,
+    scriptUrl: '/cdn/prebid-bundle.min.js',
   },
   {
     id: 'build_2',
@@ -145,6 +147,7 @@ const MOCK_BUILDS: Build[] = [
     fileSize: '238 KB',
     modules: 11,
     bidders: 5,
+    scriptUrl: '/cdn/prebid-bundle.min.js',
   },
   {
     id: 'build_3',
@@ -171,6 +174,7 @@ const MOCK_BUILDS: Build[] = [
     fileSize: '220 KB',
     modules: 10,
     bidders: 4,
+    scriptUrl: '/cdn/prebid-bundle.min.js',
   },
 ];
 
@@ -290,6 +294,7 @@ export function PublisherDetailPage() {
   });
   const [showApiKey, setShowApiKey] = useState(false);
   const [copiedKey, setCopiedKey] = useState(false);
+  const [copiedEmbedCode, setCopiedEmbedCode] = useState(false);
   const [editModal, setEditModal] = useState({
     isOpen: false,
     isLoading: false,
@@ -2576,6 +2581,101 @@ export function PublisherDetailPage() {
               </div>
             )}
           </div>
+
+          {/* Embed Code Section */}
+          {builds.length > 0 && builds[0].status === 'success' && builds[0].scriptUrl && (
+            <div className="bg-white shadow rounded-lg p-6">
+              <div className="mb-4">
+                <h2 className="text-lg font-medium text-gray-900">Embed Code</h2>
+                <p className="text-sm text-gray-500">
+                  Add this single script tag to your website to load the minified Prebid.js bundle with all your configurations.
+                </p>
+              </div>
+
+              <div className="bg-gray-900 rounded-lg p-4 font-mono text-sm text-green-400 relative">
+                <pre className="overflow-x-auto whitespace-pre-wrap break-all">
+{`<script async src="https://cdn.pbjs-engine.com${builds[0].scriptUrl}?key=${publisher.apiKey}&v=${builds[0].version}"></script>`}
+                </pre>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(
+                      `<script async src="https://cdn.pbjs-engine.com${builds[0].scriptUrl}?key=${publisher.apiKey}&v=${builds[0].version}"></script>`
+                    );
+                    setCopiedEmbedCode(true);
+                    setTimeout(() => setCopiedEmbedCode(false), 2000);
+                  }}
+                  className="absolute top-2 right-2 p-2 text-gray-400 hover:text-white rounded"
+                  title="Copy to clipboard"
+                >
+                  {copiedEmbedCode ? (
+                    <svg className="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : (
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h3 className="text-sm font-medium text-gray-900 mb-2">What's Included</h3>
+                  <ul className="text-sm text-gray-600 space-y-1">
+                    <li className="flex items-center">
+                      <svg className="h-4 w-4 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Prebid.js library (minified)
+                    </li>
+                    <li className="flex items-center">
+                      <svg className="h-4 w-4 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      {builds[0].bidders} bidder adapters
+                    </li>
+                    <li className="flex items-center">
+                      <svg className="h-4 w-4 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      {builds[0].modules} modules configured
+                    </li>
+                    <li className="flex items-center">
+                      <svg className="h-4 w-4 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Ad unit definitions
+                    </li>
+                    <li className="flex items-center">
+                      <svg className="h-4 w-4 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      GPT integration
+                    </li>
+                  </ul>
+                </div>
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <h3 className="text-sm font-medium text-blue-900 mb-2">Quick Start</h3>
+                  <p className="text-sm text-blue-700 mb-3">
+                    Simply add the embed code to your website's &lt;head&gt; section. The script loads asynchronously and won't block page rendering.
+                  </p>
+                  <a
+                    href={`https://cdn.pbjs-engine.com${builds[0].scriptUrl}?key=${publisher.apiKey}&v=${builds[0].version}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-500"
+                  >
+                    <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download Script
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Build History */}
           <div className="bg-white shadow rounded-lg">

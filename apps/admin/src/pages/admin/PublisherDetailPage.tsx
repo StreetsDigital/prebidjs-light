@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
-import { ConfirmDialog, FormModal, Tabs, Tab } from '../../components/ui';
+import { Breadcrumb, BreadcrumbItem, ConfirmDialog, FormModal, Tabs, Tab } from '../../components/ui';
 
 interface Publisher {
   id: string;
@@ -2101,8 +2101,28 @@ export function PublisherDetailPage() {
     },
   ];
 
+  // Build breadcrumb items based on current tab
+  const getBreadcrumbItems = (): BreadcrumbItem[] => {
+    const items: BreadcrumbItem[] = [
+      { label: 'Admin', href: '/admin/dashboard' },
+      { label: 'Publishers', href: '/admin/publishers' },
+      { label: publisher.name, href: `/admin/publishers/${publisher.id}` },
+    ];
+
+    // Add current tab to breadcrumb if not on Overview
+    const currentTabLabel = tabs.find(t => t.id === activeTab)?.label;
+    if (currentTabLabel && activeTab !== 'overview') {
+      items.push({ label: currentTabLabel });
+    }
+
+    return items;
+  };
+
   return (
     <div className="space-y-6">
+      {/* Breadcrumb */}
+      <Breadcrumb items={getBreadcrumbItems()} />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">

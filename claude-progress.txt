@@ -1028,3 +1028,162 @@ Implemented the Website taxonomy feature that adds a Website/Site layer between 
 1. Clear the 7 in-progress features that may be stuck
 2. Continue implementing remaining features to reach 100%
 3. Link ad units to websites (optional enhancement)
+
+---
+
+# Session Progress Report - January 24, 2026 (Continued)
+
+## Summary
+Implemented Feature #88 - Admin user assignment workflow, allowing admin users to be assigned to specific publishers and restricting their access to only those publishers.
+
+## Feature Implemented
+**Feature #88 (D13): Admin user assignment workflow**
+- Description: Verify admin can be assigned to publishers
+
+## Tasks Completed
+
+### 1. API Endpoints
+Added to `apps/api/src/routes/publishers.ts`:
+- GET `/:id/admins` - List assigned admin users for a publisher
+- GET `/:id/available-admins` - List admin users not yet assigned
+- POST `/:id/admins` - Assign an admin to a publisher
+- DELETE `/:id/admins/:userId` - Remove an admin from a publisher
+- Modified publisher list query to filter for admin role users (only see assigned publishers)
+
+### 2. Admin UI Updates
+Added to `apps/admin/src/pages/admin/PublisherDetailPage.tsx`:
+- "Assigned Admins" section in Publisher Overview tab
+- Displays assigned admins with:
+  - Avatar with initial
+  - Name and email
+  - Assignment date
+  - Remove button
+- "Assign Admin" modal with dropdown selection
+- Empty state when no admins assigned
+- Delete confirmation dialog
+- Success/error toast notifications
+
+### 3. Authorization Filtering
+- Admin role users now only see publishers they are assigned to
+- The publishers list API filters based on `publisher_admins` table
+- Super admins continue to see all publishers
+
+### 4. Audit Logging
+- ASSIGN_ADMIN action logged when admin is assigned
+- UNASSIGN_ADMIN action logged when admin is removed
+- Includes user context for accountability
+
+## Verification Steps
+1. Logged in as Super Admin
+2. Navigated to publisher "AAAA Pagination Test Publisher"
+3. Found "Assigned Admins" section in Overview tab
+4. Clicked "Assign Admin" button
+5. Selected "Staff Admin (staff@example.com)" from dropdown
+6. Clicked "Assign Admin" to save
+7. Verified admin appeared in assigned list with correct details
+8. Logged out and logged in as Staff Admin (staff@example.com / Staff123!)
+9. Navigated to Publishers list
+10. Verified only "AAAA Pagination Test Publisher" is visible (1 of 1)
+
+## Files Modified
+1. `apps/api/src/routes/publishers.ts` - Added admin assignment endpoints and filtering
+2. `apps/admin/src/pages/admin/PublisherDetailPage.tsx` - Added Assigned Admins UI section
+
+## Commits Made
+1. `feat(admin): Add admin user assignment to publishers`
+
+## Ending Stats
+- Passing: 252 features (95.8%)
+- In Progress: 7 features
+- Total: 263 features
+
+## Session Progress
+- Previous: 251 passing features (95.4%)
+- Current: 252 passing features (95.8%)
+- Features implemented: 1
+
+## Next Steps for Future Agents
+1. Clear stuck in-progress features
+2. Continue with remaining features to reach 100%
+3. Consider implementing admin assignment editing/bulk operations
+
+---
+
+# Session Progress Report - January 24, 2026 (Afternoon)
+
+## Summary
+Implemented Feature #89 - Price floors configuration workflow, adding a complete Price Floors module to the publisher Config tab.
+
+## Feature Implemented
+**Feature #89 (D14): Price floors configuration workflow**
+- Description: Verify floor config complete workflow
+
+## Tasks Completed
+
+### 1. UI Components
+Added to `apps/admin/src/pages/admin/PublisherDetailPage.tsx`:
+- Price Floors section in Config tab with:
+  - Enable/disable toggle
+  - Status display (Enabled/Disabled)
+  - Default floor price and currency display
+  - Floor deals and bid adjustment status
+  - Custom rules count and list display
+- Price Floors configuration modal with:
+  - Enable toggle
+  - Default floor price input with currency selector (USD, EUR, GBP)
+  - Floor deals checkbox
+  - Bid adjustment checkbox
+  - Custom floor rules section:
+    - Rule type dropdown (Media Type, Bidder, Ad Unit)
+    - Dynamic value dropdown based on type
+    - Floor price input
+    - Add Rule button
+    - List of added rules with remove buttons
+
+### 2. State Management
+- Added PriceFloorsConfig and FloorRule interfaces
+- Added priceFloors, priceFloorsModal, priceFloorsForm, and newRuleForm state
+- Added handlers: handlePriceFloorsConfigClick, handleAddRule, handleRemoveRule, handlePriceFloorsConfigSave
+
+### 3. API Updates
+Added to `apps/api/src/routes/publishers.ts`:
+- FloorRule and PriceFloorsConfig interfaces
+- floorsConfig field in UpdateConfigBody
+- floorsConfig parsing in GET config endpoint
+- floorsConfig saving in PUT config endpoint
+- Change tracking for Price Floors enable/disable and default floor changes
+
+## Verification Steps
+1. Navigated to publisher Config tab
+2. Verified Price Floors section shows "Disabled"
+3. Clicked Configure to open modal
+4. Enabled Price Floors module
+5. Set default floor to $1.00 USD
+6. Added rule by media type: banner = $0.75
+7. Added rule by bidder: appnexus = $0.50
+8. Saved configuration
+9. Verified all settings persisted after page refresh
+10. Disabled module and verified rules hidden
+11. Re-enabled module and verified rules preserved
+
+## Files Modified
+1. `apps/admin/src/pages/admin/PublisherDetailPage.tsx` - Added Price Floors UI and handlers
+2. `apps/api/src/routes/publishers.ts` - Added floorsConfig API support
+
+## Commits Made
+1. `feat(config): Add Price Floors configuration module`
+
+## Ending Stats
+- Passing: 253 features (96.2%)
+- In Progress: 7 features
+- Total: 263 features
+
+## Session Progress
+- Previous: 252 passing features (95.8%)
+- Current: 253 passing features (96.2%)
+- Features implemented: 1
+
+## Next Steps for Future Agents
+1. Clear stuck in-progress features
+2. Continue with remaining features to reach 100%
+3. Consider implementing ad unit-to-website linking

@@ -5,3 +5,4 @@ export { PublisherCreatePage } from './PublisherCreatePage';
 export { UsersPage } from './UsersPage';
 export { ModulesPage } from './ModulesPage';
 export { AnalyticsPage } from './AnalyticsPage';
+export { AuditLogsPage } from './AuditLogsPage';

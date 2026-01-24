@@ -262,8 +262,40 @@ export function PublishersPage() {
                 />
               </svg>
             </div>
-            <div className="ml-3">
-              <p className="text-sm text-red-700">{error}</p>
+            <div className="ml-3 flex-1">
+              <h3 className="text-sm font-medium text-red-800">
+                Unable to load publishers
+              </h3>
+              <p className="mt-1 text-sm text-red-700">
+                {error.toLowerCase().includes('fetch') || error.toLowerCase().includes('network') || error.toLowerCase().includes('failed')
+                  ? 'There was a problem connecting to the server. Please check your internet connection and try again.'
+                  : error}
+              </p>
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => fetchPublishers()}
+                  disabled={isLoading}
+                  className="inline-flex items-center rounded-md bg-red-100 px-3 py-2 text-sm font-semibold text-red-800 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-600 focus:ring-offset-2 disabled:opacity-50"
+                >
+                  {isLoading ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-red-800" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Retrying...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="-ml-0.5 mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Try Again
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

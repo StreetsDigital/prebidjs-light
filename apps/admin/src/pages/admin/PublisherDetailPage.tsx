@@ -32,11 +32,38 @@ interface AdUnit {
   status: 'active' | 'paused';
   floorPrice: string | null;
   sizeMapping: SizeMappingRule[] | null;
+  videoConfig?: VideoConfig;
 }
 
 interface SizeMappingRule {
   minViewport: [number, number];
   sizes: number[][];
+}
+
+interface VideoConfig {
+  playerSize: string;
+  context: 'instream' | 'outstream' | 'adpod';
+  mimes: string[];
+  protocols: number[];
+  playbackMethods: number[];
+  minDuration?: number;
+  maxDuration?: number;
+}
+
+interface NativeAsset {
+  required: boolean;
+  len?: number;
+  sizes?: { width: number; height: number };
+  aspectRatios?: { minWidth: number; minHeight: number; ratio_width: number; ratio_height: number };
+}
+
+interface NativeConfig {
+  title: NativeAsset;
+  image: NativeAsset;
+  icon: NativeAsset;
+  body: NativeAsset;
+  sponsoredBy: NativeAsset;
+  cta: NativeAsset;
 }
 
 interface AdUnitFormData {
@@ -46,6 +73,8 @@ interface AdUnitFormData {
   mediaTypes: string[];
   floorPrice: string;
   sizeMapping: SizeMappingRule[];
+  videoConfig: VideoConfig;
+  nativeConfig: NativeConfig;
 }
 
 interface ConfigVersion {
@@ -325,6 +354,23 @@ export function PublisherDetailPage() {
     mediaTypes: ['banner'],
     floorPrice: '',
     sizeMapping: [],
+    videoConfig: {
+      playerSize: '640x480',
+      context: 'instream',
+      mimes: ['video/mp4', 'video/webm'],
+      protocols: [2, 3, 5, 6],
+      playbackMethods: [1, 2],
+      minDuration: 5,
+      maxDuration: 30,
+    },
+    nativeConfig: {
+      title: { required: true, len: 90 },
+      image: { required: true, sizes: { width: 300, height: 250 } },
+      icon: { required: false, sizes: { width: 50, height: 50 } },
+      body: { required: true, len: 200 },
+      sponsoredBy: { required: true, len: 50 },
+      cta: { required: false, len: 20 },
+    },
   });
   const [deleteAdUnitDialog, setDeleteAdUnitDialog] = useState({
     isOpen: false,
@@ -465,7 +511,26 @@ export function PublisherDetailPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setAdUnits(data.adUnits.map((u: { id: string; code: string; name: string; mediaTypes?: { banner?: { sizes: number[][] } }; status: string; floorPrice?: string | null; sizeMapping?: SizeMappingRule[] | null }) => ({
+        setAdUnits(data.adUnits.map((u: {
+          id: string;
+          code: string;
+          name: string;
+          mediaTypes?: {
+            banner?: { sizes: number[][] };
+            video?: {
+              playerSize?: number[];
+              context?: string;
+              mimes?: string[];
+              protocols?: number[];
+              playbackmethod?: number[];
+              minduration?: number;
+              maxduration?: number;
+            };
+          };
+          status: string;
+          floorPrice?: string | null;
+          sizeMapping?: SizeMappingRule[] | null
+        }) => ({
           id: u.id,
           code: u.code,
           name: u.name,
@@ -474,6 +539,15 @@ export function PublisherDetailPage() {
           status: u.status,
           floorPrice: u.floorPrice || null,
           sizeMapping: u.sizeMapping || null,
+          videoConfig: u.mediaTypes?.video ? {
+            playerSize: u.mediaTypes.video.playerSize ? `${u.mediaTypes.video.playerSize[0]}x${u.mediaTypes.video.playerSize[1]}` : '640x480',
+            context: (u.mediaTypes.video.context as 'instream' | 'outstream' | 'adpod') || 'instream',
+            mimes: u.mediaTypes.video.mimes || ['video/mp4', 'video/webm'],
+            protocols: u.mediaTypes.video.protocols || [2, 3, 5, 6],
+            playbackMethods: u.mediaTypes.video.playbackmethod || [1, 2],
+            minDuration: u.mediaTypes.video.minduration,
+            maxDuration: u.mediaTypes.video.maxduration,
+          } : undefined,
         })));
       }
     } catch (err) {
@@ -796,6 +870,27 @@ export function PublisherDetailPage() {
     }
   };
 
+  // Default video config for new ad units
+  const defaultVideoConfig: VideoConfig = {
+    playerSize: '640x480',
+    context: 'instream',
+    mimes: ['video/mp4', 'video/webm'],
+    protocols: [2, 3, 5, 6],
+    playbackMethods: [1, 2],
+    minDuration: 5,
+    maxDuration: 30,
+  };
+
+  // Default native config for new ad units
+  const defaultNativeConfig: NativeConfig = {
+    title: { required: true, len: 90 },
+    image: { required: true, sizes: { width: 300, height: 250 } },
+    icon: { required: false, sizes: { width: 50, height: 50 } },
+    body: { required: true, len: 200 },
+    sponsoredBy: { required: true, len: 50 },
+    cta: { required: false, len: 20 },
+  };
+
   // Ad Unit handlers
   const handleAddAdUnitClick = () => {
     setEditingAdUnit(null);
@@ -806,6 +901,8 @@ export function PublisherDetailPage() {
       mediaTypes: ['banner'],
       floorPrice: '',
       sizeMapping: [],
+      videoConfig: defaultVideoConfig,
+      nativeConfig: defaultNativeConfig,
     });
     setAdUnitModal({ isOpen: true, isLoading: false });
   };
@@ -819,6 +916,8 @@ export function PublisherDetailPage() {
       mediaTypes: adUnit.mediaTypes,
       floorPrice: adUnit.floorPrice || '',
       sizeMapping: adUnit.sizeMapping || [],
+      videoConfig: adUnit.videoConfig || defaultVideoConfig,
+      nativeConfig: (adUnit as AdUnit & { nativeConfig?: NativeConfig }).nativeConfig || defaultNativeConfig,
     });
     setAdUnitModal({ isOpen: true, isLoading: false });
   };
@@ -832,6 +931,8 @@ export function PublisherDetailPage() {
       mediaTypes: adUnit.mediaTypes,
       floorPrice: adUnit.floorPrice || '',
       sizeMapping: adUnit.sizeMapping || [],
+      videoConfig: adUnit.videoConfig || defaultVideoConfig,
+      nativeConfig: (adUnit as AdUnit & { nativeConfig?: NativeConfig }).nativeConfig || defaultNativeConfig,
     });
     setAdUnitModal({ isOpen: true, isLoading: false });
   };
@@ -861,6 +962,99 @@ export function PublisherDetailPage() {
         : `/api/publishers/${publisher.id}/ad-units`;
       const method = isEditing ? 'PUT' : 'POST';
 
+      // Build mediaTypes object based on selected types
+      const mediaTypesObj: Record<string, unknown> = {};
+
+      if (adUnitForm.mediaTypes.includes('banner')) {
+        mediaTypesObj.banner = { sizes: sizesArray };
+      }
+
+      if (adUnitForm.mediaTypes.includes('video')) {
+        const [width, height] = adUnitForm.videoConfig.playerSize.split('x').map(Number);
+        mediaTypesObj.video = {
+          playerSize: [width || 640, height || 480],
+          context: adUnitForm.videoConfig.context,
+          mimes: adUnitForm.videoConfig.mimes,
+          protocols: adUnitForm.videoConfig.protocols,
+          playbackmethod: adUnitForm.videoConfig.playbackMethods,
+          minduration: adUnitForm.videoConfig.minDuration,
+          maxduration: adUnitForm.videoConfig.maxDuration,
+        };
+      }
+
+      if (adUnitForm.mediaTypes.includes('native')) {
+        // Build native assets array based on configuration
+        const nativeAssets = [];
+
+        // Title asset (id: 1)
+        if (adUnitForm.nativeConfig.title.required || adUnitForm.nativeConfig.title.len) {
+          nativeAssets.push({
+            id: 1,
+            required: adUnitForm.nativeConfig.title.required,
+            title: { len: adUnitForm.nativeConfig.title.len || 90 }
+          });
+        }
+
+        // Image asset (id: 2)
+        if (adUnitForm.nativeConfig.image.required || adUnitForm.nativeConfig.image.sizes) {
+          nativeAssets.push({
+            id: 2,
+            required: adUnitForm.nativeConfig.image.required,
+            img: {
+              type: 3, // Main image
+              w: adUnitForm.nativeConfig.image.sizes?.width || 300,
+              h: adUnitForm.nativeConfig.image.sizes?.height || 250
+            }
+          });
+        }
+
+        // Body/Description asset (id: 3)
+        if (adUnitForm.nativeConfig.body.required || adUnitForm.nativeConfig.body.len) {
+          nativeAssets.push({
+            id: 3,
+            required: adUnitForm.nativeConfig.body.required,
+            data: { type: 2, len: adUnitForm.nativeConfig.body.len || 200 }
+          });
+        }
+
+        // Sponsored By asset (id: 4)
+        if (adUnitForm.nativeConfig.sponsoredBy.required || adUnitForm.nativeConfig.sponsoredBy.len) {
+          nativeAssets.push({
+            id: 4,
+            required: adUnitForm.nativeConfig.sponsoredBy.required,
+            data: { type: 1, len: adUnitForm.nativeConfig.sponsoredBy.len || 50 }
+          });
+        }
+
+        // Icon asset (id: 5)
+        if (adUnitForm.nativeConfig.icon.required || adUnitForm.nativeConfig.icon.sizes) {
+          nativeAssets.push({
+            id: 5,
+            required: adUnitForm.nativeConfig.icon.required,
+            img: {
+              type: 1, // Icon
+              w: adUnitForm.nativeConfig.icon.sizes?.width || 50,
+              h: adUnitForm.nativeConfig.icon.sizes?.height || 50
+            }
+          });
+        }
+
+        // CTA asset (id: 6)
+        if (adUnitForm.nativeConfig.cta.required || adUnitForm.nativeConfig.cta.len) {
+          nativeAssets.push({
+            id: 6,
+            required: adUnitForm.nativeConfig.cta.required,
+            data: { type: 12, len: adUnitForm.nativeConfig.cta.len || 20 }
+          });
+        }
+
+        mediaTypesObj.native = {
+          ortb: {
+            assets: nativeAssets
+          }
+        };
+      }
+
       const response = await fetch(url, {
         method,
         headers: {
@@ -870,9 +1064,7 @@ export function PublisherDetailPage() {
         body: JSON.stringify({
           code: adUnitForm.code,
           name: adUnitForm.name,
-          mediaTypes: adUnitForm.mediaTypes.includes('banner') ? {
-            banner: { sizes: sizesArray },
-          } : undefined,
+          mediaTypes: Object.keys(mediaTypesObj).length > 0 ? mediaTypesObj : undefined,
           floorPrice: adUnitForm.floorPrice || null,
           sizeMapping: adUnitForm.sizeMapping.length > 0 ? adUnitForm.sizeMapping : null,
         }),
@@ -3154,6 +3346,488 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
               ))}
             </div>
           </div>
+          {/* Video Configuration - shown when video media type is selected */}
+          {adUnitForm.mediaTypes.includes('video') && (
+            <div className="border-t border-gray-200 pt-4 mt-4">
+              <h4 className="text-sm font-medium text-gray-900 mb-3">Video Configuration</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="videoPlayerSize" className="block text-sm font-medium text-gray-700">
+                    Player Size
+                  </label>
+                  <input
+                    type="text"
+                    id="videoPlayerSize"
+                    value={adUnitForm.videoConfig.playerSize}
+                    onChange={(e) => setAdUnitForm((prev) => ({
+                      ...prev,
+                      videoConfig: { ...prev.videoConfig, playerSize: e.target.value }
+                    }))}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    placeholder="640x480"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Width x Height (e.g., 640x480)</p>
+                </div>
+                <div>
+                  <label htmlFor="videoContext" className="block text-sm font-medium text-gray-700">
+                    Video Context
+                  </label>
+                  <select
+                    id="videoContext"
+                    value={adUnitForm.videoConfig.context}
+                    onChange={(e) => setAdUnitForm((prev) => ({
+                      ...prev,
+                      videoConfig: { ...prev.videoConfig, context: e.target.value as 'instream' | 'outstream' | 'adpod' }
+                    }))}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  >
+                    <option value="instream">Instream</option>
+                    <option value="outstream">Outstream</option>
+                    <option value="adpod">Adpod</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    MIME Types
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {['video/mp4', 'video/webm', 'video/ogg', 'video/3gpp'].map((mime) => (
+                      <label
+                        key={mime}
+                        className={`inline-flex items-center px-2 py-1 rounded text-xs cursor-pointer transition-colors ${
+                          adUnitForm.videoConfig.mimes.includes(mime)
+                            ? 'bg-green-100 text-green-700 ring-1 ring-green-600'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={adUnitForm.videoConfig.mimes.includes(mime)}
+                          onChange={() => setAdUnitForm((prev) => ({
+                            ...prev,
+                            videoConfig: {
+                              ...prev.videoConfig,
+                              mimes: prev.videoConfig.mimes.includes(mime)
+                                ? prev.videoConfig.mimes.filter((m) => m !== mime)
+                                : [...prev.videoConfig.mimes, mime]
+                            }
+                          }))}
+                          className="sr-only"
+                        />
+                        {mime.replace('video/', '')}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Protocols
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { value: 1, label: 'VAST 1.0' },
+                      { value: 2, label: 'VAST 2.0' },
+                      { value: 3, label: 'VAST 3.0' },
+                      { value: 4, label: 'VAST 1.0 Wrapper' },
+                      { value: 5, label: 'VAST 2.0 Wrapper' },
+                      { value: 6, label: 'VAST 3.0 Wrapper' },
+                      { value: 7, label: 'VAST 4.0' },
+                      { value: 8, label: 'VAST 4.0 Wrapper' },
+                    ].map((protocol) => (
+                      <label
+                        key={protocol.value}
+                        className={`inline-flex items-center px-2 py-1 rounded text-xs cursor-pointer transition-colors ${
+                          adUnitForm.videoConfig.protocols.includes(protocol.value)
+                            ? 'bg-purple-100 text-purple-700 ring-1 ring-purple-600'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={adUnitForm.videoConfig.protocols.includes(protocol.value)}
+                          onChange={() => setAdUnitForm((prev) => ({
+                            ...prev,
+                            videoConfig: {
+                              ...prev.videoConfig,
+                              protocols: prev.videoConfig.protocols.includes(protocol.value)
+                                ? prev.videoConfig.protocols.filter((p) => p !== protocol.value)
+                                : [...prev.videoConfig.protocols, protocol.value]
+                            }
+                          }))}
+                          className="sr-only"
+                        />
+                        {protocol.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Playback Methods
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { value: 1, label: 'Auto-Play Sound On' },
+                      { value: 2, label: 'Auto-Play Sound Off' },
+                      { value: 3, label: 'Click-to-Play' },
+                      { value: 4, label: 'Mouse-Over' },
+                      { value: 5, label: 'Enter Viewport Sound On' },
+                      { value: 6, label: 'Enter Viewport Sound Off' },
+                    ].map((method) => (
+                      <label
+                        key={method.value}
+                        className={`inline-flex items-center px-2 py-1 rounded text-xs cursor-pointer transition-colors ${
+                          adUnitForm.videoConfig.playbackMethods.includes(method.value)
+                            ? 'bg-orange-100 text-orange-700 ring-1 ring-orange-600'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={adUnitForm.videoConfig.playbackMethods.includes(method.value)}
+                          onChange={() => setAdUnitForm((prev) => ({
+                            ...prev,
+                            videoConfig: {
+                              ...prev.videoConfig,
+                              playbackMethods: prev.videoConfig.playbackMethods.includes(method.value)
+                                ? prev.videoConfig.playbackMethods.filter((m) => m !== method.value)
+                                : [...prev.videoConfig.playbackMethods, method.value]
+                            }
+                          }))}
+                          className="sr-only"
+                        />
+                        {method.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Duration Limits (seconds)
+                  </label>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="number"
+                      value={adUnitForm.videoConfig.minDuration || ''}
+                      onChange={(e) => setAdUnitForm((prev) => ({
+                        ...prev,
+                        videoConfig: { ...prev.videoConfig, minDuration: parseInt(e.target.value) || undefined }
+                      }))}
+                      className="block w-20 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                      placeholder="Min"
+                      min="0"
+                    />
+                    <span className="text-gray-500">to</span>
+                    <input
+                      type="number"
+                      value={adUnitForm.videoConfig.maxDuration || ''}
+                      onChange={(e) => setAdUnitForm((prev) => ({
+                        ...prev,
+                        videoConfig: { ...prev.videoConfig, maxDuration: parseInt(e.target.value) || undefined }
+                      }))}
+                      className="block w-20 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                      placeholder="Max"
+                      min="0"
+                    />
+                    <span className="text-xs text-gray-500">seconds</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          {/* Native Configuration - shown when native media type is selected */}
+          {adUnitForm.mediaTypes.includes('native') && (
+            <div className="border-t border-gray-200 pt-4 mt-4">
+              <h4 className="text-sm font-medium text-gray-900 mb-3">Native Configuration</h4>
+              <p className="text-xs text-gray-500 mb-3">Configure the native ad assets. Check "Required" to make an asset mandatory.</p>
+              <div className="space-y-4">
+                {/* Title Asset */}
+                <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700">Title</span>
+                    <label className="inline-flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={adUnitForm.nativeConfig.title.required}
+                        onChange={(e) => setAdUnitForm((prev) => ({
+                          ...prev,
+                          nativeConfig: {
+                            ...prev.nativeConfig,
+                            title: { ...prev.nativeConfig.title, required: e.target.checked }
+                          }
+                        }))}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="ml-2 text-xs text-gray-600">Required</span>
+                    </label>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Max Length</label>
+                    <input
+                      type="number"
+                      value={adUnitForm.nativeConfig.title.len || ''}
+                      onChange={(e) => setAdUnitForm((prev) => ({
+                        ...prev,
+                        nativeConfig: {
+                          ...prev.nativeConfig,
+                          title: { ...prev.nativeConfig.title, len: parseInt(e.target.value) || undefined }
+                        }
+                      }))}
+                      className="block w-24 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                      placeholder="90"
+                    />
+                  </div>
+                </div>
+                {/* Image Asset */}
+                <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700">Main Image</span>
+                    <label className="inline-flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={adUnitForm.nativeConfig.image.required}
+                        onChange={(e) => setAdUnitForm((prev) => ({
+                          ...prev,
+                          nativeConfig: {
+                            ...prev.nativeConfig,
+                            image: { ...prev.nativeConfig.image, required: e.target.checked }
+                          }
+                        }))}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="ml-2 text-xs text-gray-600">Required</span>
+                    </label>
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Width</label>
+                      <input
+                        type="number"
+                        value={adUnitForm.nativeConfig.image.sizes?.width || ''}
+                        onChange={(e) => setAdUnitForm((prev) => ({
+                          ...prev,
+                          nativeConfig: {
+                            ...prev.nativeConfig,
+                            image: {
+                              ...prev.nativeConfig.image,
+                              sizes: {
+                                width: parseInt(e.target.value) || 300,
+                                height: prev.nativeConfig.image.sizes?.height || 250
+                              }
+                            }
+                          }
+                        }))}
+                        className="block w-20 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                        placeholder="300"
+                      />
+                    </div>
+                    <span className="text-gray-400 mt-5">x</span>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Height</label>
+                      <input
+                        type="number"
+                        value={adUnitForm.nativeConfig.image.sizes?.height || ''}
+                        onChange={(e) => setAdUnitForm((prev) => ({
+                          ...prev,
+                          nativeConfig: {
+                            ...prev.nativeConfig,
+                            image: {
+                              ...prev.nativeConfig.image,
+                              sizes: {
+                                width: prev.nativeConfig.image.sizes?.width || 300,
+                                height: parseInt(e.target.value) || 250
+                              }
+                            }
+                          }
+                        }))}
+                        className="block w-20 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                        placeholder="250"
+                      />
+                    </div>
+                  </div>
+                </div>
+                {/* Body/Description Asset */}
+                <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700">Body/Description</span>
+                    <label className="inline-flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={adUnitForm.nativeConfig.body.required}
+                        onChange={(e) => setAdUnitForm((prev) => ({
+                          ...prev,
+                          nativeConfig: {
+                            ...prev.nativeConfig,
+                            body: { ...prev.nativeConfig.body, required: e.target.checked }
+                          }
+                        }))}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="ml-2 text-xs text-gray-600">Required</span>
+                    </label>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Max Length</label>
+                    <input
+                      type="number"
+                      value={adUnitForm.nativeConfig.body.len || ''}
+                      onChange={(e) => setAdUnitForm((prev) => ({
+                        ...prev,
+                        nativeConfig: {
+                          ...prev.nativeConfig,
+                          body: { ...prev.nativeConfig.body, len: parseInt(e.target.value) || undefined }
+                        }
+                      }))}
+                      className="block w-24 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                      placeholder="200"
+                    />
+                  </div>
+                </div>
+                {/* Sponsored By Asset */}
+                <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700">Sponsored By</span>
+                    <label className="inline-flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={adUnitForm.nativeConfig.sponsoredBy.required}
+                        onChange={(e) => setAdUnitForm((prev) => ({
+                          ...prev,
+                          nativeConfig: {
+                            ...prev.nativeConfig,
+                            sponsoredBy: { ...prev.nativeConfig.sponsoredBy, required: e.target.checked }
+                          }
+                        }))}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="ml-2 text-xs text-gray-600">Required</span>
+                    </label>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Max Length</label>
+                    <input
+                      type="number"
+                      value={adUnitForm.nativeConfig.sponsoredBy.len || ''}
+                      onChange={(e) => setAdUnitForm((prev) => ({
+                        ...prev,
+                        nativeConfig: {
+                          ...prev.nativeConfig,
+                          sponsoredBy: { ...prev.nativeConfig.sponsoredBy, len: parseInt(e.target.value) || undefined }
+                        }
+                      }))}
+                      className="block w-24 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                      placeholder="50"
+                    />
+                  </div>
+                </div>
+                {/* Icon Asset */}
+                <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700">Icon</span>
+                    <label className="inline-flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={adUnitForm.nativeConfig.icon.required}
+                        onChange={(e) => setAdUnitForm((prev) => ({
+                          ...prev,
+                          nativeConfig: {
+                            ...prev.nativeConfig,
+                            icon: { ...prev.nativeConfig.icon, required: e.target.checked }
+                          }
+                        }))}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="ml-2 text-xs text-gray-600">Required</span>
+                    </label>
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Width</label>
+                      <input
+                        type="number"
+                        value={adUnitForm.nativeConfig.icon.sizes?.width || ''}
+                        onChange={(e) => setAdUnitForm((prev) => ({
+                          ...prev,
+                          nativeConfig: {
+                            ...prev.nativeConfig,
+                            icon: {
+                              ...prev.nativeConfig.icon,
+                              sizes: {
+                                width: parseInt(e.target.value) || 50,
+                                height: prev.nativeConfig.icon.sizes?.height || 50
+                              }
+                            }
+                          }
+                        }))}
+                        className="block w-20 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                        placeholder="50"
+                      />
+                    </div>
+                    <span className="text-gray-400 mt-5">x</span>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Height</label>
+                      <input
+                        type="number"
+                        value={adUnitForm.nativeConfig.icon.sizes?.height || ''}
+                        onChange={(e) => setAdUnitForm((prev) => ({
+                          ...prev,
+                          nativeConfig: {
+                            ...prev.nativeConfig,
+                            icon: {
+                              ...prev.nativeConfig.icon,
+                              sizes: {
+                                width: prev.nativeConfig.icon.sizes?.width || 50,
+                                height: parseInt(e.target.value) || 50
+                              }
+                            }
+                          }
+                        }))}
+                        className="block w-20 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                        placeholder="50"
+                      />
+                    </div>
+                  </div>
+                </div>
+                {/* CTA Asset */}
+                <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700">Call to Action (CTA)</span>
+                    <label className="inline-flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={adUnitForm.nativeConfig.cta.required}
+                        onChange={(e) => setAdUnitForm((prev) => ({
+                          ...prev,
+                          nativeConfig: {
+                            ...prev.nativeConfig,
+                            cta: { ...prev.nativeConfig.cta, required: e.target.checked }
+                          }
+                        }))}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="ml-2 text-xs text-gray-600">Required</span>
+                    </label>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Max Length</label>
+                    <input
+                      type="number"
+                      value={adUnitForm.nativeConfig.cta.len || ''}
+                      onChange={(e) => setAdUnitForm((prev) => ({
+                        ...prev,
+                        nativeConfig: {
+                          ...prev.nativeConfig,
+                          cta: { ...prev.nativeConfig.cta, len: parseInt(e.target.value) || undefined }
+                        }
+                      }))}
+                      className="block w-24 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                      placeholder="20"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           {/* Size Mapping Section */}
           <div>
             <div className="flex items-center justify-between mb-2">

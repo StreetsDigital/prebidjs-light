@@ -184,12 +184,12 @@ export function AdminLayout() {
       <Sidebar />
 
       {/* Main content area */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
         {/* Top header */}
-        <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 px-6 py-4">
-          <div className="flex items-center justify-between">
+        <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-4">
+          <div className="flex items-center justify-between gap-4">
             {/* Global Search */}
-            <div className="relative w-96" ref={searchRef}>
+            <div className="relative flex-1 max-w-96" ref={searchRef}>
               <div className="relative">
                 <svg
                   className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
@@ -240,7 +240,7 @@ export function AdminLayout() {
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
               {/* Theme toggle */}
               <button
                 type="button"
@@ -352,7 +352,7 @@ export function AdminLayout() {
                 <button
                   type="button"
                   onClick={() => setIsMenuOpen(!isMenuOpen)}
-                  className="flex items-center gap-3 hover:bg-gray-50 rounded-lg p-2 transition-colors"
+                  className="flex items-center gap-1 sm:gap-3 hover:bg-gray-50 rounded-lg p-2 transition-colors"
                   aria-label="User menu"
                 >
                   <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-medium">
@@ -363,7 +363,7 @@ export function AdminLayout() {
                     <p className="text-xs text-gray-500">{user?.role}</p>
                   </div>
                   <svg
-                    className={`w-4 h-4 text-gray-400 transition-transform ${isMenuOpen ? 'rotate-180' : ''}`}
+                    className={`hidden sm:block w-4 h-4 text-gray-400 transition-transform ${isMenuOpen ? 'rotate-180' : ''}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"

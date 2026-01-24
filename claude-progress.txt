@@ -1276,3 +1276,84 @@ Added to `apps/admin/src/pages/admin/AnalyticsPage.tsx`:
 3. Continue with remaining features to reach 100%
 4. Consider implementing actual Prebid build service (would enable more features)
 
+---
+
+# Session Progress Report - January 24, 2026 (Afternoon Continued)
+
+## Summary
+Implemented soft delete functionality for publishers, allowing publishers to be hidden but restored later.
+
+## Feature Implemented
+**Feature #164 (J06): Soft delete hides but preserves**
+- Description: Verify soft delete (if implemented)
+
+## Tasks Completed
+
+### 1. Database Schema Updates
+- Added `deletedAt` column to publishers table in schema
+- Created migration to add the column to existing databases
+- Added index on deletedAt for query performance
+
+### 2. API Changes
+Modified `apps/api/src/routes/publishers.ts`:
+- Updated ListPublishersQuery to include `deleted` status filter and `includeDeleted` param
+- Modified list endpoint to filter out deleted publishers by default
+- Added `status=deleted` filter to show only deleted publishers
+- Changed DELETE endpoint to perform soft delete (sets deletedAt timestamp)
+- Added `?hard=true` query param for permanent hard delete
+- Added POST `/:id/restore` endpoint to restore soft-deleted publishers
+- Added audit logging for SOFT_DELETE, HARD_DELETE, and RESTORE actions
+
+### 3. Admin UI Updates
+Modified `apps/admin/src/pages/admin/PublishersPage.tsx`:
+- Added `deletedAt` field to Publisher interface
+- Added "Deleted" option to status filter dropdown
+- Updated getStatusBadge to show "deleted" status for deleted publishers
+- Added handleRestoreClick function for restoring publishers
+- Conditionally show "Restore" button instead of "Delete" for deleted publishers
+- Updated delete confirmation dialog to mention restore capability
+
+## Verification Steps
+1. ✅ Soft deleted "AAAA Pagination Test Publisher"
+2. ✅ Verified not visible in normal list (count: 1005 → 1004)
+3. ✅ Selected "Deleted" filter to see deleted publishers
+4. ✅ Verified publisher shown with "deleted" status and "Restore" button
+5. ✅ Clicked Restore button
+6. ✅ Verified toast message "Publisher restored successfully"
+7. ✅ Cleared filters - publisher back in normal list with "active" status
+8. ✅ Count back to 1005
+9. ✅ No console errors
+
+## Files Modified
+1. `apps/api/src/db/schema.ts` - Added deletedAt column to publishers
+2. `apps/api/src/db/index.ts` - Added migration for deletedAt column
+3. `apps/api/src/routes/publishers.ts` - Soft delete, restore, filtering logic
+4. `apps/admin/src/pages/admin/PublishersPage.tsx` - UI for deleted filter and restore
+
+## Commits Made
+1. `feat(publishers): Implement soft delete with restore functionality`
+
+## Features Remaining
+- J10: Delete build cleans up files - Requires actual Prebid build service (not mocked)
+- 7 features stuck in "in_progress" status from previous sessions
+
+## Ending Stats
+- Passing: 255 features (97.0%)
+- In Progress: 7 features (stuck from previous sessions)
+- Total: 263 features
+
+## Session Progress
+- Previous: 254 passing features (96.6%)
+- Current: 255 passing features (97.0%)
+- Features implemented: 1 (J06 - Soft Delete)
+
+## Test Credentials
+- Admin: super_admin (auto-logged in)
+- Servers: API on :3001, Admin on :5173
+
+## Next Steps for Future Agents
+1. Clear the 7 stuck in-progress features (need feature_clear_in_progress permission)
+2. Feature J10 requires actual Prebid build service implementation with file storage
+3. The remaining 8 features (255 + 7 + 1 = 263) may all be related to unimplemented subsystems
+4. Project is at 97% completion - close to feature complete!
+

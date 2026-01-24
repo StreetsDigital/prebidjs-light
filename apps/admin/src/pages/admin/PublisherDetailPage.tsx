@@ -150,6 +150,24 @@ interface ConsentManagementConfig {
   };
 }
 
+interface FloorRule {
+  id: string;
+  type: 'mediaType' | 'bidder' | 'adUnit';
+  value: string; // mediaType name, bidder code, or ad unit code
+  floor: number;
+}
+
+interface PriceFloorsConfig {
+  enabled: boolean;
+  defaultFloor: number;
+  currency: string;
+  enforcement: {
+    floorDeals: boolean;
+    bidAdjustment: boolean;
+  };
+  rules: FloorRule[];
+}
+
 interface Website {
   id: string;
   name: string;
@@ -526,6 +544,26 @@ export function PublisherDetailPage() {
     uspTimeout: 10000,
   });
 
+  // Price Floors state
+  const [priceFloors, setPriceFloors] = useState<PriceFloorsConfig | null>(null);
+  const [priceFloorsModal, setPriceFloorsModal] = useState({
+    isOpen: false,
+    isLoading: false,
+  });
+  const [priceFloorsForm, setPriceFloorsForm] = useState({
+    enabled: false,
+    defaultFloor: 0.5,
+    currency: 'USD',
+    floorDeals: true,
+    bidAdjustment: true,
+    rules: [] as FloorRule[],
+  });
+  const [newRuleForm, setNewRuleForm] = useState({
+    type: 'mediaType' as 'mediaType' | 'bidder' | 'adUnit',
+    value: '',
+    floor: 0.5,
+  });
+
   // Website state
   const [websites, setWebsites] = useState<Website[]>([]);
   const [websiteModal, setWebsiteModal] = useState({
@@ -678,6 +716,14 @@ export function PublisherDetailPage() {
         // Load consent management config
         if (data.consentManagement) {
           setConsentManagement(data.consentManagement);
+        }
+
+        // Load price floors config
+        if (data.floorsConfig) {
+          const floorsData = typeof data.floorsConfig === 'string'
+            ? JSON.parse(data.floorsConfig)
+            : data.floorsConfig;
+          setPriceFloors(floorsData);
         }
       }
     } catch (err) {
@@ -2294,6 +2340,91 @@ export function PublisherDetailPage() {
     }
   };
 
+  // Price Floors handlers
+  const handlePriceFloorsConfigClick = () => {
+    setPriceFloorsForm({
+      enabled: priceFloors?.enabled || false,
+      defaultFloor: priceFloors?.defaultFloor || 0.5,
+      currency: priceFloors?.currency || 'USD',
+      floorDeals: priceFloors?.enforcement?.floorDeals ?? true,
+      bidAdjustment: priceFloors?.enforcement?.bidAdjustment ?? true,
+      rules: priceFloors?.rules || [],
+    });
+    setNewRuleForm({ type: 'mediaType', value: '', floor: 0.5 });
+    setPriceFloorsModal({ isOpen: true, isLoading: false });
+  };
+
+  const handlePriceFloorsConfigClose = () => {
+    setPriceFloorsModal({ isOpen: false, isLoading: false });
+  };
+
+  const handleAddRule = () => {
+    if (!newRuleForm.value) return;
+
+    const newRule: FloorRule = {
+      id: `rule_${Date.now()}`,
+      type: newRuleForm.type,
+      value: newRuleForm.value,
+      floor: newRuleForm.floor,
+    };
+
+    setPriceFloorsForm((prev) => ({
+      ...prev,
+      rules: [...prev.rules, newRule],
+    }));
+    setNewRuleForm({ type: 'mediaType', value: '', floor: 0.5 });
+  };
+
+  const handleRemoveRule = (ruleId: string) => {
+    setPriceFloorsForm((prev) => ({
+      ...prev,
+      rules: prev.rules.filter((r) => r.id !== ruleId),
+    }));
+  };
+
+  const handlePriceFloorsConfigSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!publisher) return;
+
+    setPriceFloorsModal((prev) => ({ ...prev, isLoading: true }));
+
+    const newFloorsConfig: PriceFloorsConfig = {
+      enabled: priceFloorsForm.enabled,
+      defaultFloor: priceFloorsForm.defaultFloor,
+      currency: priceFloorsForm.currency,
+      enforcement: {
+        floorDeals: priceFloorsForm.floorDeals,
+        bidAdjustment: priceFloorsForm.bidAdjustment,
+      },
+      rules: priceFloorsForm.rules,
+    };
+
+    try {
+      const response = await fetch(`/api/publishers/${publisher.id}/config`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          floorsConfig: newFloorsConfig,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update price floors config');
+      }
+
+      setPriceFloors(newFloorsConfig);
+      addToast('Price floors configuration saved successfully', 'success');
+      handlePriceFloorsConfigClose();
+    } catch (err) {
+      console.error('Failed to save price floors config:', err);
+      addToast('Failed to save price floors configuration', 'error');
+      setPriceFloorsModal((prev) => ({ ...prev, isLoading: false }));
+    }
+  };
+
   // Build handlers
   const handleTriggerBuild = async () => {
     setIsBuildTriggering(true);
@@ -2929,6 +3060,90 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
                     </dl>
                   )}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Price Floors Section */}
+          {!showVersionHistory && (
+            <div id="floors-section" className="bg-white shadow rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-medium text-gray-900">Price Floors</h2>
+                  <p className="text-sm text-gray-500">
+                    Configure minimum bid prices for ad units and bidders.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handlePriceFloorsConfigClick}
+                  className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
+                >
+                  <svg className="-ml-0.5 mr-1.5 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Configure
+                </button>
+              </div>
+
+              {/* Floors Status Card */}
+              <div className={`border rounded-lg p-4 ${priceFloors?.enabled ? 'border-green-200 bg-green-50' : 'border-gray-200'}`}>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-medium text-gray-900">Price Floors Module</h3>
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${priceFloors?.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                    {priceFloors?.enabled ? 'Enabled' : 'Disabled'}
+                  </span>
+                </div>
+                {priceFloors?.enabled ? (
+                  <div className="space-y-4">
+                    <dl className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">Default Floor</dt>
+                        <dd className="text-gray-900 font-medium">${priceFloors.defaultFloor?.toFixed(2) || '0.00'} {priceFloors.currency || 'USD'}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">Floor Deals</dt>
+                        <dd className="text-gray-900">{priceFloors.enforcement?.floorDeals ? 'Yes' : 'No'}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">Bid Adjustment</dt>
+                        <dd className="text-gray-900">{priceFloors.enforcement?.bidAdjustment ? 'Yes' : 'No'}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">Custom Rules</dt>
+                        <dd className="text-gray-900">{priceFloors.rules?.length || 0} rules</dd>
+                      </div>
+                    </dl>
+
+                    {/* Show rules if any */}
+                    {priceFloors.rules && priceFloors.rules.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-green-200">
+                        <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">Floor Rules</h4>
+                        <div className="space-y-2">
+                          {priceFloors.rules.map((rule) => (
+                            <div key={rule.id} className="flex items-center justify-between bg-white rounded px-3 py-2 text-sm border border-green-100">
+                              <div className="flex items-center space-x-2">
+                                <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
+                                  rule.type === 'mediaType' ? 'bg-purple-100 text-purple-700' :
+                                  rule.type === 'bidder' ? 'bg-blue-100 text-blue-700' :
+                                  'bg-yellow-100 text-yellow-700'
+                                }`}>
+                                  {rule.type === 'mediaType' ? 'Media Type' : rule.type === 'bidder' ? 'Bidder' : 'Ad Unit'}
+                                </span>
+                                <span className="text-gray-900">{rule.value}</span>
+                              </div>
+                              <span className="font-medium text-gray-900">${rule.floor.toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">
+                    Enable price floors to set minimum bid prices for better yield optimization.
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -5186,6 +5401,257 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
               className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50"
             >
               {consentModal.isLoading && (
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              )}
+              Save Configuration
+            </button>
+          </div>
+        </form>
+      </FormModal>
+
+      {/* Price Floors Config Modal */}
+      <FormModal
+        isOpen={priceFloorsModal.isOpen}
+        onClose={handlePriceFloorsConfigClose}
+        title="Configure Price Floors"
+      >
+        <form onSubmit={handlePriceFloorsConfigSave} className="space-y-6">
+          {/* Enable/Disable Toggle */}
+          <div className="flex items-center justify-between border rounded-lg p-4">
+            <div>
+              <h3 className="text-sm font-medium text-gray-900">Enable Price Floors</h3>
+              <p className="text-xs text-gray-500">Set minimum bid prices for ad units</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPriceFloorsForm((prev) => ({ ...prev, enabled: !prev.enabled }))}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${priceFloorsForm.enabled ? 'bg-blue-600' : 'bg-gray-200'}`}
+              role="switch"
+              aria-checked={priceFloorsForm.enabled}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${priceFloorsForm.enabled ? 'translate-x-5' : 'translate-x-0'}`}
+              />
+            </button>
+          </div>
+
+          {priceFloorsForm.enabled && (
+            <>
+              {/* Default Floor Settings */}
+              <div className="border rounded-lg p-4 space-y-4">
+                <h3 className="text-sm font-medium text-gray-900">Default Settings</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="defaultFloor" className="block text-sm font-medium text-gray-700">
+                      Default Floor Price
+                    </label>
+                    <div className="mt-1 relative rounded-md shadow-sm">
+                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <span className="text-gray-500 sm:text-sm">$</span>
+                      </div>
+                      <input
+                        type="number"
+                        id="defaultFloor"
+                        value={priceFloorsForm.defaultFloor}
+                        onChange={(e) => setPriceFloorsForm((prev) => ({ ...prev, defaultFloor: parseFloat(e.target.value) || 0 }))}
+                        className="block w-full rounded-md border-gray-300 pl-7 pr-12 focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                        step="0.01"
+                        min="0"
+                      />
+                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                        <span className="text-gray-500 sm:text-sm">{priceFloorsForm.currency}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor="currency" className="block text-sm font-medium text-gray-700">
+                      Currency
+                    </label>
+                    <select
+                      id="currency"
+                      value={priceFloorsForm.currency}
+                      onChange={(e) => setPriceFloorsForm((prev) => ({ ...prev, currency: e.target.value }))}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    >
+                      <option value="USD">USD</option>
+                      <option value="EUR">EUR</option>
+                      <option value="GBP">GBP</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-6">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="floorDeals"
+                      checked={priceFloorsForm.floorDeals}
+                      onChange={(e) => setPriceFloorsForm((prev) => ({ ...prev, floorDeals: e.target.checked }))}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <label htmlFor="floorDeals" className="ml-2 block text-sm text-gray-900">
+                      Apply floors to deals
+                    </label>
+                  </div>
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="bidAdjustment"
+                      checked={priceFloorsForm.bidAdjustment}
+                      onChange={(e) => setPriceFloorsForm((prev) => ({ ...prev, bidAdjustment: e.target.checked }))}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <label htmlFor="bidAdjustment" className="ml-2 block text-sm text-gray-900">
+                      Enable bid adjustment
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Custom Floor Rules */}
+              <div className="border rounded-lg p-4 space-y-4">
+                <h3 className="text-sm font-medium text-gray-900">Custom Floor Rules</h3>
+                <p className="text-xs text-gray-500">Add specific floor prices by media type, bidder, or ad unit.</p>
+
+                {/* Existing Rules */}
+                {priceFloorsForm.rules.length > 0 && (
+                  <div className="space-y-2">
+                    {priceFloorsForm.rules.map((rule) => (
+                      <div key={rule.id} className="flex items-center justify-between bg-gray-50 rounded px-3 py-2">
+                        <div className="flex items-center space-x-2">
+                          <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
+                            rule.type === 'mediaType' ? 'bg-purple-100 text-purple-700' :
+                            rule.type === 'bidder' ? 'bg-blue-100 text-blue-700' :
+                            'bg-yellow-100 text-yellow-700'
+                          }`}>
+                            {rule.type === 'mediaType' ? 'Media Type' : rule.type === 'bidder' ? 'Bidder' : 'Ad Unit'}
+                          </span>
+                          <span className="text-sm text-gray-900">{rule.value}</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm font-medium text-gray-900">${rule.floor.toFixed(2)}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveRule(rule.id)}
+                            className="text-red-500 hover:text-red-700"
+                          >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add New Rule */}
+                <div className="border-t pt-4">
+                  <div className="grid grid-cols-4 gap-2">
+                    <div>
+                      <label htmlFor="ruleType" className="block text-xs font-medium text-gray-700 mb-1">
+                        Rule Type
+                      </label>
+                      <select
+                        id="ruleType"
+                        value={newRuleForm.type}
+                        onChange={(e) => setNewRuleForm((prev) => ({ ...prev, type: e.target.value as 'mediaType' | 'bidder' | 'adUnit' }))}
+                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                      >
+                        <option value="mediaType">Media Type</option>
+                        <option value="bidder">Bidder</option>
+                        <option value="adUnit">Ad Unit</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="ruleValue" className="block text-xs font-medium text-gray-700 mb-1">
+                        Value
+                      </label>
+                      {newRuleForm.type === 'mediaType' ? (
+                        <select
+                          id="ruleValue"
+                          value={newRuleForm.value}
+                          onChange={(e) => setNewRuleForm((prev) => ({ ...prev, value: e.target.value }))}
+                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                        >
+                          <option value="">Select...</option>
+                          <option value="banner">Banner</option>
+                          <option value="video">Video</option>
+                          <option value="native">Native</option>
+                        </select>
+                      ) : newRuleForm.type === 'bidder' ? (
+                        <select
+                          id="ruleValue"
+                          value={newRuleForm.value}
+                          onChange={(e) => setNewRuleForm((prev) => ({ ...prev, value: e.target.value }))}
+                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                        >
+                          <option value="">Select...</option>
+                          {publisherBidders.map((bidder) => (
+                            <option key={bidder.bidderCode} value={bidder.bidderCode}>{bidder.bidderName}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <select
+                          id="ruleValue"
+                          value={newRuleForm.value}
+                          onChange={(e) => setNewRuleForm((prev) => ({ ...prev, value: e.target.value }))}
+                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                        >
+                          <option value="">Select...</option>
+                          {adUnits.map((unit) => (
+                            <option key={unit.code} value={unit.code}>{unit.name}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                    <div>
+                      <label htmlFor="ruleFloor" className="block text-xs font-medium text-gray-700 mb-1">
+                        Floor ($)
+                      </label>
+                      <input
+                        type="number"
+                        id="ruleFloor"
+                        value={newRuleForm.floor}
+                        onChange={(e) => setNewRuleForm((prev) => ({ ...prev, floor: parseFloat(e.target.value) || 0 }))}
+                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                        step="0.01"
+                        min="0"
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <button
+                        type="button"
+                        onClick={handleAddRule}
+                        disabled={!newRuleForm.value}
+                        className="w-full inline-flex justify-center items-center rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 disabled:opacity-50"
+                      >
+                        Add Rule
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="flex justify-end space-x-3 pt-4">
+            <button
+              type="button"
+              onClick={handlePriceFloorsConfigClose}
+              className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={priceFloorsModal.isLoading}
+              className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50"
+            >
+              {priceFloorsModal.isLoading && (
                 <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>

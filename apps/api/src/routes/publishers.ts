@@ -982,6 +982,24 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     };
   }
 
+  interface FloorRule {
+    id: string;
+    type: 'mediaType' | 'bidder' | 'adUnit';
+    value: string;
+    floor: number;
+  }
+
+  interface PriceFloorsConfig {
+    enabled: boolean;
+    defaultFloor: number;
+    currency: string;
+    enforcement: {
+      floorDeals: boolean;
+      bidAdjustment: boolean;
+    };
+    rules: FloorRule[];
+  }
+
   interface UpdateConfigBody {
     bidderTimeout?: number;
     priceGranularity?: string;
@@ -990,6 +1008,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     debugMode?: boolean;
     userIdModules?: UserIdModuleConfig[];
     consentManagement?: ConsentManagementConfig;
+    floorsConfig?: PriceFloorsConfig;
   }
 
   // Get publisher config
@@ -1020,6 +1039,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       ...config,
       userIdModules: config.userIdModules ? JSON.parse(config.userIdModules) : [],
       consentManagement: config.consentManagement ? JSON.parse(config.consentManagement) : null,
+      floorsConfig: config.floorsConfig ? JSON.parse(config.floorsConfig) : null,
     };
   });
 
@@ -1028,7 +1048,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     preHandler: requireAuth,
   }, async (request, reply) => {
     const { id } = request.params;
-    const { bidderTimeout, priceGranularity, enableSendAllBids, bidderSequence, debugMode, userIdModules, consentManagement } = request.body;
+    const { bidderTimeout, priceGranularity, enableSendAllBids, bidderSequence, debugMode, userIdModules, consentManagement, floorsConfig } = request.body;
     const user = request.user as TokenPayload;
 
     // Check if publisher exists
@@ -1083,6 +1103,16 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
         changes.push(`GDPR: ${previousGdprEnabled ? 'enabled' : 'disabled'} → ${gdprEnabled ? 'enabled' : 'disabled'}`);
       }
     }
+    if (floorsConfig !== undefined) {
+      const currentFloors = config.floorsConfig ? JSON.parse(config.floorsConfig) : null;
+      const floorsEnabled = floorsConfig?.enabled || false;
+      const previousFloorsEnabled = currentFloors?.enabled || false;
+      if (floorsEnabled !== previousFloorsEnabled) {
+        changes.push(`Price Floors: ${previousFloorsEnabled ? 'enabled' : 'disabled'} → ${floorsEnabled ? 'enabled' : 'disabled'}`);
+      } else if (floorsEnabled && floorsConfig.defaultFloor !== currentFloors?.defaultFloor) {
+        changes.push(`Default Floor: $${currentFloors?.defaultFloor || 0} → $${floorsConfig.defaultFloor}`);
+      }
+    }
 
     // Save current config as a version entry before updating
     db.insert(configVersions).values({
@@ -1111,6 +1141,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
         ...(debugMode !== undefined && { debugMode }),
         ...(userIdModules !== undefined && { userIdModules: JSON.stringify(userIdModules) }),
         ...(consentManagement !== undefined && { consentManagement: JSON.stringify(consentManagement) }),
+        ...(floorsConfig !== undefined && { floorsConfig: JSON.stringify(floorsConfig) }),
         updatedAt: now,
         version: newVersion,
       })
@@ -1123,6 +1154,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       ...updated,
       userIdModules: updated?.userIdModules ? JSON.parse(updated.userIdModules) : [],
       consentManagement: updated?.consentManagement ? JSON.parse(updated.consentManagement) : null,
+      floorsConfig: updated?.floorsConfig ? JSON.parse(updated.floorsConfig) : null,
     };
   });
 

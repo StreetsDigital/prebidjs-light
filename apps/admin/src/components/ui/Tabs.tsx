@@ -1,4 +1,4 @@
-import { useState, ReactNode } from 'react';
+import { useState, ReactNode, useEffect } from 'react';
 
 export interface Tab {
   id: string;
@@ -9,15 +9,29 @@ export interface Tab {
 interface TabsProps {
   tabs: Tab[];
   defaultTab?: string;
+  activeTab?: string; // Controlled mode
   onChange?: (tabId: string) => void;
   className?: string;
 }
 
-export function Tabs({ tabs, defaultTab, onChange, className = '' }: TabsProps) {
-  const [activeTab, setActiveTab] = useState(defaultTab || tabs[0]?.id || '');
+export function Tabs({ tabs, defaultTab, activeTab: controlledActiveTab, onChange, className = '' }: TabsProps) {
+  const [internalActiveTab, setInternalActiveTab] = useState(defaultTab || tabs[0]?.id || '');
+
+  // Use controlled mode if activeTab prop is provided
+  const isControlled = controlledActiveTab !== undefined;
+  const activeTab = isControlled ? controlledActiveTab : internalActiveTab;
+
+  // Sync internal state with defaultTab changes (for cases where defaultTab is updated externally)
+  useEffect(() => {
+    if (!isControlled && defaultTab && defaultTab !== internalActiveTab) {
+      setInternalActiveTab(defaultTab);
+    }
+  }, [defaultTab, isControlled]);
 
   const handleTabClick = (tabId: string) => {
-    setActiveTab(tabId);
+    if (!isControlled) {
+      setInternalActiveTab(tabId);
+    }
     onChange?.(tabId);
   };
 

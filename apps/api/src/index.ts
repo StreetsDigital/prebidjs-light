@@ -53,8 +53,64 @@ app.register(dashboardRoutes, { prefix: '/api/dashboard' });
 // Public config endpoint (high performance)
 app.get('/c/:apiKey', async (request, reply) => {
   const { apiKey } = request.params as { apiKey: string };
-  // TODO: Implement config fetch with Redis caching
-  return reply.code(501).send({ error: 'Not implemented' });
+
+  // Import db and schema
+  const { db, publishers, publisherConfig, adUnits, publisherBidders } = await import('./db');
+  const { eq } = await import('drizzle-orm');
+
+  // Find publisher by API key
+  const publisher = db.select().from(publishers).where(eq(publishers.apiKey, apiKey)).get();
+
+  if (!publisher) {
+    return reply.code(404).send({ error: 'Publisher not found' });
+  }
+
+  if (publisher.status !== 'active') {
+    return reply.code(403).send({ error: 'Publisher is not active' });
+  }
+
+  // Get publisher config
+  const config = db.select().from(publisherConfig).where(eq(publisherConfig.publisherId, publisher.id)).get();
+
+  // Get ad units
+  const units = db.select().from(adUnits).where(eq(adUnits.publisherId, publisher.id)).all();
+
+  // Get bidders
+  const bidders = db.select().from(publisherBidders).where(eq(publisherBidders.publisherId, publisher.id)).all();
+
+  // Build Prebid-compatible config
+  const prebidConfig = {
+    publisherId: publisher.id,
+    publisherName: publisher.name,
+    domains: publisher.domains ? JSON.parse(publisher.domains) : [],
+    config: {
+      bidderTimeout: config?.bidderTimeout || 1500,
+      priceGranularity: config?.priceGranularity || 'medium',
+      enableSendAllBids: config?.enableSendAllBids ?? true,
+      bidderSequence: config?.bidderSequence || 'random',
+      debug: config?.debugMode || false,
+    },
+    adUnits: units.map(u => ({
+      code: u.code,
+      name: u.name,
+      mediaTypes: u.mediaTypes ? JSON.parse(u.mediaTypes) : {},
+      floorPrice: u.floorPrice,
+      status: u.status,
+    })),
+    bidders: bidders.filter(b => b.enabled).map(b => ({
+      bidderCode: b.bidderCode,
+      params: b.params ? JSON.parse(b.params) : {},
+      timeoutOverride: b.timeoutOverride,
+      priority: b.priority,
+    })),
+    version: config?.version || 1,
+    generatedAt: new Date().toISOString(),
+  };
+
+  // Set cache headers
+  reply.header('Cache-Control', 'public, max-age=300'); // 5 minute cache
+
+  return prebidConfig;
 });
 
 // Analytics beacon endpoint (high throughput)

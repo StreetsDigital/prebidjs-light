@@ -465,8 +465,13 @@ export function PublisherDetailPage() {
   });
 
   // Build state
-  const [builds, setBuilds] = useState<Build[]>(MOCK_BUILDS);
+  const [builds, setBuilds] = useState<Build[]>([]);
   const [isBuildTriggering, setIsBuildTriggering] = useState(false);
+  const [deleteBuildDialog, setDeleteBuildDialog] = useState({
+    isOpen: false,
+    isLoading: false,
+    build: null as Build | null,
+  });
 
   // Bidder state
   const [publisherBidders, setPublisherBidders] = useState<PublisherBidder[]>([]);
@@ -880,6 +885,51 @@ export function PublisherDetailPage() {
     }
   };
 
+  const fetchBuilds = async () => {
+    if (!id) return;
+
+    try {
+      const response = await fetch(`/api/publishers/${id}/builds`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setBuilds(data.map((b: {
+          id: string;
+          version: string;
+          status: string;
+          startedAt: string;
+          completedAt: string | null;
+          duration: number | null;
+          triggeredBy: string;
+          commitHash: string;
+          fileSize: string | null;
+          modules: number;
+          bidders: number;
+          scriptUrl: string | null;
+        }) => ({
+          id: b.id,
+          version: b.version,
+          status: b.status as Build['status'],
+          startedAt: b.startedAt,
+          completedAt: b.completedAt,
+          duration: b.duration,
+          triggeredBy: b.triggeredBy,
+          commitHash: b.commitHash,
+          fileSize: b.fileSize,
+          modules: b.modules,
+          bidders: b.bidders,
+          scriptUrl: b.scriptUrl,
+        })));
+      }
+    } catch (err) {
+      console.error('Failed to fetch builds:', err);
+    }
+  };
+
   useEffect(() => {
     fetchPublisher();
     fetchAdUnits();
@@ -889,6 +939,7 @@ export function PublisherDetailPage() {
     fetchPublisherBidders();
     fetchAvailableBidders();
     fetchAllPublishers();
+    fetchBuilds();
   }, [id, token]);
 
   // Hash navigation - handle URL hash to switch tabs and scroll to sections
@@ -2427,45 +2478,126 @@ export function PublisherDetailPage() {
 
   // Build handlers
   const handleTriggerBuild = async () => {
+    if (!publisher?.id) return;
     setIsBuildTriggering(true);
 
-    // Create new build with "building" status
-    const newBuild: Build = {
-      id: `build_${Date.now()}`,
-      version: builds.length > 0 ?
-        `1.${parseInt(builds[0].version.split('.')[1] || '0') + 1}.0` : '1.0.0',
-      status: 'building',
-      startedAt: new Date().toISOString(),
-      completedAt: null,
-      duration: null,
-      triggeredBy: 'Super Admin',
-      commitHash: Math.random().toString(36).substring(2, 9),
-      fileSize: null,
-      modules: 12,
-      bidders: publisherBidders.filter(b => b.enabled).length || 5,
-    };
+    try {
+      const response = await fetch(`/api/publishers/${publisher.id}/builds`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      });
 
-    // Add building state to top of list
-    setBuilds([newBuild, ...builds]);
+      if (!response.ok) {
+        throw new Error('Failed to trigger build');
+      }
 
-    // Simulate build process (3 seconds)
-    setTimeout(() => {
-      const completedBuild: Build = {
-        ...newBuild,
-        status: 'success',
-        completedAt: new Date().toISOString(),
-        duration: 120 + Math.floor(Math.random() * 60),
-        fileSize: `${240 + Math.floor(Math.random() * 20)} KB`,
-        scriptUrl: '/cdn/prebid-bundle.min.js',
+      const data = await response.json();
+
+      // Add building state to top of list
+      const newBuild: Build = {
+        id: data.id,
+        version: data.version,
+        status: 'building',
+        startedAt: new Date().toISOString(),
+        completedAt: null,
+        duration: null,
+        triggeredBy: 'Super Admin',
+        commitHash: data.configHash,
+        fileSize: null,
+        modules: 0,
+        bidders: publisherBidders.filter(b => b.enabled).length || 0,
       };
 
-      setBuilds((prev) => [completedBuild, ...prev.slice(1)]);
+      setBuilds([newBuild, ...builds]);
+
+      // Poll for build completion
+      const pollBuild = async () => {
+        const statusResponse = await fetch(`/api/publishers/${publisher.id}/builds/${data.id}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (statusResponse.ok) {
+          const buildData = await statusResponse.json();
+          if (buildData.status !== 'building') {
+            // Build completed, update the list
+            await fetchBuilds();
+            setIsBuildTriggering(false);
+            addToast({
+              type: buildData.status === 'success' ? 'success' : 'error',
+              message: buildData.status === 'success'
+                ? `Build v${buildData.version} completed successfully`
+                : `Build v${buildData.version} failed`,
+            });
+          } else {
+            // Still building, poll again
+            setTimeout(pollBuild, 1000);
+          }
+        } else {
+          setIsBuildTriggering(false);
+        }
+      };
+
+      // Start polling after 1 second
+      setTimeout(pollBuild, 1000);
+    } catch (err) {
+      console.error('Failed to trigger build:', err);
+      addToast('Failed to trigger build', 'error');
       setIsBuildTriggering(false);
-      addToast({
-        type: 'success',
-        message: `Build v${completedBuild.version} completed successfully`,
-      });
-    }, 3000);
+    }
+  };
+
+  const handleDeleteBuildClick = (build: Build) => {
+    setDeleteBuildDialog({
+      isOpen: true,
+      isLoading: false,
+      build,
+    });
+  };
+
+  const handleDeleteBuildConfirm = async () => {
+    if (!publisher?.id || !deleteBuildDialog.build) return;
+
+    setDeleteBuildDialog((prev) => ({ ...prev, isLoading: true }));
+
+    try {
+      const response = await fetch(
+        `/api/publishers/${publisher.id}/builds/${deleteBuildDialog.build.id}`,
+        {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to delete build');
+      }
+
+      const data = await response.json();
+
+      // Remove from local state
+      setBuilds((prev) => prev.filter((b) => b.id !== deleteBuildDialog.build?.id));
+
+      addToast(
+        data.fileDeleted
+          ? 'Build and files deleted successfully'
+          : 'Build deleted successfully',
+        'success'
+      );
+
+      setDeleteBuildDialog({ isOpen: false, isLoading: false, build: null });
+    } catch (err) {
+      console.error('Failed to delete build:', err);
+      addToast('Failed to delete build', 'error');
+      setDeleteBuildDialog((prev) => ({ ...prev, isLoading: false }));
+    }
   };
 
   const handleDownloadBuild = () => {
@@ -3900,35 +4032,55 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
               <p className="text-sm text-gray-500">Previous builds for this publisher.</p>
             </div>
             <div className="divide-y divide-gray-200">
-              {builds.map((build, index) => (
-                <div key={build.id} className="px-6 py-4 hover:bg-gray-50">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div className="flex-shrink-0">
-                        {getBuildStatusBadge(build.status)}
+              {builds.length === 0 ? (
+                <div className="px-6 py-8 text-center">
+                  <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                  <p className="mt-2 text-sm text-gray-500">No builds yet. Click "Build New Version" to create your first build.</p>
+                </div>
+              ) : (
+                builds.map((build, index) => (
+                  <div key={build.id} className="px-6 py-4 hover:bg-gray-50">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <div className="flex-shrink-0">
+                          {getBuildStatusBadge(build.status)}
+                        </div>
+                        <div className="ml-4">
+                          <p className="text-sm font-medium text-gray-900">
+                            v{build.version}
+                            {index === 0 && (
+                              <span className="ml-2 inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+                                Latest
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            by {build.triggeredBy} • {formatVersionDate(build.startedAt)}
+                          </p>
+                        </div>
                       </div>
-                      <div className="ml-4">
-                        <p className="text-sm font-medium text-gray-900">
-                          v{build.version}
-                          {index === 0 && (
-                            <span className="ml-2 inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
-                              Latest
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          by {build.triggeredBy} • {formatVersionDate(build.startedAt)}
-                        </p>
+                      <div className="flex items-center space-x-4 text-sm text-gray-500">
+                        <span className="font-mono">{build.commitHash}</span>
+                        <span>{formatDuration(build.duration)}</span>
+                        <span>{build.fileSize || '-'}</span>
+                        {build.status !== 'building' && (
+                          <button
+                            onClick={() => handleDeleteBuildClick(build)}
+                            className="ml-2 text-red-600 hover:text-red-800"
+                            title="Delete build"
+                          >
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        )}
                       </div>
-                    </div>
-                    <div className="flex items-center space-x-4 text-sm text-gray-500">
-                      <span className="font-mono">{build.commitHash}</span>
-                      <span>{formatDuration(build.duration)}</span>
-                      <span>{build.fileSize || '-'}</span>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -5983,6 +6135,18 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
         message={`Are you sure you want to remove "${removeAdminDialog.admin?.name}" from this publisher? They will no longer have access to manage this publisher.`}
         confirmText="Remove"
         isLoading={removeAdminDialog.isLoading}
+        variant="danger"
+      />
+
+      {/* Delete Build Confirmation */}
+      <ConfirmDialog
+        isOpen={deleteBuildDialog.isOpen}
+        onClose={() => setDeleteBuildDialog({ isOpen: false, isLoading: false, build: null })}
+        onConfirm={handleDeleteBuildConfirm}
+        title="Delete Build"
+        message={`Are you sure you want to delete build v${deleteBuildDialog.build?.version}? This will permanently remove the build files from storage and cannot be undone.`}
+        confirmText="Delete"
+        isLoading={deleteBuildDialog.isLoading}
         variant="danger"
       />
     </div>

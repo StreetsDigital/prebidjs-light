@@ -12,6 +12,7 @@ import dashboardRoutes from './routes/dashboard';
 import auditLogsRoutes from './routes/audit-logs';
 import scheduledReportsRoutes from './routes/scheduled-reports';
 import analyticsRoutes from './routes/analytics';
+import buildsRoutes from './routes/builds';
 
 const app = Fastify({
   logger: {
@@ -53,6 +54,7 @@ app.register(dashboardRoutes, { prefix: '/api/dashboard' });
 app.register(auditLogsRoutes, { prefix: '/api/audit-logs' });
 app.register(scheduledReportsRoutes, { prefix: '/api/scheduled-reports' });
 app.register(analyticsRoutes, { prefix: '/api/analytics' });
+app.register(buildsRoutes, { prefix: '/api' });
 
 // Placeholder for other routes
 // app.register(configRoutes, { prefix: '/api/config' });

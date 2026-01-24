@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import { ConfirmDialog, Pagination } from '../../components/ui';
+import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 
 type SortField = 'name' | 'status' | 'createdAt';
 type SortOrder = 'asc' | 'desc';
@@ -26,6 +27,38 @@ interface PaginationInfo {
   hasMore: boolean;
 }
 
+function exportPublishersToCSV(publishers: Publisher[], filename: string): void {
+  // Define CSV headers
+  const headers = ['ID', 'Name', 'Slug', 'API Key', 'Domains', 'Status', 'Notes', 'Created At', 'Updated At'];
+
+  // Convert publishers to CSV rows
+  const rows = publishers.map(pub => [
+    pub.id,
+    pub.name,
+    pub.slug,
+    pub.apiKey,
+    pub.domains.join('; '),
+    pub.status,
+    pub.notes || '',
+    pub.createdAt,
+    pub.updatedAt
+  ]);
+
+  // Build CSV content
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+  ].join('\n');
+
+  // Create and download file
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
 export function PublishersPage() {
   const { token } = useAuthStore();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -43,6 +76,7 @@ export function PublishersPage() {
     publisher: null,
     isDeleting: false,
   });
+  const [isExporting, setIsExporting] = useState(false);
 
   // Get filter values from URL
   const currentPage = parseInt(searchParams.get('page') || '1', 10);
@@ -191,6 +225,31 @@ export function PublishersPage() {
     }
   };
 
+  const handleExportAll = async () => {
+    setIsExporting(true);
+    try {
+      // Fetch ALL publishers (without pagination) for export
+      const response = await fetch('/api/publishers?limit=10000', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch publishers for export');
+      }
+
+      const data = await response.json();
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `publishers-${timestamp}.csv`;
+      exportPublishersToCSV(data.publishers, filename);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to export publishers');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const styles = {
       active: 'bg-green-100 text-green-800',
@@ -225,20 +284,31 @@ export function PublishersPage() {
             Manage all publishers and their configurations.
           </p>
         </div>
-        <Link
-          to="/admin/publishers/new"
-          className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-        >
-          <svg
-            className="-ml-0.5 mr-1.5 h-5 w-5"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            aria-hidden="true"
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleExportAll}
+            disabled={isExporting}
+            className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:opacity-50"
           >
-            <path d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" />
-          </svg>
-          Add Publisher
-        </Link>
+            <ArrowDownTrayIcon className="-ml-0.5 mr-1.5 h-5 w-5 text-gray-500" />
+            {isExporting ? 'Exporting...' : 'Export All'}
+          </button>
+          <Link
+            to="/admin/publishers/new"
+            className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          >
+            <svg
+              className="-ml-0.5 mr-1.5 h-5 w-5"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" />
+            </svg>
+            Add Publisher
+          </Link>
+        </div>
       </div>
 
       {/* Filters */}

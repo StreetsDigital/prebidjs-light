@@ -47,7 +47,7 @@ export function Tabs({ tabs, defaultTab, activeTab: controlledActiveTab, onChang
               type="button"
               onClick={() => handleTabClick(tab.id)}
               className={`
-                whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium
+                whitespace-nowrap border-b-2 py-4 px-3 text-sm font-medium min-w-[44px]
                 ${
                   activeTab === tab.id
                     ? 'border-blue-500 text-blue-600'

@@ -2112,13 +2112,13 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
                       type={showApiKey ? 'text' : 'password'}
                       value={publisher.apiKey}
                       readOnly
-                      className="block w-full rounded-md border-gray-300 bg-gray-50 py-2 pl-3 pr-20 text-sm font-mono shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      className="block w-full rounded-md border-gray-300 bg-gray-50 py-3 pl-3 pr-20 text-sm font-mono shadow-sm focus:border-blue-500 focus:ring-blue-500"
                     />
                     <div className="absolute inset-y-0 right-0 flex items-center pr-3 space-x-2">
                       <button
                         type="button"
                         onClick={() => setShowApiKey(!showApiKey)}
-                        className="text-gray-400 hover:text-gray-600"
+                        className="p-3 -m-3 text-gray-400 hover:text-gray-600"
                       >
                         {showApiKey ? (
                           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2134,7 +2134,7 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
                       <button
                         type="button"
                         onClick={copyApiKey}
-                        className="text-gray-400 hover:text-gray-600"
+                        className="p-3 -m-3 text-gray-400 hover:text-gray-600"
                       >
                         {copiedKey ? (
                           <svg className="h-5 w-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">

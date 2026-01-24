@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
+import { useToastStore } from '../../stores/toastStore';
 
 interface FieldErrors {
   name?: string;
@@ -11,6 +12,7 @@ interface FieldErrors {
 export function PublisherCreatePage() {
   const navigate = useNavigate();
   const { token } = useAuthStore();
+  const { addToast } = useToastStore();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -120,6 +122,10 @@ export function PublisherCreatePage() {
       }
 
       const newPublisher = await response.json();
+      addToast({
+        type: 'success',
+        message: `Publisher "${newPublisher.name}" created successfully`,
+      });
       navigate(`/admin/publishers/${newPublisher.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create publisher');

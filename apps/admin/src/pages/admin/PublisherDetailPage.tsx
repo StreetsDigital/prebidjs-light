@@ -167,6 +167,20 @@ interface WebsiteFormData {
   notes: string;
 }
 
+interface AssignedAdmin {
+  userId: string;
+  name: string;
+  email: string;
+  role: string;
+  assignedAt: string;
+}
+
+interface AvailableAdmin {
+  id: string;
+  name: string;
+  email: string;
+}
+
 const MOCK_BUILDS: Build[] = [
   {
     id: 'build_1',
@@ -530,6 +544,20 @@ export function PublisherDetailPage() {
     website: null as Website | null,
   });
 
+  // Assigned admins state
+  const [assignedAdmins, setAssignedAdmins] = useState<AssignedAdmin[]>([]);
+  const [availableAdmins, setAvailableAdmins] = useState<AvailableAdmin[]>([]);
+  const [assignAdminModal, setAssignAdminModal] = useState({
+    isOpen: false,
+    isLoading: false,
+  });
+  const [selectedAdminId, setSelectedAdminId] = useState('');
+  const [removeAdminDialog, setRemoveAdminDialog] = useState({
+    isOpen: false,
+    isLoading: false,
+    admin: null as AssignedAdmin | null,
+  });
+
   const fetchPublisher = async () => {
     if (!id) return;
 
@@ -676,6 +704,44 @@ export function PublisherDetailPage() {
     }
   };
 
+  const fetchAssignedAdmins = async () => {
+    if (!id) return;
+
+    try {
+      const response = await fetch(`/api/publishers/${id}/admins`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setAssignedAdmins(data.admins);
+      }
+    } catch (err) {
+      console.error('Failed to fetch assigned admins:', err);
+    }
+  };
+
+  const fetchAvailableAdmins = async () => {
+    if (!id) return;
+
+    try {
+      const response = await fetch(`/api/publishers/${id}/available-admins`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setAvailableAdmins(data.admins);
+      }
+    } catch (err) {
+      console.error('Failed to fetch available admins:', err);
+    }
+  };
+
   const fetchConfigVersions = async () => {
     if (!id) return;
 
@@ -772,6 +838,7 @@ export function PublisherDetailPage() {
     fetchPublisher();
     fetchAdUnits();
     fetchWebsites();
+    fetchAssignedAdmins();
     fetchConfig();
     fetchPublisherBidders();
     fetchAvailableBidders();
@@ -1408,6 +1475,102 @@ export function PublisherDetailPage() {
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'Failed to delete website', 'error');
       setDeleteWebsiteDialog((prev) => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  // Assigned admin handlers
+  const handleOpenAssignAdminModal = () => {
+    fetchAvailableAdmins();
+    setSelectedAdminId('');
+    setAssignAdminModal({ isOpen: true, isLoading: false });
+  };
+
+  const handleCloseAssignAdminModal = () => {
+    setAssignAdminModal({ isOpen: false, isLoading: false });
+    setSelectedAdminId('');
+  };
+
+  const handleAssignAdmin = async () => {
+    if (!selectedAdminId) return;
+
+    setAssignAdminModal((prev) => ({ ...prev, isLoading: true }));
+
+    try {
+      const response = await fetch(`/api/publishers/${id}/admins`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ userId: selectedAdminId }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to assign admin');
+      }
+
+      const data = await response.json();
+      setAssignedAdmins((prev) => [...prev, data.admin]);
+      setAvailableAdmins((prev) => prev.filter((a) => a.id !== selectedAdminId));
+      addToast('Admin assigned successfully', 'success');
+      handleCloseAssignAdminModal();
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to assign admin', 'error');
+      setAssignAdminModal((prev) => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  const handleRemoveAdminClick = (admin: AssignedAdmin) => {
+    setRemoveAdminDialog({
+      isOpen: true,
+      isLoading: false,
+      admin,
+    });
+  };
+
+  const handleRemoveAdminCancel = () => {
+    setRemoveAdminDialog({
+      isOpen: false,
+      isLoading: false,
+      admin: null,
+    });
+  };
+
+  const handleRemoveAdminConfirm = async () => {
+    if (!removeAdminDialog.admin) return;
+
+    setRemoveAdminDialog((prev) => ({ ...prev, isLoading: true }));
+
+    try {
+      const response = await fetch(
+        `/api/publishers/${id}/admins/${removeAdminDialog.admin.userId}`,
+        {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to remove admin');
+      }
+
+      setAssignedAdmins((prev) => prev.filter((a) => a.userId !== removeAdminDialog.admin?.userId));
+      // Add the removed admin back to available list
+      if (removeAdminDialog.admin) {
+        setAvailableAdmins((prev) => [...prev, {
+          id: removeAdminDialog.admin!.userId,
+          name: removeAdminDialog.admin!.name,
+          email: removeAdminDialog.admin!.email,
+        }]);
+      }
+      addToast('Admin removed successfully', 'success');
+      handleRemoveAdminCancel();
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to remove admin', 'error');
+      setRemoveAdminDialog((prev) => ({ ...prev, isLoading: false }));
     }
   };
 
@@ -2464,6 +2627,87 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
                 </div>
               )}
             </dl>
+          </div>
+
+          {/* Assigned Admins Section */}
+          <div className="bg-white shadow rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-medium text-gray-900">Assigned Admins</h2>
+                <p className="text-sm text-gray-500">
+                  Admin users with access to manage this publisher.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleOpenAssignAdminModal}
+                className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
+              >
+                <svg className="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" />
+                </svg>
+                Assign Admin
+              </button>
+            </div>
+
+            {assignedAdmins.length === 0 ? (
+              <div className="text-center py-6">
+                <svg
+                  className="mx-auto h-12 w-12 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1}
+                    d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+                  />
+                </svg>
+                <h3 className="mt-2 text-sm font-semibold text-gray-900">No assigned admins</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  Assign admin users to grant them access to this publisher.
+                </p>
+              </div>
+            ) : (
+              <div className="flow-root">
+                <ul className="-my-5 divide-y divide-gray-200">
+                  {assignedAdmins.map((admin) => (
+                    <li key={admin.userId} className="py-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <div className="h-10 w-10 flex-shrink-0 rounded-full bg-blue-100 flex items-center justify-center">
+                            <span className="text-sm font-medium text-blue-600">
+                              {admin.name.charAt(0).toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="ml-4">
+                            <p className="text-sm font-medium text-gray-900">{admin.name}</p>
+                            <p className="text-sm text-gray-500">{admin.email}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <span className="text-xs text-gray-400">
+                            Assigned {new Date(admin.assignedAt).toLocaleDateString()}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveAdminClick(admin)}
+                            className="text-red-500 hover:text-red-700"
+                            title="Remove admin"
+                          >
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
       ),
@@ -5183,6 +5427,96 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
         message={`Are you sure you want to delete "${deleteWebsiteDialog.website?.name}"? Any ad units linked to this website will be unlinked.`}
         confirmText="Delete"
         isLoading={deleteWebsiteDialog.isLoading}
+        variant="danger"
+      />
+
+      {/* Assign Admin Modal */}
+      <FormModal
+        isOpen={assignAdminModal.isOpen}
+        onClose={handleCloseAssignAdminModal}
+        title="Assign Admin"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500">
+            Select an admin user to grant them access to manage this publisher.
+          </p>
+          {availableAdmins.length === 0 ? (
+            <div className="text-center py-6">
+              <svg
+                className="mx-auto h-12 w-12 text-gray-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1}
+                  d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+                />
+              </svg>
+              <h3 className="mt-2 text-sm font-semibold text-gray-900">No available admins</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                All admin users are already assigned to this publisher, or there are no admin users in the system.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label htmlFor="selectAdmin" className="block text-sm font-medium text-gray-700">
+                  Select Admin
+                </label>
+                <select
+                  id="selectAdmin"
+                  value={selectedAdminId}
+                  onChange={(e) => setSelectedAdminId(e.target.value)}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                >
+                  <option value="">Choose an admin...</option>
+                  {availableAdmins.map((admin) => (
+                    <option key={admin.id} value={admin.id}>
+                      {admin.name} ({admin.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={handleCloseAssignAdminModal}
+                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAssignAdmin}
+                  disabled={!selectedAdminId || assignAdminModal.isLoading}
+                  className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-500 disabled:opacity-50"
+                >
+                  {assignAdminModal.isLoading && (
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  )}
+                  Assign Admin
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </FormModal>
+
+      {/* Remove Admin Confirmation */}
+      <ConfirmDialog
+        isOpen={removeAdminDialog.isOpen}
+        onClose={handleRemoveAdminCancel}
+        onConfirm={handleRemoveAdminConfirm}
+        title="Remove Admin"
+        message={`Are you sure you want to remove "${removeAdminDialog.admin?.name}" from this publisher? They will no longer have access to manage this publisher.`}
+        confirmText="Remove"
+        isLoading={removeAdminDialog.isLoading}
         variant="danger"
       />
     </div>

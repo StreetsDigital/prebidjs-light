@@ -1,5 +1,5 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { db, publishers, publisherConfig, adUnits, publisherBidders, configVersions, auditLogs } from '../db';
+import { db, publishers, publisherConfig, adUnits, publisherBidders, configVersions, auditLogs, publisherAdmins, users } from '../db';
 import { eq, and, desc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth, requireAdmin, requireRole, TokenPayload } from '../middleware/auth';
@@ -41,8 +41,17 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     const offset = (pageNum - 1) * limitNum;
 
     // Super admin sees all publishers
-    // Regular admin would see only assigned publishers (TODO: implement assignment)
+    // Regular admin sees only assigned publishers
     let allPublishers = db.select().from(publishers).all();
+
+    // Filter for regular admin users - they only see assigned publishers
+    if (user.role === 'admin') {
+      const assignments = db.select().from(publisherAdmins)
+        .where(eq(publisherAdmins.userId, user.userId))
+        .all();
+      const assignedPublisherIds = new Set(assignments.map(a => a.publisherId));
+      allPublishers = allPublishers.filter(p => assignedPublisherIds.has(p.id));
+    }
 
     // Apply status filter
     if (status) {
@@ -350,6 +359,189 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       embedCode,
       apiKey: publisher.apiKey,
     };
+  });
+
+  // ==================== ASSIGNED ADMINS ROUTES ====================
+
+  // Get assigned admins for a publisher
+  fastify.get<{ Params: { id: string } }>('/:id/admins', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
+    const { id } = request.params;
+
+    // Check if publisher exists
+    const publisher = db.select().from(publishers).where(eq(publishers.id, id)).get();
+    if (!publisher) {
+      return reply.code(404).send({ error: 'Publisher not found' });
+    }
+
+    // Get all admin assignments for this publisher
+    const assignments = db.select().from(publisherAdmins)
+      .where(eq(publisherAdmins.publisherId, id))
+      .all();
+
+    // Get user details for each assignment
+    const assignedAdmins = assignments.map(assignment => {
+      const user = db.select().from(users).where(eq(users.id, assignment.userId)).get();
+      return {
+        userId: assignment.userId,
+        name: user?.name || 'Unknown',
+        email: user?.email || 'Unknown',
+        role: user?.role || 'unknown',
+        assignedAt: assignment.createdAt,
+      };
+    }).filter(admin => admin.role === 'admin');
+
+    return { admins: assignedAdmins };
+  });
+
+  // Get available admins (not yet assigned to this publisher)
+  fastify.get<{ Params: { id: string } }>('/:id/available-admins', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
+    const { id } = request.params;
+
+    // Check if publisher exists
+    const publisher = db.select().from(publishers).where(eq(publishers.id, id)).get();
+    if (!publisher) {
+      return reply.code(404).send({ error: 'Publisher not found' });
+    }
+
+    // Get all admin users
+    const allAdmins = db.select().from(users)
+      .where(eq(users.role, 'admin'))
+      .all();
+
+    // Get already assigned admin IDs
+    const assignments = db.select().from(publisherAdmins)
+      .where(eq(publisherAdmins.publisherId, id))
+      .all();
+    const assignedIds = new Set(assignments.map(a => a.userId));
+
+    // Filter out already assigned admins
+    const availableAdmins = allAdmins.filter(admin => !assignedIds.has(admin.id));
+
+    return {
+      admins: availableAdmins.map(admin => ({
+        id: admin.id,
+        name: admin.name,
+        email: admin.email,
+      })),
+    };
+  });
+
+  // Assign an admin to a publisher
+  fastify.post<{ Params: { id: string }; Body: { userId: string } }>('/:id/admins', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const { userId } = request.body;
+    const currentUser = request.user as TokenPayload;
+
+    // Check if publisher exists
+    const publisher = db.select().from(publishers).where(eq(publishers.id, id)).get();
+    if (!publisher) {
+      return reply.code(404).send({ error: 'Publisher not found' });
+    }
+
+    // Check if user exists and is an admin
+    const user = db.select().from(users).where(eq(users.id, userId)).get();
+    if (!user) {
+      return reply.code(404).send({ error: 'User not found' });
+    }
+    if (user.role !== 'admin') {
+      return reply.code(400).send({ error: 'User is not an admin' });
+    }
+
+    // Check if already assigned
+    const existing = db.select().from(publisherAdmins)
+      .where(and(eq(publisherAdmins.publisherId, id), eq(publisherAdmins.userId, userId)))
+      .get();
+    if (existing) {
+      return reply.code(409).send({ error: 'Admin is already assigned to this publisher' });
+    }
+
+    const now = new Date().toISOString();
+
+    // Create assignment
+    db.insert(publisherAdmins).values({
+      publisherId: id,
+      userId,
+      createdAt: now,
+    }).run();
+
+    // Log audit entry
+    db.insert(auditLogs).values({
+      id: uuidv4(),
+      userId: currentUser.userId,
+      action: 'ASSIGN_ADMIN',
+      entityType: 'publisher_admin',
+      entityId: id,
+      oldValues: null,
+      newValues: JSON.stringify({ publisherId: id, userId, userName: user.name }),
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'] || null,
+      createdAt: now,
+    }).run();
+
+    return {
+      success: true,
+      admin: {
+        userId: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        assignedAt: now,
+      },
+    };
+  });
+
+  // Remove an admin from a publisher
+  fastify.delete<{ Params: { id: string; userId: string } }>('/:id/admins/:userId', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
+    const { id, userId } = request.params;
+    const currentUser = request.user as TokenPayload;
+
+    // Check if publisher exists
+    const publisher = db.select().from(publishers).where(eq(publishers.id, id)).get();
+    if (!publisher) {
+      return reply.code(404).send({ error: 'Publisher not found' });
+    }
+
+    // Check if assignment exists
+    const assignment = db.select().from(publisherAdmins)
+      .where(and(eq(publisherAdmins.publisherId, id), eq(publisherAdmins.userId, userId)))
+      .get();
+    if (!assignment) {
+      return reply.code(404).send({ error: 'Admin assignment not found' });
+    }
+
+    // Get user info for audit log
+    const user = db.select().from(users).where(eq(users.id, userId)).get();
+
+    const now = new Date().toISOString();
+
+    // Delete assignment
+    db.delete(publisherAdmins)
+      .where(and(eq(publisherAdmins.publisherId, id), eq(publisherAdmins.userId, userId)))
+      .run();
+
+    // Log audit entry
+    db.insert(auditLogs).values({
+      id: uuidv4(),
+      userId: currentUser.userId,
+      action: 'UNASSIGN_ADMIN',
+      entityType: 'publisher_admin',
+      entityId: id,
+      oldValues: JSON.stringify({ publisherId: id, userId, userName: user?.name }),
+      newValues: null,
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'] || null,
+      createdAt: now,
+    }).run();
+
+    return reply.code(204).send();
   });
 
   // ==================== AD UNITS ROUTES ====================

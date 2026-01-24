@@ -169,3 +169,25 @@ export const scheduledReports = sqliteTable('scheduled_reports', {
   createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
   updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
 });
+
+// Analytics events table (simplified version of ClickHouse schema for development)
+export const analyticsEvents = sqliteTable('analytics_events', {
+  id: text('id').primaryKey(),
+  publisherId: text('publisher_id').notNull(),
+  eventType: text('event_type').notNull(), // auctionInit, auctionEnd, bidRequested, bidResponse, bidWon, bidTimeout, noBid, adRenderSucceeded, adRenderFailed
+  auctionId: text('auction_id'),
+  adUnitCode: text('ad_unit_code'),
+  bidderCode: text('bidder_code'),
+  cpm: text('cpm'), // Stored as text for decimal precision
+  currency: text('currency').default('USD'),
+  latencyMs: integer('latency_ms'),
+  timeout: integer('timeout', { mode: 'boolean' }).default(false),
+  won: integer('won', { mode: 'boolean' }).default(false),
+  rendered: integer('rendered', { mode: 'boolean' }).default(false),
+  pageUrl: text('page_url'),
+  domain: text('domain'),
+  deviceType: text('device_type'),
+  country: text('country'),
+  timestamp: text('timestamp').notNull().$defaultFn(() => new Date().toISOString()),
+  receivedAt: text('received_at').notNull().$defaultFn(() => new Date().toISOString()),
+});

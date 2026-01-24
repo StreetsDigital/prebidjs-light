@@ -189,6 +189,27 @@ export function initializeDatabase() {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS analytics_events (
+      id TEXT PRIMARY KEY,
+      publisher_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      auction_id TEXT,
+      ad_unit_code TEXT,
+      bidder_code TEXT,
+      cpm TEXT,
+      currency TEXT DEFAULT 'USD',
+      latency_ms INTEGER,
+      timeout INTEGER DEFAULT 0,
+      won INTEGER DEFAULT 0,
+      rendered INTEGER DEFAULT 0,
+      page_url TEXT,
+      domain TEXT,
+      device_type TEXT,
+      country TEXT,
+      timestamp TEXT NOT NULL,
+      received_at TEXT NOT NULL
+    );
+
     -- Create indexes
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
@@ -201,6 +222,9 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_scheduled_reports_status ON scheduled_reports(status);
     CREATE INDEX IF NOT EXISTS idx_scheduled_reports_created_by ON scheduled_reports(created_by);
+    CREATE INDEX IF NOT EXISTS idx_analytics_events_publisher ON analytics_events(publisher_id);
+    CREATE INDEX IF NOT EXISTS idx_analytics_events_type ON analytics_events(event_type);
+    CREATE INDEX IF NOT EXISTS idx_analytics_events_timestamp ON analytics_events(timestamp);
   `);
 }
 

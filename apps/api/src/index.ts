@@ -10,6 +10,7 @@ import userRoutes from './routes/users';
 import dashboardRoutes from './routes/dashboard';
 import auditLogsRoutes from './routes/audit-logs';
 import scheduledReportsRoutes from './routes/scheduled-reports';
+import analyticsRoutes from './routes/analytics';
 
 const app = Fastify({
   logger: {
@@ -49,6 +50,7 @@ app.register(userRoutes, { prefix: '/api/users' });
 app.register(dashboardRoutes, { prefix: '/api/dashboard' });
 app.register(auditLogsRoutes, { prefix: '/api/audit-logs' });
 app.register(scheduledReportsRoutes, { prefix: '/api/scheduled-reports' });
+app.register(analyticsRoutes, { prefix: '/api/analytics' });
 
 // Placeholder for other routes
 // app.register(configRoutes, { prefix: '/api/config' });
@@ -119,8 +121,71 @@ app.get('/c/:apiKey', async (request, reply) => {
 
 // Analytics beacon endpoint (high throughput)
 app.post('/b', async (request, reply) => {
-  // TODO: Implement analytics beacon with Redis Streams
-  return reply.code(204).send();
+  try {
+    const { db, analyticsEvents } = await import('./db');
+    const { v4: uuidv4 } = await import('uuid');
+
+    const body = request.body as {
+      events?: Array<{
+        publisherId: string;
+        eventType: string;
+        auctionId?: string;
+        adUnitCode?: string;
+        bidderCode?: string;
+        cpm?: number;
+        currency?: string;
+        latencyMs?: number;
+        timeout?: boolean;
+        won?: boolean;
+        rendered?: boolean;
+        pageUrl?: string;
+        domain?: string;
+        deviceType?: string;
+        country?: string;
+        timestamp?: string;
+      }>;
+    };
+
+    if (!body?.events || !Array.isArray(body.events)) {
+      return reply.code(400).send({ error: 'Invalid beacon payload' });
+    }
+
+    const now = new Date().toISOString();
+
+    // Insert events (in a real system, this would go to Redis Streams then ClickHouse)
+    for (const event of body.events) {
+      if (!event.publisherId || !event.eventType) {
+        continue; // Skip invalid events
+      }
+
+      db.insert(analyticsEvents).values({
+        id: uuidv4(),
+        publisherId: event.publisherId,
+        eventType: event.eventType,
+        auctionId: event.auctionId || null,
+        adUnitCode: event.adUnitCode || null,
+        bidderCode: event.bidderCode || null,
+        cpm: event.cpm?.toString() || null,
+        currency: event.currency || 'USD',
+        latencyMs: event.latencyMs || null,
+        timeout: event.timeout ? 1 : 0,
+        won: event.won ? 1 : 0,
+        rendered: event.rendered ? 1 : 0,
+        pageUrl: event.pageUrl || null,
+        domain: event.domain || null,
+        deviceType: event.deviceType || null,
+        country: event.country || null,
+        timestamp: event.timestamp || now,
+        receivedAt: now,
+      }).run();
+    }
+
+    // Return 200 for successful beacon processing
+    return reply.code(200).send({ received: body.events.length });
+  } catch (err) {
+    request.log.error(err, 'Failed to process beacon');
+    return reply.code(500).send({ error: 'Failed to process beacon' });
+  }
 });
 
 // Start server

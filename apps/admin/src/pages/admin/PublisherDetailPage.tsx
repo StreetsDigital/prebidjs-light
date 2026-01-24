@@ -1923,6 +1923,10 @@ export function PublisherDetailPage() {
 
       setBuilds((prev) => [completedBuild, ...prev.slice(1)]);
       setIsBuildTriggering(false);
+      addToast({
+        type: 'success',
+        message: `Build v${completedBuild.version} completed successfully`,
+      });
     }, 3000);
   };
 

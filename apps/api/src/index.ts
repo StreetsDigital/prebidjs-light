@@ -56,6 +56,217 @@ app.register(analyticsRoutes, { prefix: '/api/analytics' });
 // app.register(configRoutes, { prefix: '/api/config' });
 // app.register(analyticsRoutes, { prefix: '/api/analytics' });
 
+// Wrapper script endpoint - serves the pb.js script for publishers
+app.get('/pb.js', async (request, reply) => {
+  const { id } = request.query as { id?: string };
+
+  if (!id) {
+    return reply.code(400).type('text/plain').send('// Error: Missing publisher API key');
+  }
+
+  // Import db and schema
+  const { db, publishers } = await import('./db');
+  const { eq } = await import('drizzle-orm');
+
+  // Validate publisher exists and is active
+  const publisher = db.select().from(publishers).where(eq(publishers.apiKey, id)).get();
+
+  if (!publisher) {
+    return reply.code(404).type('text/plain').send('// Error: Publisher not found');
+  }
+
+  if (publisher.status !== 'active') {
+    return reply.code(403).type('text/plain').send('// Error: Publisher is not active');
+  }
+
+  // Get the API base URL
+  const protocol = request.headers['x-forwarded-proto'] || 'http';
+  const host = request.headers['x-forwarded-host'] || request.headers.host || 'localhost:3001';
+  const apiEndpoint = `${protocol}://${host}`;
+
+  // Generate the wrapper script with the publisher's config
+  const wrapperScript = `
+/**
+ * pbjs_engine Publisher Wrapper v1.0.0
+ * Publisher: ${publisher.name}
+ * Generated: ${new Date().toISOString()}
+ */
+(function() {
+  'use strict';
+
+  var publisherId = '${id}';
+  var apiEndpoint = '${apiEndpoint}';
+  var CONFIG_CACHE_KEY = 'pb_config_cache';
+  var CONFIG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+  // Event listeners
+  var eventListeners = {};
+
+  function addEventListener(event, callback) {
+    if (!eventListeners[event]) {
+      eventListeners[event] = [];
+    }
+    eventListeners[event].push(callback);
+  }
+
+  function removeEventListener(event, callback) {
+    if (!eventListeners[event]) return;
+    if (callback) {
+      eventListeners[event] = eventListeners[event].filter(function(cb) { return cb !== callback; });
+    } else {
+      delete eventListeners[event];
+    }
+  }
+
+  function emitEvent(event, data) {
+    if (!eventListeners[event]) return;
+    eventListeners[event].forEach(function(callback) {
+      try {
+        callback(data);
+      } catch (e) {
+        console.error('pb: Event callback error', e);
+      }
+    });
+  }
+
+  // Config caching
+  function getCachedConfig() {
+    try {
+      var cached = localStorage.getItem(CONFIG_CACHE_KEY + '_' + publisherId);
+      if (cached) {
+        var parsed = JSON.parse(cached);
+        if (Date.now() - parsed.timestamp < CONFIG_CACHE_TTL) {
+          return parsed.data;
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function setCachedConfig(config) {
+    try {
+      localStorage.setItem(CONFIG_CACHE_KEY + '_' + publisherId, JSON.stringify({
+        data: config,
+        timestamp: Date.now()
+      }));
+    } catch (e) {}
+  }
+
+  // Analytics beacon
+  function sendBeacon(events) {
+    try {
+      var payload = JSON.stringify({ events: events });
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(apiEndpoint + '/b', payload);
+      } else {
+        fetch(apiEndpoint + '/b', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload,
+          keepalive: true
+        });
+      }
+    } catch (e) {
+      console.error('pb: Beacon error', e);
+    }
+  }
+
+  // Create pb namespace
+  var config = null;
+  var initialized = false;
+
+  window.pb = {
+    version: '1.0.0',
+    publisherId: publisherId,
+
+    init: function() {
+      var self = this;
+      if (initialized) {
+        console.warn('pb: Already initialized');
+        return Promise.resolve();
+      }
+
+      return new Promise(function(resolve, reject) {
+        // Check cache first
+        config = getCachedConfig();
+
+        if (config) {
+          initialized = true;
+          emitEvent('pbReady', { publisherId: publisherId, cached: true });
+          resolve();
+          return;
+        }
+
+        // Fetch config from server
+        fetch(apiEndpoint + '/c/' + publisherId)
+          .then(function(response) {
+            if (!response.ok) {
+              throw new Error('Config fetch failed: ' + response.status);
+            }
+            return response.json();
+          })
+          .then(function(data) {
+            config = data;
+            setCachedConfig(config);
+            initialized = true;
+            emitEvent('pbReady', { publisherId: publisherId, cached: false });
+            resolve();
+          })
+          .catch(function(error) {
+            console.error('pb: Initialization failed', error);
+            emitEvent('pbError', { error: error });
+            reject(error);
+          });
+      });
+    },
+
+    getConfig: function() {
+      return config;
+    },
+
+    refresh: function(adUnitCodes) {
+      if (!initialized) {
+        console.warn('pb: Not initialized');
+        return;
+      }
+      emitEvent('refreshRequested', { adUnitCodes: adUnitCodes });
+      // In production, this would trigger Prebid.js refresh
+    },
+
+    on: function(event, callback) {
+      addEventListener(event, callback);
+    },
+
+    off: function(event, callback) {
+      removeEventListener(event, callback);
+    },
+
+    sendAnalytics: function(eventType, data) {
+      sendBeacon([{
+        publisherId: publisherId,
+        eventType: eventType,
+        timestamp: new Date().toISOString(),
+        data: data
+      }]);
+    }
+  };
+
+  // Auto-initialize if not in debug mode
+  if (typeof window.pbDebug === 'undefined' || !window.pbDebug) {
+    window.pb.init().catch(function(e) {
+      console.error('pb: Auto-init failed', e);
+    });
+  }
+})();
+`;
+
+  // Set appropriate headers
+  reply.header('Content-Type', 'application/javascript; charset=utf-8');
+  reply.header('Cache-Control', 'public, max-age=300'); // 5 minute cache
+
+  return wrapperScript;
+});
+
 // Public config endpoint (high performance)
 app.get('/c/:apiKey', async (request, reply) => {
   const { apiKey } = request.params as { apiKey: string };

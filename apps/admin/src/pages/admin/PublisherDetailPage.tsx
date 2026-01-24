@@ -220,6 +220,11 @@ export function PublisherDetailPage() {
     domains: '',
     notes: '',
   });
+  const [originalEditForm, setOriginalEditForm] = useState<EditFormData | null>(null);
+  const [unsavedChangesDialog, setUnsavedChangesDialog] = useState({
+    isOpen: false,
+    pendingAction: null as (() => void) | null,
+  });
 
   // Ad Units state
   const [adUnits, setAdUnits] = useState<AdUnit[]>([]);
@@ -501,18 +506,53 @@ export function PublisherDetailPage() {
 
   const handleEditClick = () => {
     if (!publisher) return;
-    setEditForm({
+    const formData = {
       name: publisher.name,
       slug: publisher.slug,
       status: publisher.status,
       domains: publisher.domains.join(', '),
       notes: publisher.notes || '',
-    });
+    };
+    setEditForm(formData);
+    setOriginalEditForm(formData);
     setEditModal({ isOpen: true, isLoading: false });
   };
 
+  const hasUnsavedChanges = () => {
+    if (!originalEditForm) return false;
+    return (
+      editForm.name !== originalEditForm.name ||
+      editForm.slug !== originalEditForm.slug ||
+      editForm.status !== originalEditForm.status ||
+      editForm.domains !== originalEditForm.domains ||
+      editForm.notes !== originalEditForm.notes
+    );
+  };
+
   const handleEditClose = () => {
-    setEditModal({ isOpen: false, isLoading: false });
+    if (hasUnsavedChanges()) {
+      setUnsavedChangesDialog({
+        isOpen: true,
+        pendingAction: () => {
+          setEditModal({ isOpen: false, isLoading: false });
+          setOriginalEditForm(null);
+        },
+      });
+    } else {
+      setEditModal({ isOpen: false, isLoading: false });
+      setOriginalEditForm(null);
+    }
+  };
+
+  const handleDiscardChanges = () => {
+    if (unsavedChangesDialog.pendingAction) {
+      unsavedChangesDialog.pendingAction();
+    }
+    setUnsavedChangesDialog({ isOpen: false, pendingAction: null });
+  };
+
+  const handleCancelDiscard = () => {
+    setUnsavedChangesDialog({ isOpen: false, pendingAction: null });
   };
 
   const handleEditSubmit = async (e: React.FormEvent) => {
@@ -2003,6 +2043,17 @@ export function PublisherDetailPage() {
           </div>
         </form>
       </FormModal>
+
+      {/* Unsaved Changes Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={unsavedChangesDialog.isOpen}
+        onClose={handleCancelDiscard}
+        onConfirm={handleDiscardChanges}
+        title="Unsaved Changes"
+        message="You have unsaved changes. Are you sure you want to discard them?"
+        confirmText="Discard Changes"
+        variant="warning"
+      />
 
       {/* Add/Edit Ad Unit Modal */}
       <FormModal

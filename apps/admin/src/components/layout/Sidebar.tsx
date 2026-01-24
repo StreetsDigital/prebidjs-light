@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuthStore, UserRole } from '../../stores/authStore';
 
@@ -84,49 +85,74 @@ const menuItems: MenuItem[] = [
 
 export function Sidebar() {
   const { user } = useAuthStore();
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const userRole = user?.role || 'publisher';
 
   // Filter menu items based on user role
   const visibleMenuItems = menuItems.filter(item => item.roles.includes(userRole));
 
   return (
-    <aside className="w-64 bg-gray-900 min-h-screen flex flex-col">
+    <aside className={`${isCollapsed ? 'w-16' : 'w-64'} bg-gray-900 min-h-screen flex flex-col transition-all duration-300`}>
       {/* Logo */}
-      <div className="px-6 py-4 border-b border-gray-800">
-        <h1 className="text-xl font-bold text-white">pbjs_engine</h1>
-        <p className="text-xs text-gray-400 mt-1">Prebid Admin</p>
+      <div className={`${isCollapsed ? 'px-2' : 'px-6'} py-4 border-b border-gray-800 flex items-center justify-between`}>
+        {!isCollapsed && (
+          <div>
+            <h1 className="text-xl font-bold text-white">pbjs_engine</h1>
+            <p className="text-xs text-gray-400 mt-1">Prebid Admin</p>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className={`p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors ${isCollapsed ? 'mx-auto' : ''}`}
+          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {isCollapsed ? (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            </svg>
+          ) : (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+            </svg>
+          )}
+        </button>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-4 py-4 space-y-1">
+      <nav className={`flex-1 ${isCollapsed ? 'px-2' : 'px-4'} py-4 space-y-1`}>
         {visibleMenuItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
             className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              `flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                 isActive
                   ? 'bg-blue-600 text-white'
                   : 'text-gray-300 hover:bg-gray-800 hover:text-white'
               }`
             }
+            title={isCollapsed ? item.name : undefined}
           >
             {item.icon}
-            {item.name}
+            {!isCollapsed && item.name}
           </NavLink>
         ))}
       </nav>
 
       {/* User info at bottom */}
-      <div className="px-4 py-4 border-t border-gray-800">
-        <div className="flex items-center gap-3">
+      <div className={`${isCollapsed ? 'px-2' : 'px-4'} py-4 border-t border-gray-800`}>
+        <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'}`}>
           <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-medium">
             {user?.name?.charAt(0) || 'U'}
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-white truncate">{user?.name}</p>
-            <p className="text-xs text-gray-400 truncate">{user?.role}</p>
-          </div>
+          {!isCollapsed && (
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-white truncate">{user?.name}</p>
+              <p className="text-xs text-gray-400 truncate">{user?.role}</p>
+            </div>
+          )}
         </div>
       </div>
     </aside>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
+import { useToastStore } from '../../stores/toastStore';
 import { Breadcrumb, BreadcrumbItem, ConfirmDialog, FormModal, Tabs, Tab } from '../../components/ui';
 
 interface Publisher {
@@ -312,6 +313,7 @@ const AVAILABLE_USER_ID_MODULES: Omit<UserIdModule, 'enabled'>[] = [
 export function PublisherDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { token } = useAuthStore();
+  const { addToast } = useToastStore();
   const location = useLocation();
   const returnUrl = (location.state as { returnUrl?: string })?.returnUrl || '/admin/publishers';
   const [publisher, setPublisher] = useState<Publisher | null>(null);
@@ -785,6 +787,10 @@ export function PublisherDetailPage() {
 
       const data = await response.json();
       setPublisher((prev) => prev ? { ...prev, apiKey: data.apiKey } : null);
+      addToast({
+        type: 'success',
+        message: 'API key regenerated successfully',
+      });
       handleRegenerateCancel();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to regenerate API key');
@@ -893,6 +899,10 @@ export function PublisherDetailPage() {
 
       const updatedPublisher = await response.json();
       setPublisher(updatedPublisher);
+      addToast({
+        type: 'success',
+        message: 'Publisher updated successfully',
+      });
       handleEditClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update publisher');

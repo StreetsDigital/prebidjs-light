@@ -423,12 +423,12 @@ export function PublisherDetailPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setPublisherBidders(data.bidders.map((b: { id: string; bidderCode: string; enabled: boolean; params?: string; priority?: number }) => ({
+        setPublisherBidders(data.bidders.map((b: { id: string; bidderCode: string; enabled: boolean; params?: Record<string, string> | null; priority?: number }) => ({
           id: b.id,
           bidderCode: b.bidderCode,
           bidderName: AVAILABLE_BIDDERS.find(ab => ab.code === b.bidderCode)?.name || b.bidderCode,
           enabled: b.enabled,
-          params: b.params ? JSON.parse(b.params) : {},
+          params: b.params || {},
           priority: b.priority || 0,
         })));
       }

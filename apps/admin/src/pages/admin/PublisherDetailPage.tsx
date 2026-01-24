@@ -99,6 +99,75 @@ const MOCK_CONFIG_VERSIONS: ConfigVersion[] = [
   },
 ];
 
+interface Build {
+  id: string;
+  version: string;
+  status: 'success' | 'failed' | 'building' | 'pending';
+  startedAt: string;
+  completedAt: string | null;
+  duration: number | null;
+  triggeredBy: string;
+  commitHash: string;
+  fileSize: string | null;
+  modules: number;
+  bidders: number;
+}
+
+const MOCK_BUILDS: Build[] = [
+  {
+    id: 'build_1',
+    version: '1.3.0',
+    status: 'success',
+    startedAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+    completedAt: new Date(Date.now() - 1000 * 60 * 28).toISOString(),
+    duration: 120,
+    triggeredBy: 'Super Admin',
+    commitHash: 'a1b2c3d',
+    fileSize: '245 KB',
+    modules: 12,
+    bidders: 5,
+  },
+  {
+    id: 'build_2',
+    version: '1.2.1',
+    status: 'success',
+    startedAt: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(),
+    completedAt: new Date(Date.now() - 1000 * 60 * 60 * 4 + 1000 * 95).toISOString(),
+    duration: 95,
+    triggeredBy: 'Staff Admin',
+    commitHash: 'e4f5g6h',
+    fileSize: '238 KB',
+    modules: 11,
+    bidders: 5,
+  },
+  {
+    id: 'build_3',
+    version: '1.2.0',
+    status: 'failed',
+    startedAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+    completedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 + 1000 * 45).toISOString(),
+    duration: 45,
+    triggeredBy: 'Super Admin',
+    commitHash: 'i7j8k9l',
+    fileSize: null,
+    modules: 11,
+    bidders: 4,
+  },
+  {
+    id: 'build_4',
+    version: '1.1.0',
+    status: 'success',
+    startedAt: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
+    completedAt: new Date(Date.now() - 1000 * 60 * 60 * 48 + 1000 * 88).toISOString(),
+    duration: 88,
+    triggeredBy: 'Super Admin',
+    commitHash: 'm0n1o2p',
+    fileSize: '220 KB',
+    modules: 10,
+    bidders: 4,
+  },
+];
+
 export function PublisherDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { token } = useAuthStore();
@@ -146,6 +215,9 @@ export function PublisherDetailPage() {
     isLoading: false,
     version: null as ConfigVersion | null,
   });
+
+  // Build state
+  const [builds] = useState<Build[]>(MOCK_BUILDS);
 
   const fetchPublisher = async () => {
     if (!id) return;
@@ -402,6 +474,54 @@ export function PublisherDetailPage() {
         {status}
       </span>
     );
+  };
+
+  const getBuildStatusBadge = (status: Build['status']) => {
+    const styles = {
+      success: 'bg-green-100 text-green-800',
+      failed: 'bg-red-100 text-red-800',
+      building: 'bg-blue-100 text-blue-800',
+      pending: 'bg-gray-100 text-gray-800',
+    };
+    const icons = {
+      success: (
+        <svg className="mr-1 h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+        </svg>
+      ),
+      failed: (
+        <svg className="mr-1 h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+        </svg>
+      ),
+      building: (
+        <svg className="mr-1 h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+      ),
+      pending: (
+        <svg className="mr-1 h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+        </svg>
+      ),
+    };
+    return (
+      <span
+        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${styles[status]}`}
+      >
+        {icons[status]}
+        {status}
+      </span>
+    );
+  };
+
+  const formatDuration = (seconds: number | null) => {
+    if (seconds === null) return '-';
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}m ${remainingSeconds}s`;
   };
 
   if (isLoading) {
@@ -888,6 +1008,131 @@ export function PublisherDetailPage() {
             <p className="mt-1 text-sm text-gray-500">
               Add bidder adapters to enable programmatic advertising.
             </p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'build',
+      label: 'Build',
+      content: (
+        <div className="space-y-6">
+          {/* Current Build Status */}
+          <div className="bg-white shadow rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-medium text-gray-900">Build Status</h2>
+                <p className="text-sm text-gray-500">
+                  Current Prebid.js build for this publisher.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
+              >
+                <svg className="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                </svg>
+                Trigger Build
+              </button>
+            </div>
+
+            {builds.length > 0 && (
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                      builds[0].status === 'success' ? 'bg-green-100' :
+                      builds[0].status === 'failed' ? 'bg-red-100' :
+                      builds[0].status === 'building' ? 'bg-blue-100' : 'bg-gray-100'
+                    }`}>
+                      {builds[0].status === 'success' && (
+                        <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                      {builds[0].status === 'failed' && (
+                        <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      )}
+                      {builds[0].status === 'building' && (
+                        <svg className="h-6 w-6 text-blue-600 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                      )}
+                    </div>
+                    <div className="ml-4">
+                      <p className="text-sm font-medium text-gray-900">
+                        Build v{builds[0].version} {getBuildStatusBadge(builds[0].status)}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        Started {formatVersionDate(builds[0].startedAt)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-900">{builds[0].fileSize || 'N/A'}</p>
+                    <p className="text-sm text-gray-500">{formatDuration(builds[0].duration)}</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-3 gap-4 pt-4 border-t border-gray-200">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase">Modules</p>
+                    <p className="mt-1 text-lg font-semibold text-gray-900">{builds[0].modules}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase">Bidders</p>
+                    <p className="mt-1 text-lg font-semibold text-gray-900">{builds[0].bidders}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase">Commit</p>
+                    <p className="mt-1 text-sm font-mono text-gray-900">{builds[0].commitHash}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Build History */}
+          <div className="bg-white shadow rounded-lg">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-medium text-gray-900">Build History</h2>
+              <p className="text-sm text-gray-500">Previous builds for this publisher.</p>
+            </div>
+            <div className="divide-y divide-gray-200">
+              {builds.map((build, index) => (
+                <div key={build.id} className="px-6 py-4 hover:bg-gray-50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <div className="flex-shrink-0">
+                        {getBuildStatusBadge(build.status)}
+                      </div>
+                      <div className="ml-4">
+                        <p className="text-sm font-medium text-gray-900">
+                          v{build.version}
+                          {index === 0 && (
+                            <span className="ml-2 inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+                              Latest
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          by {build.triggeredBy} • {formatVersionDate(build.startedAt)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-4 text-sm text-gray-500">
+                      <span className="font-mono">{build.commitHash}</span>
+                      <span>{formatDuration(build.duration)}</span>
+                      <span>{build.fileSize || '-'}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       ),

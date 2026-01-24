@@ -1,0 +1,59 @@
+{
+  "debug": false,
+  "bidderTimeout": 1500,
+  "priceGranularity": "medium",
+  "sendAllBids": true,
+  "bidderSequence": "random",
+  "publisherId": "1eea54e0-2550-4f50-ab2e-f0d4397b920e",
+  "publisherName": "Test Publisher",
+  "publisherSlug": "test-publisher",
+  "domains": [
+    "localhost",
+    "example.com"
+  ],
+  "adUnits": [
+    {
+      "code": "publisher-a-header",
+      "mediaTypes": [
+        "banner"
+      ],
+      "bids": [
+        {
+          "bidder": "appnexus",
+          "params": {
+            "placementId": "12345678"
+          }
+        }
+      ]
+    },
+    {
+      "code": "FLOOR_TEST",
+      "mediaTypes": [
+        "banner"
+      ],
+      "bids": [
+        {
+          "bidder": "appnexus",
+          "params": {
+            "placementId": "12345678"
+          }
+        }
+      ]
+    },
+    {
+      "code": "publisher-a-sidebar",
+      "mediaTypes": [
+        "banner"
+      ],
+      "bids": [
+        {
+          "bidder": "appnexus",
+          "params": {
+            "placementId": "12345678"
+          }
+        }
+      ]
+    }
+  ],
+  "exportedAt": "2026-01-24T06:23:20.761Z"
+}

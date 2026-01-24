@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Embed Code Test - pbjs_engine</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 { color: #333; }
+    .test-result {
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 8px;
+      font-family: monospace;
+    }
+    .pending { background: #fff3cd; border: 1px solid #ffc107; }
+    .success { background: #d4edda; border: 1px solid #28a745; }
+    .error { background: #f8d7da; border: 1px solid #dc3545; }
+    #config-output {
+      background: #333;
+      color: #0f0;
+      padding: 15px;
+      border-radius: 8px;
+      white-space: pre-wrap;
+      font-size: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>pbjs_engine Embed Code Test</h1>
+
+  <div id="script-test" class="test-result pending">
+    Testing: Script loads...
+  </div>
+
+  <div id="namespace-test" class="test-result pending">
+    Testing: pb namespace available...
+  </div>
+
+  <div id="config-test" class="test-result pending">
+    Testing: Config fetched...
+  </div>
+
+  <h2>Config Output</h2>
+  <div id="config-output">Waiting for config...</div>
+
+  <!-- pbjs_engine Prebid Wrapper -->
+  <script src="http://localhost:3001/pb.js?id=pb_e01f1eabe2914779bf51b79d6575008c" async></script>
+
+  <script>
+    // Wait for script to load and test
+    function runTests() {
+      // Test 1: Script loaded (if we reach here, it loaded)
+      var scriptTest = document.getElementById('script-test');
+      scriptTest.textContent = '✅ Script loaded successfully';
+      scriptTest.className = 'test-result success';
+
+      // Test 2: pb namespace available
+      var namespaceTest = document.getElementById('namespace-test');
+      if (typeof window.pb !== 'undefined') {
+        namespaceTest.textContent = '✅ pb namespace available (version: ' + window.pb.version + ')';
+        namespaceTest.className = 'test-result success';
+      } else {
+        namespaceTest.textContent = '❌ pb namespace NOT available';
+        namespaceTest.className = 'test-result error';
+        return;
+      }
+
+      // Test 3: Wait for config to be fetched
+      var configTest = document.getElementById('config-test');
+      var configOutput = document.getElementById('config-output');
+
+      // Listen for the ready event
+      window.pb.on('pbReady', function(data) {
+        var config = window.pb.getConfig();
+        if (config) {
+          configTest.textContent = '✅ Config fetched successfully (cached: ' + data.cached + ')';
+          configTest.className = 'test-result success';
+          configOutput.textContent = JSON.stringify(config, null, 2);
+        } else {
+          configTest.textContent = '❌ Config is null';
+          configTest.className = 'test-result error';
+        }
+      });
+
+      window.pb.on('pbError', function(data) {
+        configTest.textContent = '❌ Config fetch error: ' + data.error;
+        configTest.className = 'test-result error';
+      });
+
+      // Timeout fallback
+      setTimeout(function() {
+        if (configTest.className.indexOf('pending') >= 0) {
+          var config = window.pb.getConfig();
+          if (config) {
+            configTest.textContent = '✅ Config available (checked via timeout)';
+            configTest.className = 'test-result success';
+            configOutput.textContent = JSON.stringify(config, null, 2);
+          } else {
+            configTest.textContent = '⏳ Config still loading...';
+          }
+        }
+      }, 2000);
+    }
+
+    // Wait a bit for the async script to load
+    setTimeout(runTests, 1000);
+  </script>
+</body>
+</html>

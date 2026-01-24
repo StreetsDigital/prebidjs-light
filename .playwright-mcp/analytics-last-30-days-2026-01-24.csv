@@ -1,0 +1,27 @@
+Analytics Report - Last 30 days
+
+Revenue Data
+Date,Revenue
+Mon,$4500
+Tue,$5200
+Wed,$4800
+Thu,$6100
+Fri,$5900
+Sat,$3200
+Sun,$2800
+Total,$32500
+
+Latency Data
+Bidder,Avg Latency (ms),P95 Latency (ms)
+AppNexus,45,120
+Rubicon,62,145
+Index,38,95
+OpenX,55,130
+PubMatic,48,110
+
+Fill Rate Data
+Ad Unit,Fill Rate (%),Requests
+Header Banner,87,125000
+Sidebar Box,92,98000
+In-Article,78,145000
+Footer,65,67000

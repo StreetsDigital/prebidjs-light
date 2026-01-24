@@ -295,6 +295,15 @@ export function PublisherDetailPage() {
     debugMode: false,
   });
 
+  // Import config state
+  const [importModal, setImportModal] = useState({
+    isOpen: false,
+    isLoading: false,
+  });
+  const [importData, setImportData] = useState('');
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importValidation, setImportValidation] = useState<{ valid: boolean; errors: string[]; warnings: string[] } | null>(null);
+
   const fetchPublisher = async () => {
     if (!id) return;
 
@@ -879,6 +888,150 @@ export function PublisherDetailPage() {
     URL.revokeObjectURL(link.href);
   };
 
+  // Config import handlers
+  const handleImportConfigClick = () => {
+    setImportData('');
+    setImportError(null);
+    setImportValidation(null);
+    setImportModal({ isOpen: true, isLoading: false });
+  };
+
+  const handleImportClose = () => {
+    setImportModal({ isOpen: false, isLoading: false });
+    setImportData('');
+    setImportError(null);
+    setImportValidation(null);
+  };
+
+  const validateImportConfig = (config: unknown): { valid: boolean; errors: string[]; warnings: string[] } => {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    if (!config || typeof config !== 'object') {
+      errors.push('Invalid JSON: must be an object');
+      return { valid: false, errors, warnings };
+    }
+
+    const cfg = config as Record<string, unknown>;
+
+    // Validate bidderTimeout
+    if (cfg.bidderTimeout !== undefined) {
+      if (typeof cfg.bidderTimeout !== 'number') {
+        errors.push('bidderTimeout must be a number');
+      } else if (cfg.bidderTimeout < 100 || cfg.bidderTimeout > 10000) {
+        errors.push('bidderTimeout must be between 100 and 10000');
+      }
+    }
+
+    // Validate priceGranularity
+    if (cfg.priceGranularity !== undefined) {
+      const validGranularities = ['low', 'medium', 'high', 'auto', 'dense'];
+      if (!validGranularities.includes(cfg.priceGranularity as string)) {
+        errors.push(`priceGranularity must be one of: ${validGranularities.join(', ')}`);
+      }
+    }
+
+    // Validate sendAllBids
+    if (cfg.sendAllBids !== undefined && typeof cfg.sendAllBids !== 'boolean') {
+      errors.push('sendAllBids must be a boolean');
+    }
+
+    // Validate bidderSequence
+    if (cfg.bidderSequence !== undefined) {
+      const validSequences = ['random', 'fixed'];
+      if (!validSequences.includes(cfg.bidderSequence as string)) {
+        errors.push(`bidderSequence must be one of: ${validSequences.join(', ')}`);
+      }
+    }
+
+    // Validate debug
+    if (cfg.debug !== undefined && typeof cfg.debug !== 'boolean') {
+      errors.push('debug must be a boolean');
+    }
+
+    // Check for unrecognized fields (warnings only)
+    const knownFields = ['bidderTimeout', 'priceGranularity', 'sendAllBids', 'bidderSequence', 'debug', 'debugMode', 'publisherId', 'publisherName', 'publisherSlug', 'domains', 'adUnits', 'exportedAt'];
+    Object.keys(cfg).forEach(key => {
+      if (!knownFields.includes(key)) {
+        warnings.push(`Unknown field "${key}" will be ignored`);
+      }
+    });
+
+    // Warning if importing from different publisher
+    if (cfg.publisherId && cfg.publisherId !== publisher?.id) {
+      warnings.push(`Config was exported from a different publisher (${cfg.publisherName || cfg.publisherId})`);
+    }
+
+    return { valid: errors.length === 0, errors, warnings };
+  };
+
+  const handleImportDataChange = (value: string) => {
+    setImportData(value);
+    setImportError(null);
+    setImportValidation(null);
+
+    if (!value.trim()) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(value);
+      const validation = validateImportConfig(parsed);
+      setImportValidation(validation);
+    } catch (e) {
+      setImportError('Invalid JSON format');
+    }
+  };
+
+  const handleImportSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!publisher || !importValidation?.valid) return;
+
+    setImportModal(prev => ({ ...prev, isLoading: true }));
+    try {
+      const parsed = JSON.parse(importData);
+
+      // Extract config values
+      const newConfig = {
+        bidderTimeout: parsed.bidderTimeout ?? currentConfig?.bidderTimeout ?? 1500,
+        priceGranularity: parsed.priceGranularity ?? currentConfig?.priceGranularity ?? 'medium',
+        sendAllBids: parsed.sendAllBids ?? currentConfig?.sendAllBids ?? true,
+        bidderSequence: parsed.bidderSequence ?? currentConfig?.bidderSequence ?? 'random',
+        debugMode: parsed.debug ?? parsed.debugMode ?? currentConfig?.debugMode ?? false,
+      };
+
+      // Save the config
+      const response = await fetch(`/api/publishers/${publisher.id}/config`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(newConfig),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to import config');
+      }
+
+      // Reload config
+      const configResponse = await fetch(`/api/publishers/${publisher.id}/config`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (configResponse.ok) {
+        const data = await configResponse.json();
+        setCurrentConfig(data.config);
+        setCurrentVersion(data.version || 1);
+      }
+
+      handleImportClose();
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Failed to import config');
+    } finally {
+      setImportModal(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
   // Config editing handlers
   const handleEditConfigClick = () => {
     if (currentConfig) {
@@ -1342,6 +1495,16 @@ export function PublisherDetailPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
                     Export Config
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleImportConfigClick}
+                    className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                  >
+                    <svg className="-ml-0.5 mr-1.5 h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    Import Config
                   </button>
                   <button
                     type="button"
@@ -2507,6 +2670,126 @@ export function PublisherDetailPage() {
         variant="danger"
         isLoading={deleteBidderDialog.isLoading}
       />
+
+      {/* Import Config Modal */}
+      <FormModal
+        isOpen={importModal.isOpen}
+        onClose={handleImportClose}
+        title="Import Prebid Configuration"
+      >
+        <form onSubmit={handleImportSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="importConfig" className="block text-sm font-medium text-gray-700">
+              Paste JSON Configuration
+            </label>
+            <p className="text-sm text-gray-500 mb-2">
+              Paste a previously exported Prebid configuration JSON to import settings.
+            </p>
+            <textarea
+              id="importConfig"
+              value={importData}
+              onChange={(e) => handleImportDataChange(e.target.value)}
+              className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm font-mono text-xs ${
+                importError
+                  ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
+                  : importValidation?.valid
+                    ? 'border-green-300 focus:border-green-500 focus:ring-green-500'
+                    : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
+              }`}
+              rows={12}
+              placeholder='{"bidderTimeout": 1500, "priceGranularity": "medium", ...}'
+              required
+            />
+          </div>
+
+          {/* Validation Results */}
+          {importError && (
+            <div className="rounded-md bg-red-50 p-3">
+              <div className="flex">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-red-800">{importError}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {importValidation && !importValidation.valid && importValidation.errors.length > 0 && (
+            <div className="rounded-md bg-red-50 p-3">
+              <div className="flex">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-red-800">Validation Errors</h3>
+                  <ul className="mt-1 list-disc list-inside text-sm text-red-700">
+                    {importValidation.errors.map((error, idx) => (
+                      <li key={idx}>{error}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {importValidation?.valid && (
+            <div className="rounded-md bg-green-50 p-3">
+              <div className="flex">
+                <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-green-800">Configuration is valid</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {importValidation?.warnings && importValidation.warnings.length > 0 && (
+            <div className="rounded-md bg-yellow-50 p-3">
+              <div className="flex">
+                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-yellow-800">Warnings</h3>
+                  <ul className="mt-1 list-disc list-inside text-sm text-yellow-700">
+                    {importValidation.warnings.map((warning, idx) => (
+                      <li key={idx}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end space-x-3 pt-4">
+            <button
+              type="button"
+              onClick={handleImportClose}
+              disabled={importModal.isLoading}
+              className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={importModal.isLoading || !importValidation?.valid}
+              className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {importModal.isLoading && (
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              )}
+              Import Configuration
+            </button>
+          </div>
+        </form>
+      </FormModal>
     </div>
   );
 }

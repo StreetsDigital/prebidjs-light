@@ -625,6 +625,37 @@ export function PublisherDetailPage() {
     fetchAllPublishers();
   }, [id, token]);
 
+  // Hash navigation - handle URL hash to switch tabs and scroll to sections
+  useEffect(() => {
+    const hash = location.hash.slice(1); // Remove the # prefix
+    if (!hash) return;
+
+    // Mapping of hash values to tab and optional section
+    const hashMapping: Record<string, { tab: string; section?: string }> = {
+      'consent-section': { tab: 'config', section: 'consent-section' },
+      'config': { tab: 'config' },
+      'ad-units': { tab: 'ad-units' },
+      'bidders': { tab: 'bidders' },
+      'build': { tab: 'build' },
+      'overview': { tab: 'overview' },
+    };
+
+    const mapping = hashMapping[hash];
+    if (mapping) {
+      setActiveTab(mapping.tab);
+
+      // If there's a section to scroll to, wait for the tab to render then scroll
+      if (mapping.section) {
+        setTimeout(() => {
+          const element = document.getElementById(mapping.section!);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 100);
+      }
+    }
+  }, [location.hash]);
+
   const handleRegenerateClick = () => {
     setRegenerateDialog({
       isOpen: true,
@@ -2088,7 +2119,7 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
 
           {/* Consent Management Section */}
           {!showVersionHistory && (
-            <div className="bg-white shadow rounded-lg p-6">
+            <div id="consent-section" className="bg-white shadow rounded-lg p-6">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h2 className="text-lg font-medium text-gray-900">Consent Management</h2>

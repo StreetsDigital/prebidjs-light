@@ -2,7 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { ProtectedRoute, PublicRoute } from './components/auth/ProtectedRoute';
 import { AdminLayout, PublisherLayout } from './components/layout';
 import { Login } from './pages/Login';
-import { DashboardPage, PublishersPage, PublisherDetailPage, UsersPage, ModulesPage } from './pages/admin';
+import { DashboardPage, PublishersPage, PublisherDetailPage, PublisherCreatePage, UsersPage, ModulesPage } from './pages/admin';
 import { PublisherDashboard } from './pages/publisher';
 import { NotFound } from './pages/NotFound';
 
@@ -39,6 +39,7 @@ function App() {
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="publishers" element={<PublishersPage />} />
+        <Route path="publishers/new" element={<PublisherCreatePage />} />
         <Route path="publishers/:id" element={<PublisherDetailPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="analytics" element={<PlaceholderPage title="Analytics" />} />

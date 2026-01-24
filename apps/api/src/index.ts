@@ -6,6 +6,7 @@ import cookie from '@fastify/cookie';
 import { initializeDatabase } from './db';
 import authRoutes from './routes/auth';
 import publisherRoutes from './routes/publishers';
+import websiteRoutes from './routes/websites';
 import userRoutes from './routes/users';
 import dashboardRoutes from './routes/dashboard';
 import auditLogsRoutes from './routes/audit-logs';
@@ -45,6 +46,7 @@ app.get('/health', async () => {
 // Register API routes
 app.register(authRoutes, { prefix: '/api/auth' });
 app.register(publisherRoutes, { prefix: '/api/publishers' });
+app.register(websiteRoutes, { prefix: '/api' });
 
 app.register(userRoutes, { prefix: '/api/users' });
 app.register(dashboardRoutes, { prefix: '/api/dashboard' });

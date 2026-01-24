@@ -150,6 +150,23 @@ interface ConsentManagementConfig {
   };
 }
 
+interface Website {
+  id: string;
+  name: string;
+  domain: string;
+  status: 'active' | 'paused' | 'disabled';
+  notes: string | null;
+  adUnitCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface WebsiteFormData {
+  name: string;
+  domain: string;
+  notes: string;
+}
+
 const MOCK_BUILDS: Build[] = [
   {
     id: 'build_1',
@@ -495,6 +512,24 @@ export function PublisherDetailPage() {
     uspTimeout: 10000,
   });
 
+  // Website state
+  const [websites, setWebsites] = useState<Website[]>([]);
+  const [websiteModal, setWebsiteModal] = useState({
+    isOpen: false,
+    isLoading: false,
+  });
+  const [websiteForm, setWebsiteForm] = useState<WebsiteFormData>({
+    name: '',
+    domain: '',
+    notes: '',
+  });
+  const [editingWebsite, setEditingWebsite] = useState<Website | null>(null);
+  const [deleteWebsiteDialog, setDeleteWebsiteDialog] = useState({
+    isOpen: false,
+    isLoading: false,
+    website: null as Website | null,
+  });
+
   const fetchPublisher = async () => {
     if (!id) return;
 
@@ -622,6 +657,25 @@ export function PublisherDetailPage() {
     }
   };
 
+  const fetchWebsites = async () => {
+    if (!id) return;
+
+    try {
+      const response = await fetch(`/api/publishers/${id}/websites`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setWebsites(data.websites);
+      }
+    } catch (err) {
+      console.error('Failed to fetch websites:', err);
+    }
+  };
+
   const fetchConfigVersions = async () => {
     if (!id) return;
 
@@ -717,6 +771,7 @@ export function PublisherDetailPage() {
   useEffect(() => {
     fetchPublisher();
     fetchAdUnits();
+    fetchWebsites();
     fetchConfig();
     fetchPublisherBidders();
     fetchAvailableBidders();
@@ -732,6 +787,7 @@ export function PublisherDetailPage() {
     const hashMapping: Record<string, { tab: string; section?: string }> = {
       'consent-section': { tab: 'config', section: 'consent-section' },
       'config': { tab: 'config' },
+      'websites': { tab: 'websites' },
       'ad-units': { tab: 'ad-units' },
       'bidders': { tab: 'bidders' },
       'build': { tab: 'build' },
@@ -1225,6 +1281,133 @@ export function PublisherDetailPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete ad unit');
       setDeleteAdUnitDialog((prev) => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  // Website handlers
+  const handleAddWebsiteClick = () => {
+    setEditingWebsite(null);
+    setWebsiteForm({
+      name: '',
+      domain: '',
+      notes: '',
+    });
+    setWebsiteModal({ isOpen: true, isLoading: false });
+  };
+
+  const handleEditWebsiteClick = (website: Website) => {
+    setEditingWebsite(website);
+    setWebsiteForm({
+      name: website.name,
+      domain: website.domain,
+      notes: website.notes || '',
+    });
+    setWebsiteModal({ isOpen: true, isLoading: false });
+  };
+
+  const handleWebsiteModalClose = () => {
+    setWebsiteModal({ isOpen: false, isLoading: false });
+    setEditingWebsite(null);
+    setWebsiteForm({
+      name: '',
+      domain: '',
+      notes: '',
+    });
+  };
+
+  const handleWebsiteFormChange = (field: keyof WebsiteFormData, value: string) => {
+    setWebsiteForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleWebsiteFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setWebsiteModal((prev) => ({ ...prev, isLoading: true }));
+
+    try {
+      const url = editingWebsite
+        ? `/api/publishers/${id}/websites/${editingWebsite.id}`
+        : `/api/publishers/${id}/websites`;
+      const method = editingWebsite ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: websiteForm.name,
+          domain: websiteForm.domain,
+          notes: websiteForm.notes || null,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save website');
+      }
+
+      const savedWebsite = await response.json();
+
+      if (editingWebsite) {
+        setWebsites((prev) =>
+          prev.map((w) => (w.id === savedWebsite.id ? savedWebsite : w))
+        );
+        addToast('Website updated successfully', 'success');
+      } else {
+        setWebsites((prev) => [...prev, savedWebsite]);
+        addToast('Website created successfully', 'success');
+      }
+
+      handleWebsiteModalClose();
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to save website', 'error');
+      setWebsiteModal((prev) => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  const handleDeleteWebsiteClick = (website: Website) => {
+    setDeleteWebsiteDialog({
+      isOpen: true,
+      isLoading: false,
+      website,
+    });
+  };
+
+  const handleDeleteWebsiteCancel = () => {
+    setDeleteWebsiteDialog({
+      isOpen: false,
+      isLoading: false,
+      website: null,
+    });
+  };
+
+  const handleDeleteWebsiteConfirm = async () => {
+    if (!deleteWebsiteDialog.website) return;
+
+    setDeleteWebsiteDialog((prev) => ({ ...prev, isLoading: true }));
+
+    try {
+      const response = await fetch(
+        `/api/publishers/${id}/websites/${deleteWebsiteDialog.website.id}`,
+        {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to delete website');
+      }
+
+      setWebsites((prev) => prev.filter((w) => w.id !== deleteWebsiteDialog.website?.id));
+      addToast('Website deleted successfully', 'success');
+      handleDeleteWebsiteCancel();
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to delete website', 'error');
+      setDeleteWebsiteDialog((prev) => ({ ...prev, isLoading: false }));
     }
   };
 
@@ -2664,6 +2847,106 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
                   <dd className="mt-1 text-sm text-gray-900">{selectedVersion.config.debugMode ? 'Enabled' : 'Disabled'}</dd>
                 </div>
               </dl>
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: 'websites',
+      label: 'Websites',
+      content: (
+        <div className="bg-white shadow rounded-lg p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-medium text-gray-900">Websites</h2>
+              <p className="text-sm text-gray-500">
+                Manage websites for this publisher. Each website can contain multiple ad units.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleAddWebsiteClick}
+              className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
+            >
+              <svg className="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" />
+              </svg>
+              Add Website
+            </button>
+          </div>
+
+          {websites.length === 0 ? (
+            <div className="text-center py-12">
+              <svg
+                className="mx-auto h-12 w-12 text-gray-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1}
+                  d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
+                />
+              </svg>
+              <h3 className="mt-2 text-sm font-semibold text-gray-900">No websites</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Get started by adding a website for this publisher.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {websites.map((website) => (
+                <div
+                  key={website.id}
+                  className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm font-semibold text-gray-900 truncate">{website.name}</h3>
+                      <p className="text-sm text-gray-500 truncate">
+                        <code className="bg-gray-100 px-1 rounded">{website.domain}</code>
+                      </p>
+                    </div>
+                    <div className="flex items-center space-x-2 ml-2">
+                      {getStatusBadge(website.status)}
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className="text-xs text-gray-500">
+                      {website.adUnitCount} ad unit{website.adUnitCount !== 1 ? 's' : ''}
+                    </span>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => handleEditWebsiteClick(website)}
+                        className="text-blue-500 hover:text-blue-700"
+                        title="Edit website"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteWebsiteClick(website)}
+                        className="text-red-500 hover:text-red-700"
+                        title="Delete website"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  {website.notes && (
+                    <p className="mt-2 text-xs text-gray-400 truncate">{website.notes}</p>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -4814,6 +5097,94 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
           </div>
         </form>
       </FormModal>
+
+      {/* Website Modal */}
+      <FormModal
+        isOpen={websiteModal.isOpen}
+        onClose={handleWebsiteModalClose}
+        title={editingWebsite ? 'Edit Website' : 'Add Website'}
+      >
+        <form onSubmit={handleWebsiteFormSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="websiteName" className="block text-sm font-medium text-gray-700">
+              Website Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              id="websiteName"
+              value={websiteForm.name}
+              onChange={(e) => handleWebsiteFormChange('name', e.target.value)}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              placeholder="e.g., Main Website"
+              required
+            />
+          </div>
+          <div>
+            <label htmlFor="websiteDomain" className="block text-sm font-medium text-gray-700">
+              Domain <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              id="websiteDomain"
+              value={websiteForm.domain}
+              onChange={(e) => handleWebsiteFormChange('domain', e.target.value)}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              placeholder="e.g., example.com"
+              required
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Enter the domain without http:// or https://
+            </p>
+          </div>
+          <div>
+            <label htmlFor="websiteNotes" className="block text-sm font-medium text-gray-700">
+              Notes
+            </label>
+            <textarea
+              id="websiteNotes"
+              value={websiteForm.notes}
+              onChange={(e) => handleWebsiteFormChange('notes', e.target.value)}
+              rows={3}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              placeholder="Optional notes about this website..."
+            />
+          </div>
+          <div className="flex justify-end space-x-3 pt-4">
+            <button
+              type="button"
+              onClick={handleWebsiteModalClose}
+              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={websiteModal.isLoading}
+              className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-500 disabled:opacity-50"
+            >
+              {websiteModal.isLoading && (
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              )}
+              {editingWebsite ? 'Save Changes' : 'Create Website'}
+            </button>
+          </div>
+        </form>
+      </FormModal>
+
+      {/* Delete Website Confirmation */}
+      <ConfirmDialog
+        isOpen={deleteWebsiteDialog.isOpen}
+        onClose={handleDeleteWebsiteCancel}
+        onConfirm={handleDeleteWebsiteConfirm}
+        title="Delete Website"
+        message={`Are you sure you want to delete "${deleteWebsiteDialog.website?.name}"? Any ad units linked to this website will be unlinked.`}
+        confirmText="Delete"
+        isLoading={deleteWebsiteDialog.isLoading}
+        variant="danger"
+      />
     </div>
   );
 }

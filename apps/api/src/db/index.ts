@@ -63,9 +63,21 @@ export function initializeDatabase() {
       PRIMARY KEY (publisher_id, user_id)
     );
 
+    CREATE TABLE IF NOT EXISTS websites (
+      id TEXT PRIMARY KEY,
+      publisher_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      domain TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'paused', 'disabled')),
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS ad_units (
       id TEXT PRIMARY KEY,
       publisher_id TEXT NOT NULL,
+      website_id TEXT,
       code TEXT NOT NULL,
       name TEXT NOT NULL,
       media_types TEXT,
@@ -235,6 +247,89 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_analytics_events_type ON analytics_events(event_type);
     CREATE INDEX IF NOT EXISTS idx_analytics_events_timestamp ON analytics_events(timestamp);
   `);
+
+  // Run migrations for existing databases
+  runMigrations();
+}
+
+// Migration system for schema updates
+function runMigrations() {
+  // Create migrations table if not exists
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS migrations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      applied_at TEXT NOT NULL
+    );
+  `);
+
+  // Define migrations
+  const migrations = [
+    {
+      name: 'add_websites_and_website_id',
+      sql: `
+        -- Create websites table if not exists
+        CREATE TABLE IF NOT EXISTS websites (
+          id TEXT PRIMARY KEY,
+          publisher_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          domain TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'paused', 'disabled')),
+          notes TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        -- Add website_id column to ad_units if it doesn't exist
+        -- SQLite doesn't support IF NOT EXISTS for columns, so we check pragmatically
+      `,
+      columnCheck: {
+        table: 'ad_units',
+        column: 'website_id',
+        addSql: 'ALTER TABLE ad_units ADD COLUMN website_id TEXT;'
+      },
+      postSql: `
+        CREATE INDEX IF NOT EXISTS idx_websites_publisher ON websites(publisher_id);
+        CREATE INDEX IF NOT EXISTS idx_ad_units_website ON ad_units(website_id);
+      `
+    }
+  ];
+
+  // Run each migration if not already applied
+  for (const migration of migrations) {
+    const applied = sqlite.prepare('SELECT 1 FROM migrations WHERE name = ?').get(migration.name);
+    if (!applied) {
+      try {
+        // Run main SQL
+        sqlite.exec(migration.sql);
+
+        // Handle column additions (SQLite doesn't support IF NOT EXISTS for columns)
+        if (migration.columnCheck) {
+          const { table, column, addSql } = migration.columnCheck;
+          const columns = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+          const hasColumn = columns.some((col) => col.name === column);
+          if (!hasColumn) {
+            sqlite.exec(addSql);
+          }
+        }
+
+        // Run post-migration SQL (like index creation)
+        if ((migration as any).postSql) {
+          sqlite.exec((migration as any).postSql);
+        }
+
+        // Mark migration as applied
+        sqlite.prepare('INSERT INTO migrations (name, applied_at) VALUES (?, ?)').run(
+          migration.name,
+          new Date().toISOString()
+        );
+        console.log(`Migration applied: ${migration.name}`);
+      } catch (err) {
+        console.error(`Migration failed: ${migration.name}`, err);
+        throw err;
+      }
+    }
+  }
 }
 
 // Export raw sqlite for direct queries if needed

@@ -35,10 +35,23 @@ export const publisherAdmins = sqliteTable('publisher_admins', {
   createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
 });
 
+// Websites table (sits between Publishers and Ad Units)
+export const websites = sqliteTable('websites', {
+  id: text('id').primaryKey(),
+  publisherId: text('publisher_id').notNull(),
+  name: text('name').notNull(),
+  domain: text('domain').notNull(),
+  status: text('status', { enum: ['active', 'paused', 'disabled'] }).notNull().default('active'),
+  notes: text('notes'),
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
+});
+
 // Ad units table
 export const adUnits = sqliteTable('ad_units', {
   id: text('id').primaryKey(),
   publisherId: text('publisher_id').notNull(),
+  websiteId: text('website_id'), // Optional reference to website (for new taxonomy)
   code: text('code').notNull(),
   name: text('name').notNull(),
   mediaTypes: text('media_types'), // JSON object stored as text

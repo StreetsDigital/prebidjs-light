@@ -1,8 +1,8 @@
 // Prebid.js Bundle for Publisher: 64488716-77c4-448d-a7d8-072c83877837
 // Version: 1.4.0
-// Generated: 2026-01-24T07:26:07.321Z
+// Generated: 2026-01-24T07:52:10.761Z
 // Modules: 12
-// Bidders: 2
+// Bidders: 1
 
 var pbjs = pbjs || {};
 pbjs.que = pbjs.que || [];
@@ -41,7 +41,7 @@ pbjs.addAdUnits([
 ]);
 
 // Bidder Adapters
-// AppNexus adapter loaded\n// Rubicon Project adapter loaded
+// AppNexus adapter loaded
 
 // GPT Integration
 pbjs.que.push(function() {

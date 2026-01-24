@@ -26,6 +26,7 @@ export const publishers = sqliteTable('publishers', {
   createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
   updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
   createdBy: text('created_by'),
+  deletedAt: text('deleted_at'), // Soft delete timestamp - null means not deleted
 });
 
 // Publisher admins (many-to-many relationship)

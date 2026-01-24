@@ -292,6 +292,18 @@ function runMigrations() {
         CREATE INDEX IF NOT EXISTS idx_websites_publisher ON websites(publisher_id);
         CREATE INDEX IF NOT EXISTS idx_ad_units_website ON ad_units(website_id);
       `
+    },
+    {
+      name: 'add_soft_delete_to_publishers',
+      sql: `-- Add soft delete support to publishers`,
+      columnCheck: {
+        table: 'publishers',
+        column: 'deleted_at',
+        addSql: 'ALTER TABLE publishers ADD COLUMN deleted_at TEXT;'
+      },
+      postSql: `
+        CREATE INDEX IF NOT EXISTS idx_publishers_deleted_at ON publishers(deleted_at);
+      `
     }
   ];
 

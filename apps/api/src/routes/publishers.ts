@@ -22,10 +22,11 @@ interface UpdatePublisherBody {
 interface ListPublishersQuery {
   page?: string;
   limit?: string;
-  status?: 'active' | 'paused' | 'disabled';
+  status?: 'active' | 'paused' | 'disabled' | 'deleted';
   search?: string;
   sortBy?: 'name' | 'status' | 'createdAt';
   sortOrder?: 'asc' | 'desc';
+  includeDeleted?: string; // 'true' to include deleted publishers
 }
 
 export default async function publisherRoutes(fastify: FastifyInstance) {
@@ -34,7 +35,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     preHandler: requireAdmin,
   }, async (request: FastifyRequest<{ Querystring: ListPublishersQuery }>, reply: FastifyReply) => {
     const user = request.user as TokenPayload;
-    const { page = '1', limit = '10', status, search, sortBy = 'name', sortOrder = 'asc' } = request.query;
+    const { page = '1', limit = '10', status, search, sortBy = 'name', sortOrder = 'asc', includeDeleted } = request.query;
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
@@ -53,9 +54,19 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       allPublishers = allPublishers.filter(p => assignedPublisherIds.has(p.id));
     }
 
-    // Apply status filter
-    if (status) {
-      allPublishers = allPublishers.filter(p => p.status === status);
+    // Filter by deleted status
+    if (status === 'deleted') {
+      // Show only deleted publishers
+      allPublishers = allPublishers.filter(p => (p as any).deletedAt != null);
+    } else {
+      // By default, exclude deleted publishers unless explicitly requested
+      if (includeDeleted !== 'true') {
+        allPublishers = allPublishers.filter(p => (p as any).deletedAt == null);
+      }
+      // Apply status filter
+      if (status) {
+        allPublishers = allPublishers.filter(p => p.status === status);
+      }
     }
 
     // Apply search filter
@@ -268,11 +279,12 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     };
   });
 
-  // Delete publisher - admin only
-  fastify.delete<{ Params: { id: string } }>('/:id', {
+  // Soft delete publisher - admin only
+  fastify.delete<{ Params: { id: string }; Querystring: { hard?: string } }>('/:id', {
     preHandler: requireAdmin,
   }, async (request, reply) => {
     const { id } = request.params;
+    const { hard } = request.query;
     const user = request.user as TokenPayload;
 
     const publisher = db.select().from(publishers).where(eq(publishers.id, id)).get();
@@ -286,7 +298,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     db.insert(auditLogs).values({
       id: uuidv4(),
       userId: user.userId,
-      action: 'DELETE',
+      action: hard === 'true' ? 'HARD_DELETE' : 'SOFT_DELETE',
       entityType: 'publisher',
       entityId: id,
       oldValues: JSON.stringify({
@@ -302,13 +314,67 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       createdAt: now,
     }).run();
 
-    // Delete related config
-    db.delete(publisherConfig).where(eq(publisherConfig.publisherId, id)).run();
-
-    // Delete the publisher
-    db.delete(publishers).where(eq(publishers.id, id)).run();
+    if (hard === 'true') {
+      // Hard delete - permanently remove publisher and related data
+      db.delete(publisherConfig).where(eq(publisherConfig.publisherId, id)).run();
+      db.delete(adUnits).where(eq(adUnits.publisherId, id)).run();
+      db.delete(publisherBidders).where(eq(publisherBidders.publisherId, id)).run();
+      db.delete(publisherAdmins).where(eq(publisherAdmins.publisherId, id)).run();
+      db.delete(publishers).where(eq(publishers.id, id)).run();
+    } else {
+      // Soft delete - mark as deleted but preserve data
+      db.update(publishers)
+        .set({ deletedAt: now, updatedAt: now } as any)
+        .where(eq(publishers.id, id))
+        .run();
+    }
 
     return reply.code(204).send();
+  });
+
+  // Restore soft-deleted publisher - admin only
+  fastify.post<{ Params: { id: string } }>('/:id/restore', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const user = request.user as TokenPayload;
+
+    const publisher = db.select().from(publishers).where(eq(publishers.id, id)).get();
+    if (!publisher) {
+      return reply.code(404).send({ error: 'Publisher not found' });
+    }
+
+    if (!(publisher as any).deletedAt) {
+      return reply.code(400).send({ error: 'Publisher is not deleted' });
+    }
+
+    const now = new Date().toISOString();
+
+    // Log audit entry for restore
+    db.insert(auditLogs).values({
+      id: uuidv4(),
+      userId: user.userId,
+      action: 'RESTORE',
+      entityType: 'publisher',
+      entityId: id,
+      oldValues: JSON.stringify({ deletedAt: (publisher as any).deletedAt }),
+      newValues: JSON.stringify({ deletedAt: null }),
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'] || null,
+      createdAt: now,
+    }).run();
+
+    // Restore the publisher
+    db.update(publishers)
+      .set({ deletedAt: null, updatedAt: now } as any)
+      .where(eq(publishers.id, id))
+      .run();
+
+    const restored = db.select().from(publishers).where(eq(publishers.id, id)).get();
+    return {
+      ...restored,
+      domains: restored?.domains ? JSON.parse(restored.domains) : [],
+    };
   });
 
   // Regenerate API key - admin only

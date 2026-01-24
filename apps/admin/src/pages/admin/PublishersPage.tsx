@@ -18,6 +18,7 @@ interface Publisher {
   notes: string | null;
   createdAt: string;
   updatedAt: string;
+  deletedAt: string | null;
 }
 
 interface PaginationInfo {
@@ -203,6 +204,30 @@ export function PublishersPage() {
     });
   };
 
+  const handleRestoreClick = async (publisher: Publisher) => {
+    try {
+      const response = await fetch(`/api/publishers/${publisher.id}/restore`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to restore publisher');
+      }
+
+      addToast({
+        type: 'success',
+        message: `Publisher "${publisher.name}" restored successfully`,
+      });
+
+      await fetchPublishers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to restore publisher');
+    }
+  };
+
   const handleDeleteCancel = () => {
     setDeleteDialog({
       isOpen: false,
@@ -367,7 +392,16 @@ export function PublishersPage() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, isDeleted: boolean = false) => {
+    if (isDeleted) {
+      return (
+        <span
+          className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-800"
+        >
+          deleted
+        </span>
+      );
+    }
     const styles = {
       active: 'bg-green-100 text-green-800',
       paused: 'bg-yellow-100 text-yellow-800',
@@ -458,6 +492,7 @@ export function PublishersPage() {
               <option value="active">Active</option>
               <option value="paused">Paused</option>
               <option value="disabled">Disabled</option>
+              <option value="deleted">Deleted</option>
             </select>
           </div>
           {(statusFilter || searchQuery) && (
@@ -683,7 +718,7 @@ export function PublishersPage() {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {getStatusBadge(publisher.status)}
+                    {getStatusBadge(publisher.status, !!publisher.deletedAt)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {new Date(publisher.createdAt).toLocaleDateString()}
@@ -696,13 +731,23 @@ export function PublishersPage() {
                     >
                       Edit
                     </Link>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteClick(publisher)}
-                      className="text-red-600 hover:text-red-900"
-                    >
-                      Delete
-                    </button>
+                    {publisher.deletedAt ? (
+                      <button
+                        type="button"
+                        onClick={() => handleRestoreClick(publisher)}
+                        className="text-green-600 hover:text-green-900"
+                      >
+                        Restore
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteClick(publisher)}
+                        className="text-red-600 hover:text-red-900"
+                      >
+                        Delete
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))
@@ -733,7 +778,7 @@ export function PublishersPage() {
         onClose={handleDeleteCancel}
         onConfirm={handleDeleteConfirm}
         title="Delete Publisher"
-        message={`Are you sure you want to delete "${deleteDialog.publisher?.name}"? This action cannot be undone and will remove all associated ad units, bidder configurations, and analytics data.`}
+        message={`Are you sure you want to delete "${deleteDialog.publisher?.name}"? The publisher will be hidden from normal views but can be restored later from the "Deleted" filter.`}
         confirmText="Delete Publisher"
         cancelText="Cancel"
         variant="danger"

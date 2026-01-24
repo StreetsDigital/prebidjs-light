@@ -941,43 +941,59 @@ export function AnalyticsPage() {
   const [dateRange, setDateRange] = useState('Last 7 days');
   const [isExporting, setIsExporting] = useState(false);
 
-  const handleExport = () => {
+  const handleExport = async () => {
     setIsExporting(true);
     try {
-      // Generate CSV from current analytics data
+      // Fetch real data from APIs
+      const [stats, biddersRes] = await Promise.all([
+        fetchAnalyticsStats(),
+        fetchBidderStats(),
+      ]);
+
+      // Generate CSV from real analytics data
       const timestamp = new Date().toISOString().split('T')[0];
       const filename = `analytics-${dateRange.toLowerCase().replace(/\s+/g, '-')}-${timestamp}.csv`;
 
-      // Build CSV content with revenue data
-      const headers = ['Date', 'Revenue'];
-      const rows = mockRevenueData.map(d => [d.date, `$${d.revenue}`]);
+      // Build CSV content with summary data
+      const summaryHeaders = ['Metric', 'Value'];
+      const summaryRows = [
+        ['Total Events', stats.totalEvents.toString()],
+        ['Events Last 24h', stats.eventsLast24h.toString()],
+        ['Unique Publishers', stats.uniquePublishers.toString()],
+        ['Total Revenue', `$${stats.totalRevenue.toFixed(2)}`],
+        ['Impressions', (stats.eventsByType?.impression || 0).toString()],
+        ['Bids Requested', (stats.eventsByType?.bidRequested || 0).toString()],
+        ['Bids Received', (stats.eventsByType?.bidResponse || 0).toString()],
+        ['Bids Won', (stats.eventsByType?.bidWon || 0).toString()],
+      ];
 
-      // Add summary row
-      const totalRevenue = mockRevenueData.reduce((sum, d) => sum + d.revenue, 0);
-      rows.push(['Total', `$${totalRevenue}`]);
-
-      // Add latency data section
-      const latencyHeaders = ['', '', 'Bidder', 'Avg Latency (ms)', 'P95 Latency (ms)'];
-      const latencyRows = mockLatencyData.map(d => ['', '', d.bidder, d.avg.toString(), d.p95.toString()]);
-
-      // Add fill rate data section
-      const fillRateHeaders = ['', '', '', 'Ad Unit', 'Fill Rate (%)', 'Requests'];
-      const fillRateRows = mockFillRateData.map(d => ['', '', '', d.adUnit, d.fillRate.toString(), d.requests.toString()]);
+      // Build bidder stats section
+      const bidderHeaders = ['Bidder', 'Requests', 'Responses', 'Won', 'Timeouts', 'Avg CPM', 'Avg Latency (ms)', 'Fill Rate (%)'];
+      const bidderRows = biddersRes.map(b => {
+        const fillRate = b.bidsRequested > 0 ? ((b.bidsReceived / b.bidsRequested) * 100).toFixed(1) : '0.0';
+        return [
+          b.bidderCode,
+          b.bidsRequested.toString(),
+          b.bidsReceived.toString(),
+          b.bidsWon.toString(),
+          b.bidsTimeout.toString(),
+          `$${b.avgCpm.toFixed(2)}`,
+          b.avgLatency.toString(),
+          fillRate,
+        ];
+      });
 
       const csvContent = [
         `Analytics Report - ${dateRange}`,
+        `Generated: ${new Date().toISOString()}`,
         '',
-        'Revenue Data',
-        headers.join(','),
-        ...rows.map(row => row.join(',')),
+        'Summary Metrics',
+        summaryHeaders.join(','),
+        ...summaryRows.map(row => row.join(',')),
         '',
-        'Latency Data',
-        latencyHeaders.slice(2).join(','),
-        ...latencyRows.map(row => row.slice(2).join(',')),
-        '',
-        'Fill Rate Data',
-        fillRateHeaders.slice(3).join(','),
-        ...fillRateRows.map(row => row.slice(3).join(',')),
+        'Bidder Performance',
+        bidderHeaders.join(','),
+        ...bidderRows.map(row => row.join(',')),
       ].join('\n');
 
       // Download file
@@ -987,6 +1003,8 @@ export function AnalyticsPage() {
       link.download = filename;
       link.click();
       URL.revokeObjectURL(link.href);
+    } catch (err) {
+      console.error('Export failed:', err);
     } finally {
       setIsExporting(false);
     }

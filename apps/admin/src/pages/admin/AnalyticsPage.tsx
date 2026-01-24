@@ -811,6 +811,60 @@ function ScheduledReportsList() {
 }
 
 export function AnalyticsPage() {
+  const [dateRange, setDateRange] = useState('Last 7 days');
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = () => {
+    setIsExporting(true);
+    try {
+      // Generate CSV from current analytics data
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `analytics-${dateRange.toLowerCase().replace(/\s+/g, '-')}-${timestamp}.csv`;
+
+      // Build CSV content with revenue data
+      const headers = ['Date', 'Revenue'];
+      const rows = mockRevenueData.map(d => [d.date, `$${d.revenue}`]);
+
+      // Add summary row
+      const totalRevenue = mockRevenueData.reduce((sum, d) => sum + d.revenue, 0);
+      rows.push(['Total', `$${totalRevenue}`]);
+
+      // Add latency data section
+      const latencyHeaders = ['', '', 'Bidder', 'Avg Latency (ms)', 'P95 Latency (ms)'];
+      const latencyRows = mockLatencyData.map(d => ['', '', d.bidder, d.avg.toString(), d.p95.toString()]);
+
+      // Add fill rate data section
+      const fillRateHeaders = ['', '', '', 'Ad Unit', 'Fill Rate (%)', 'Requests'];
+      const fillRateRows = mockFillRateData.map(d => ['', '', '', d.adUnit, d.fillRate.toString(), d.requests.toString()]);
+
+      const csvContent = [
+        `Analytics Report - ${dateRange}`,
+        '',
+        'Revenue Data',
+        headers.join(','),
+        ...rows.map(row => row.join(',')),
+        '',
+        'Latency Data',
+        latencyHeaders.slice(2).join(','),
+        ...latencyRows.map(row => row.slice(2).join(',')),
+        '',
+        'Fill Rate Data',
+        fillRateHeaders.slice(3).join(','),
+        ...fillRateRows.map(row => row.slice(3).join(',')),
+      ].join('\n');
+
+      // Download file
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const tabs: Tab[] = [
     {
       id: 'revenue',
@@ -846,7 +900,11 @@ export function AnalyticsPage() {
 
       {/* Date Range Selector */}
       <div className="flex items-center gap-4">
-        <select className="block rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 px-3">
+        <select
+          value={dateRange}
+          onChange={(e) => setDateRange(e.target.value)}
+          className="block rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 px-3"
+        >
           <option>Last 7 days</option>
           <option>Last 30 days</option>
           <option>Last 90 days</option>
@@ -855,12 +913,14 @@ export function AnalyticsPage() {
         </select>
         <button
           type="button"
-          className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+          onClick={handleExport}
+          disabled={isExporting}
+          className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:opacity-50"
         >
           <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
           </svg>
-          Export
+          {isExporting ? 'Exporting...' : 'Export'}
         </button>
       </div>
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
-import { ConfirmDialog } from '../../components/ui';
+import { ConfirmDialog, Pagination } from '../../components/ui';
 
 interface Publisher {
   id: string;
@@ -15,9 +15,19 @@ interface Publisher {
   updatedAt: string;
 }
 
+interface PaginationInfo {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasMore: boolean;
+}
+
 export function PublishersPage() {
   const { token } = useAuthStore();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [publishers, setPublishers] = useState<Publisher[]>([]);
+  const [pagination, setPagination] = useState<PaginationInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<{
@@ -30,11 +40,22 @@ export function PublishersPage() {
     isDeleting: false,
   });
 
+  // Get filter values from URL
+  const currentPage = parseInt(searchParams.get('page') || '1', 10);
+  const statusFilter = searchParams.get('status') || '';
+  const searchQuery = searchParams.get('search') || '';
+
   const fetchPublishers = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/publishers', {
+      const params = new URLSearchParams();
+      params.set('page', currentPage.toString());
+      params.set('limit', '10');
+      if (statusFilter) params.set('status', statusFilter);
+      if (searchQuery) params.set('search', searchQuery);
+
+      const response = await fetch(`/api/publishers?${params.toString()}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -46,6 +67,7 @@ export function PublishersPage() {
 
       const data = await response.json();
       setPublishers(data.publishers);
+      setPagination(data.pagination);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -55,7 +77,35 @@ export function PublishersPage() {
 
   useEffect(() => {
     fetchPublishers();
-  }, [token]);
+  }, [token, currentPage, statusFilter, searchQuery]);
+
+  const handlePageChange = (page: number) => {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('page', page.toString());
+    setSearchParams(newParams);
+  };
+
+  const handleStatusChange = (status: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (status) {
+      newParams.set('status', status);
+    } else {
+      newParams.delete('status');
+    }
+    newParams.set('page', '1'); // Reset to first page when filter changes
+    setSearchParams(newParams);
+  };
+
+  const handleSearchChange = (search: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (search) {
+      newParams.set('search', search);
+    } else {
+      newParams.delete('search');
+    }
+    newParams.set('page', '1'); // Reset to first page when search changes
+    setSearchParams(newParams);
+  };
 
   const handleDeleteClick = (publisher: Publisher) => {
     console.log('Delete clicked for publisher:', publisher.name);
@@ -91,11 +141,8 @@ export function PublishersPage() {
         throw new Error('Failed to delete publisher');
       }
 
-      // Remove from local state
-      setPublishers((prev) =>
-        prev.filter((p) => p.id !== deleteDialog.publisher?.id)
-      );
-
+      // Refetch to update pagination correctly
+      await fetchPublishers();
       handleDeleteCancel();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete publisher');
@@ -120,7 +167,7 @@ export function PublishersPage() {
     );
   };
 
-  if (isLoading) {
+  if (isLoading && publishers.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -151,6 +198,52 @@ export function PublishersPage() {
           </svg>
           Add Publisher
         </button>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white shadow rounded-lg p-4">
+        <div className="flex flex-wrap gap-4 items-center">
+          <div className="flex-1 min-w-[200px]">
+            <label htmlFor="search" className="sr-only">
+              Search
+            </label>
+            <input
+              type="text"
+              id="search"
+              placeholder="Search publishers..."
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 px-3"
+            />
+          </div>
+          <div>
+            <label htmlFor="status-filter" className="sr-only">
+              Filter by status
+            </label>
+            <select
+              id="status-filter"
+              value={statusFilter}
+              onChange={(e) => handleStatusChange(e.target.value)}
+              className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 px-3 pr-10"
+            >
+              <option value="">All statuses</option>
+              <option value="active">Active</option>
+              <option value="paused">Paused</option>
+              <option value="disabled">Disabled</option>
+            </select>
+          </div>
+          {(statusFilter || searchQuery) && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchParams(new URLSearchParams());
+              }}
+              className="text-sm text-gray-500 hover:text-gray-700"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -216,7 +309,9 @@ export function PublishersPage() {
                   colSpan={5}
                   className="px-6 py-12 text-center text-sm text-gray-500"
                 >
-                  No publishers found. Create your first publisher to get started.
+                  {statusFilter || searchQuery
+                    ? 'No publishers match your filters.'
+                    : 'No publishers found. Create your first publisher to get started.'}
                 </td>
               </tr>
             ) : (
@@ -281,7 +376,23 @@ export function PublishersPage() {
             )}
           </tbody>
         </table>
+
+        {/* Pagination */}
+        {pagination && pagination.totalPages > 1 && (
+          <Pagination
+            currentPage={pagination.page}
+            totalPages={pagination.totalPages}
+            onPageChange={handlePageChange}
+          />
+        )}
       </div>
+
+      {/* Show pagination info */}
+      {pagination && (
+        <div className="text-sm text-gray-500">
+          Showing {publishers.length} of {pagination.total} publishers
+        </div>
+      )}
 
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog

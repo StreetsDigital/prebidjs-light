@@ -19,23 +19,62 @@ interface UpdatePublisherBody {
   notes?: string;
 }
 
+interface ListPublishersQuery {
+  page?: string;
+  limit?: string;
+  status?: 'active' | 'paused' | 'disabled';
+  search?: string;
+}
+
 export default async function publisherRoutes(fastify: FastifyInstance) {
   // List all publishers - admin only
-  fastify.get('/', {
+  fastify.get<{ Querystring: ListPublishersQuery }>('/', {
     preHandler: requireAdmin,
-  }, async (request: FastifyRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest<{ Querystring: ListPublishersQuery }>, reply: FastifyReply) => {
     const user = request.user as TokenPayload;
+    const { page = '1', limit = '10', status, search } = request.query;
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
+    const offset = (pageNum - 1) * limitNum;
 
     // Super admin sees all publishers
     // Regular admin would see only assigned publishers (TODO: implement assignment)
-    const allPublishers = db.select().from(publishers).all();
+    let allPublishers = db.select().from(publishers).all();
+
+    // Apply status filter
+    if (status) {
+      allPublishers = allPublishers.filter(p => p.status === status);
+    }
+
+    // Apply search filter
+    if (search) {
+      const searchLower = search.toLowerCase();
+      allPublishers = allPublishers.filter(p =>
+        p.name.toLowerCase().includes(searchLower) ||
+        p.slug.toLowerCase().includes(searchLower)
+      );
+    }
+
+    const total = allPublishers.length;
+    const totalPages = Math.ceil(total / limitNum);
+
+    // Apply pagination
+    const paginatedPublishers = allPublishers.slice(offset, offset + limitNum);
 
     return {
-      publishers: allPublishers.map(p => ({
+      publishers: paginatedPublishers.map(p => ({
         ...p,
         domains: p.domains ? JSON.parse(p.domains) : [],
       })),
-      total: allPublishers.length,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages,
+        hasMore: pageNum < totalPages,
+      },
+      total,
     };
   });
 

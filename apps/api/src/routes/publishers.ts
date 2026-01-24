@@ -1,5 +1,5 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { db, publishers, publisherConfig, adUnits } from '../db';
+import { db, publishers, publisherConfig, adUnits, publisherBidders } from '../db';
 import { eq, and } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth, requireAdmin, requireRole, TokenPayload } from '../middleware/auth';
@@ -477,6 +477,198 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     }
 
     db.delete(adUnits).where(eq(adUnits.id, unitId)).run();
+
+    return reply.code(204).send();
+  });
+
+  // ==================== BIDDER ROUTES ====================
+
+  interface CreateBidderBody {
+    bidderCode: string;
+    enabled?: boolean;
+    params?: Record<string, unknown>;
+    timeoutOverride?: number;
+    priority?: number;
+  }
+
+  interface UpdateBidderBody {
+    enabled?: boolean;
+    params?: Record<string, unknown>;
+    timeoutOverride?: number;
+    priority?: number;
+  }
+
+  // List bidders for a publisher
+  fastify.get<{ Params: { id: string } }>('/:id/bidders', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const user = request.user as TokenPayload;
+
+    // Check if publisher exists
+    const publisher = db.select().from(publishers).where(eq(publishers.id, id)).get();
+    if (!publisher) {
+      return reply.code(404).send({ error: 'Publisher not found' });
+    }
+
+    // Check authorization
+    if (user.role === 'publisher' && user.publisherId !== id) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+
+    const bidders = db.select().from(publisherBidders).where(eq(publisherBidders.publisherId, id)).all();
+
+    return {
+      bidders: bidders.map(b => ({
+        ...b,
+        params: b.params ? JSON.parse(b.params) : null,
+      })),
+    };
+  });
+
+  // Get single bidder
+  fastify.get<{ Params: { id: string; bidderId: string } }>('/:id/bidders/:bidderId', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const { id, bidderId } = request.params;
+    const user = request.user as TokenPayload;
+
+    // Check authorization
+    if (user.role === 'publisher' && user.publisherId !== id) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+
+    const bidder = db.select().from(publisherBidders)
+      .where(and(eq(publisherBidders.id, bidderId), eq(publisherBidders.publisherId, id)))
+      .get();
+
+    if (!bidder) {
+      return reply.code(404).send({ error: 'Bidder not found' });
+    }
+
+    return {
+      ...bidder,
+      params: bidder.params ? JSON.parse(bidder.params) : null,
+    };
+  });
+
+  // Create/Add bidder
+  fastify.post<{ Params: { id: string }; Body: CreateBidderBody }>('/:id/bidders', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const { bidderCode, enabled = true, params, timeoutOverride, priority = 0 } = request.body;
+    const user = request.user as TokenPayload;
+
+    // Check if publisher exists
+    const publisher = db.select().from(publishers).where(eq(publishers.id, id)).get();
+    if (!publisher) {
+      return reply.code(404).send({ error: 'Publisher not found' });
+    }
+
+    // Check authorization
+    if (user.role === 'publisher' && user.publisherId !== id) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+
+    if (!bidderCode) {
+      return reply.code(400).send({ error: 'Bidder code is required' });
+    }
+
+    // Check for duplicate bidder code within publisher
+    const existing = db.select().from(publisherBidders)
+      .where(and(eq(publisherBidders.publisherId, id), eq(publisherBidders.bidderCode, bidderCode)))
+      .get();
+    if (existing) {
+      return reply.code(409).send({ error: 'Bidder already configured for this publisher' });
+    }
+
+    const now = new Date().toISOString();
+    const bidderId = uuidv4();
+
+    db.insert(publisherBidders).values({
+      id: bidderId,
+      publisherId: id,
+      bidderCode,
+      enabled,
+      params: params ? JSON.stringify(params) : null,
+      timeoutOverride: timeoutOverride || null,
+      priority,
+      createdAt: now,
+      updatedAt: now,
+    }).run();
+
+    const newBidder = db.select().from(publisherBidders).where(eq(publisherBidders.id, bidderId)).get();
+
+    return reply.code(201).send({
+      ...newBidder,
+      params: newBidder?.params ? JSON.parse(newBidder.params) : null,
+    });
+  });
+
+  // Update bidder
+  fastify.put<{ Params: { id: string; bidderId: string }; Body: UpdateBidderBody }>('/:id/bidders/:bidderId', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const { id, bidderId } = request.params;
+    const { enabled, params, timeoutOverride, priority } = request.body;
+    const user = request.user as TokenPayload;
+
+    // Check authorization
+    if (user.role === 'publisher' && user.publisherId !== id) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+
+    const bidder = db.select().from(publisherBidders)
+      .where(and(eq(publisherBidders.id, bidderId), eq(publisherBidders.publisherId, id)))
+      .get();
+
+    if (!bidder) {
+      return reply.code(404).send({ error: 'Bidder not found' });
+    }
+
+    const now = new Date().toISOString();
+
+    db.update(publisherBidders)
+      .set({
+        ...(enabled !== undefined && { enabled }),
+        ...(params !== undefined && { params: JSON.stringify(params) }),
+        ...(timeoutOverride !== undefined && { timeoutOverride }),
+        ...(priority !== undefined && { priority }),
+        updatedAt: now,
+      })
+      .where(eq(publisherBidders.id, bidderId))
+      .run();
+
+    const updated = db.select().from(publisherBidders).where(eq(publisherBidders.id, bidderId)).get();
+
+    return {
+      ...updated,
+      params: updated?.params ? JSON.parse(updated.params) : null,
+    };
+  });
+
+  // Delete bidder
+  fastify.delete<{ Params: { id: string; bidderId: string } }>('/:id/bidders/:bidderId', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const { id, bidderId } = request.params;
+    const user = request.user as TokenPayload;
+
+    // Check authorization
+    if (user.role === 'publisher' && user.publisherId !== id) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+
+    const bidder = db.select().from(publisherBidders)
+      .where(and(eq(publisherBidders.id, bidderId), eq(publisherBidders.publisherId, id)))
+      .get();
+
+    if (!bidder) {
+      return reply.code(404).send({ error: 'Bidder not found' });
+    }
+
+    db.delete(publisherBidders).where(eq(publisherBidders.id, bidderId)).run();
 
     return reply.code(204).send();
   });

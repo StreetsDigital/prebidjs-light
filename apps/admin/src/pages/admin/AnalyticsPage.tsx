@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Tabs, Tab } from '../../components/ui';
 
 // Mock chart data

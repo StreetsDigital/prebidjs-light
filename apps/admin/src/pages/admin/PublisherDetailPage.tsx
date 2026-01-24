@@ -70,6 +70,23 @@ interface Build {
   bidders: number;
 }
 
+interface PublisherBidder {
+  id: string;
+  bidderCode: string;
+  bidderName: string;
+  enabled: boolean;
+  params: Record<string, string>;
+  priority: number;
+}
+
+interface AvailableBidder {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  paramsSchema: { key: string; label: string; required: boolean }[];
+}
+
 const MOCK_BUILDS: Build[] = [
   {
     id: 'build_1',
@@ -122,6 +139,59 @@ const MOCK_BUILDS: Build[] = [
     fileSize: '220 KB',
     modules: 10,
     bidders: 4,
+  },
+];
+
+// Available Prebid bidder adapters
+const AVAILABLE_BIDDERS: AvailableBidder[] = [
+  {
+    id: '1',
+    code: 'appnexus',
+    name: 'AppNexus',
+    description: 'AppNexus (Xandr) bidder adapter for programmatic advertising.',
+    paramsSchema: [
+      { key: 'placementId', label: 'Placement ID', required: true },
+    ],
+  },
+  {
+    id: '2',
+    code: 'rubicon',
+    name: 'Rubicon Project',
+    description: 'Rubicon Project bidder adapter for premium inventory.',
+    paramsSchema: [
+      { key: 'accountId', label: 'Account ID', required: true },
+      { key: 'siteId', label: 'Site ID', required: true },
+      { key: 'zoneId', label: 'Zone ID', required: true },
+    ],
+  },
+  {
+    id: '3',
+    code: 'openx',
+    name: 'OpenX',
+    description: 'OpenX bidder adapter for display and video advertising.',
+    paramsSchema: [
+      { key: 'delDomain', label: 'Delivery Domain', required: true },
+      { key: 'unit', label: 'Ad Unit ID', required: true },
+    ],
+  },
+  {
+    id: '4',
+    code: 'pubmatic',
+    name: 'PubMatic',
+    description: 'PubMatic bidder adapter for header bidding.',
+    paramsSchema: [
+      { key: 'publisherId', label: 'Publisher ID', required: true },
+      { key: 'adSlot', label: 'Ad Slot', required: true },
+    ],
+  },
+  {
+    id: '5',
+    code: 'ix',
+    name: 'Index Exchange',
+    description: 'Index Exchange bidder adapter for real-time bidding.',
+    paramsSchema: [
+      { key: 'siteId', label: 'Site ID', required: true },
+    ],
   },
 ];
 
@@ -182,6 +252,24 @@ export function PublisherDetailPage() {
 
   // Build state
   const [builds] = useState<Build[]>(MOCK_BUILDS);
+
+  // Bidder state
+  const [publisherBidders, setPublisherBidders] = useState<PublisherBidder[]>([]);
+  const [availableBidders, setAvailableBidders] = useState<AvailableBidder[]>([]);
+  const [bidderModal, setBidderModal] = useState({
+    isOpen: false,
+    isLoading: false,
+  });
+  const [bidderForm, setBidderForm] = useState({
+    bidderCode: '',
+    params: {} as Record<string, string>,
+  });
+  const [bidderSearchQuery, setBidderSearchQuery] = useState('');
+  const [deleteBidderDialog, setDeleteBidderDialog] = useState({
+    isOpen: false,
+    isLoading: false,
+    bidder: null as PublisherBidder | null,
+  });
 
   // Config editing state
   const [configModal, setConfigModal] = useState({
@@ -318,10 +406,44 @@ export function PublisherDetailPage() {
     }
   };
 
+  const fetchPublisherBidders = async () => {
+    if (!id) return;
+
+    try {
+      const response = await fetch(`/api/publishers/${id}/bidders`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPublisherBidders(data.bidders.map((b: { id: string; bidderCode: string; enabled: boolean; params?: string; priority?: number }) => ({
+          id: b.id,
+          bidderCode: b.bidderCode,
+          bidderName: AVAILABLE_BIDDERS.find(ab => ab.code === b.bidderCode)?.name || b.bidderCode,
+          enabled: b.enabled,
+          params: b.params ? JSON.parse(b.params) : {},
+          priority: b.priority || 0,
+        })));
+      }
+    } catch (err) {
+      console.error('Failed to fetch publisher bidders:', err);
+    }
+  };
+
+  const fetchAvailableBidders = async () => {
+    // For now, use the static list of available bidders
+    // In the future, this could fetch from /api/modules?type=bidder
+    setAvailableBidders(AVAILABLE_BIDDERS);
+  };
+
   useEffect(() => {
     fetchPublisher();
     fetchAdUnits();
     fetchConfig();
+    fetchPublisherBidders();
+    fetchAvailableBidders();
   }, [id, token]);
 
   const handleRegenerateClick = () => {
@@ -660,6 +782,143 @@ export function PublisherDetailPage() {
       setConfigModal((prev) => ({ ...prev, isLoading: false }));
     }
   };
+
+  // Bidder handlers
+  const handleAddBidderClick = () => {
+    setBidderForm({ bidderCode: '', params: {} });
+    setBidderSearchQuery('');
+    setBidderModal({ isOpen: true, isLoading: false });
+  };
+
+  const handleBidderClose = () => {
+    setBidderModal({ isOpen: false, isLoading: false });
+    setBidderSearchQuery('');
+  };
+
+  const handleBidderSelect = (bidderCode: string) => {
+    const selectedBidder = availableBidders.find(b => b.code === bidderCode);
+    const initialParams: Record<string, string> = {};
+    if (selectedBidder) {
+      selectedBidder.paramsSchema.forEach(p => {
+        initialParams[p.key] = '';
+      });
+    }
+    setBidderForm({ bidderCode, params: initialParams });
+  };
+
+  const handleBidderSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!publisher || !bidderForm.bidderCode) return;
+
+    setBidderModal((prev) => ({ ...prev, isLoading: true }));
+
+    try {
+      const response = await fetch(`/api/publishers/${publisher.id}/bidders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          bidderCode: bidderForm.bidderCode,
+          params: bidderForm.params,
+          enabled: true,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to add bidder');
+      }
+
+      await fetchPublisherBidders();
+      handleBidderClose();
+      setActiveTab('bidders');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add bidder');
+      setBidderModal((prev) => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  const handleDeleteBidderClick = (bidder: PublisherBidder) => {
+    setDeleteBidderDialog({
+      isOpen: true,
+      isLoading: false,
+      bidder,
+    });
+  };
+
+  const handleDeleteBidderCancel = () => {
+    setDeleteBidderDialog({
+      isOpen: false,
+      isLoading: false,
+      bidder: null,
+    });
+  };
+
+  const handleDeleteBidderConfirm = async () => {
+    if (!publisher || !deleteBidderDialog.bidder) return;
+
+    setDeleteBidderDialog((prev) => ({ ...prev, isLoading: true }));
+
+    try {
+      const response = await fetch(
+        `/api/publishers/${publisher.id}/bidders/${deleteBidderDialog.bidder.id}`,
+        {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to delete bidder');
+      }
+
+      setPublisherBidders((prev) => prev.filter((b) => b.id !== deleteBidderDialog.bidder?.id));
+      handleDeleteBidderCancel();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete bidder');
+      setDeleteBidderDialog((prev) => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  const handleToggleBidder = async (bidder: PublisherBidder) => {
+    if (!publisher) return;
+
+    try {
+      const response = await fetch(`/api/publishers/${publisher.id}/bidders/${bidder.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          enabled: !bidder.enabled,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update bidder');
+      }
+
+      setPublisherBidders((prev) =>
+        prev.map((b) => (b.id === bidder.id ? { ...b, enabled: !b.enabled } : b))
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update bidder');
+    }
+  };
+
+  const filteredAvailableBidders = availableBidders.filter(
+    (b) =>
+      (b.name.toLowerCase().includes(bidderSearchQuery.toLowerCase()) ||
+       b.code.toLowerCase().includes(bidderSearchQuery.toLowerCase())) &&
+      !publisherBidders.some((pb) => pb.bidderCode === b.code)
+  );
+
+  const selectedBidderSchema = availableBidders.find(b => b.code === bidderForm.bidderCode);
 
   const formatVersionDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -1252,31 +1511,100 @@ export function PublisherDetailPage() {
             </div>
             <button
               type="button"
+              onClick={handleAddBidderClick}
               className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
             >
+              <svg className="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" />
+              </svg>
               Add Bidder
             </button>
           </div>
-          <div className="text-center py-12">
-            <svg
-              className="mx-auto h-12 w-12 text-gray-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1}
-                d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
-              />
-            </svg>
-            <h3 className="mt-2 text-sm font-semibold text-gray-900">No bidders configured</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Add bidder adapters to enable programmatic advertising.
-            </p>
-          </div>
+
+          {publisherBidders.length === 0 ? (
+            <div className="text-center py-12">
+              <svg
+                className="mx-auto h-12 w-12 text-gray-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1}
+                  d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
+                />
+              </svg>
+              <h3 className="mt-2 text-sm font-semibold text-gray-900">No bidders configured</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Add bidder adapters to enable programmatic advertising.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {publisherBidders.map((bidder) => (
+                <div
+                  key={bidder.id}
+                  className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <span className="text-blue-600 font-semibold text-sm">
+                          {bidder.bidderCode.substring(0, 2).toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="ml-4">
+                        <div className="flex items-center">
+                          <p className="text-sm font-medium text-gray-900">
+                            {bidder.bidderName}
+                          </p>
+                          <span className="ml-2 inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">
+                            {bidder.bidderCode}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-500">
+                          {Object.keys(bidder.params).length > 0
+                            ? `${Object.keys(bidder.params).length} parameters configured`
+                            : 'No parameters configured'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-4">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleBidder(bidder)}
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 ${
+                          bidder.enabled ? 'bg-blue-600' : 'bg-gray-200'
+                        }`}
+                        role="switch"
+                        aria-checked={bidder.enabled}
+                        aria-label={`Toggle ${bidder.bidderName}`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                            bidder.enabled ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteBidderClick(bidder)}
+                        className="text-red-500 hover:text-red-700"
+                        title="Remove bidder"
+                      >
+                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ),
     },
@@ -1792,6 +2120,164 @@ export function PublisherDetailPage() {
         cancelText="Cancel"
         variant="danger"
         isLoading={deleteAdUnitDialog.isLoading}
+      />
+
+      {/* Add Bidder Modal */}
+      <FormModal
+        isOpen={bidderModal.isOpen}
+        onClose={handleBidderClose}
+        title="Add Bidder"
+      >
+        <form onSubmit={handleBidderSubmit} className="space-y-4">
+          {/* Bidder Selection */}
+          {!bidderForm.bidderCode ? (
+            <>
+              <div>
+                <label htmlFor="bidderSearch" className="block text-sm font-medium text-gray-700 mb-2">
+                  Search Bidders
+                </label>
+                <input
+                  type="text"
+                  id="bidderSearch"
+                  placeholder="Search by name or code..."
+                  value={bidderSearchQuery}
+                  onChange={(e) => setBidderSearchQuery(e.target.value)}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                />
+              </div>
+              <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-md">
+                {filteredAvailableBidders.length === 0 ? (
+                  <div className="p-4 text-center text-sm text-gray-500">
+                    {bidderSearchQuery
+                      ? 'No bidders found matching your search.'
+                      : 'All available bidders have been added.'}
+                  </div>
+                ) : (
+                  <ul className="divide-y divide-gray-200">
+                    {filteredAvailableBidders.map((bidder) => (
+                      <li
+                        key={bidder.id}
+                        className="p-3 hover:bg-gray-50 cursor-pointer"
+                        onClick={() => handleBidderSelect(bidder.code)}
+                      >
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 h-8 w-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <span className="text-blue-600 font-semibold text-xs">
+                              {bidder.code.substring(0, 2).toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="ml-3">
+                            <p className="text-sm font-medium text-gray-900">{bidder.name}</p>
+                            <p className="text-xs text-gray-500">{bidder.code}</p>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Selected Bidder Configuration */}
+              <div className="bg-blue-50 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                      <span className="text-blue-600 font-semibold text-sm">
+                        {bidderForm.bidderCode.substring(0, 2).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-gray-900">
+                        {selectedBidderSchema?.name}
+                      </p>
+                      <p className="text-xs text-gray-500">{bidderForm.bidderCode}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setBidderForm({ bidderCode: '', params: {} })}
+                    className="text-sm text-blue-600 hover:text-blue-800"
+                  >
+                    Change
+                  </button>
+                </div>
+                {selectedBidderSchema?.description && (
+                  <p className="mt-2 text-sm text-gray-600">{selectedBidderSchema.description}</p>
+                )}
+              </div>
+
+              {/* Bidder Parameters */}
+              {selectedBidderSchema && selectedBidderSchema.paramsSchema.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-gray-900">Configuration Parameters</h4>
+                  {selectedBidderSchema.paramsSchema.map((param) => (
+                    <div key={param.key}>
+                      <label
+                        htmlFor={`param-${param.key}`}
+                        className="block text-sm font-medium text-gray-700"
+                      >
+                        {param.label}
+                        {param.required && <span className="text-red-500 ml-1">*</span>}
+                      </label>
+                      <input
+                        type="text"
+                        id={`param-${param.key}`}
+                        value={bidderForm.params[param.key] || ''}
+                        onChange={(e) =>
+                          setBidderForm((prev) => ({
+                            ...prev,
+                            params: { ...prev.params, [param.key]: e.target.value },
+                          }))
+                        }
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                        required={param.required}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="flex justify-end space-x-3 pt-4">
+            <button
+              type="button"
+              onClick={handleBidderClose}
+              disabled={bidderModal.isLoading}
+              className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={bidderModal.isLoading || !bidderForm.bidderCode}
+              className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50"
+            >
+              {bidderModal.isLoading && (
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              )}
+              Add Bidder
+            </button>
+          </div>
+        </form>
+      </FormModal>
+
+      {/* Delete Bidder Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteBidderDialog.isOpen}
+        onClose={handleDeleteBidderCancel}
+        onConfirm={handleDeleteBidderConfirm}
+        title="Remove Bidder"
+        message={`Are you sure you want to remove "${deleteBidderDialog.bidder?.bidderName}" from this publisher? This action cannot be undone.`}
+        confirmText="Remove"
+        cancelText="Cancel"
+        variant="danger"
+        isLoading={deleteBidderDialog.isLoading}
       />
     </div>
   );

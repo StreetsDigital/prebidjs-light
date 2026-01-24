@@ -98,6 +98,20 @@ interface UserIdModule {
   configSchema: { key: string; label: string; required: boolean }[];
 }
 
+interface ConsentManagementConfig {
+  gdpr?: {
+    enabled: boolean;
+    cmpApi?: string;
+    timeout?: number;
+    defaultGdprScope?: boolean;
+  };
+  usp?: {
+    enabled: boolean;
+    cmpApi?: string;
+    timeout?: number;
+  };
+}
+
 const MOCK_BUILDS: Build[] = [
   {
     id: 'build_1',
@@ -381,6 +395,22 @@ export function PublisherDetailPage() {
   });
   const [userIdModuleForm, setUserIdModuleForm] = useState<Record<string, string>>({});
 
+  // Consent management state
+  const [consentManagement, setConsentManagement] = useState<ConsentManagementConfig | null>(null);
+  const [consentModal, setConsentModal] = useState({
+    isOpen: false,
+    isLoading: false,
+  });
+  const [consentForm, setConsentForm] = useState({
+    gdprEnabled: false,
+    gdprCmpApi: 'iab',
+    gdprTimeout: 10000,
+    gdprDefaultScope: true,
+    uspEnabled: false,
+    uspCmpApi: 'iab',
+    uspTimeout: 10000,
+  });
+
   const fetchPublisher = async () => {
     if (!id) return;
 
@@ -468,6 +498,11 @@ export function PublisherDetailPage() {
           };
         });
         setUserIdModules(mergedModules);
+
+        // Load consent management config
+        if (data.consentManagement) {
+          setConsentManagement(data.consentManagement);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch config:', err);
@@ -1486,6 +1521,68 @@ export function PublisherDetailPage() {
     }
   };
 
+  // Consent management handlers
+  const handleConsentConfigClick = () => {
+    setConsentForm({
+      gdprEnabled: consentManagement?.gdpr?.enabled || false,
+      gdprCmpApi: consentManagement?.gdpr?.cmpApi || 'iab',
+      gdprTimeout: consentManagement?.gdpr?.timeout || 10000,
+      gdprDefaultScope: consentManagement?.gdpr?.defaultGdprScope ?? true,
+      uspEnabled: consentManagement?.usp?.enabled || false,
+      uspCmpApi: consentManagement?.usp?.cmpApi || 'iab',
+      uspTimeout: consentManagement?.usp?.timeout || 10000,
+    });
+    setConsentModal({ isOpen: true, isLoading: false });
+  };
+
+  const handleConsentConfigClose = () => {
+    setConsentModal({ isOpen: false, isLoading: false });
+  };
+
+  const handleConsentConfigSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!publisher) return;
+
+    setConsentModal((prev) => ({ ...prev, isLoading: true }));
+
+    const newConsentConfig: ConsentManagementConfig = {
+      gdpr: {
+        enabled: consentForm.gdprEnabled,
+        cmpApi: consentForm.gdprCmpApi,
+        timeout: consentForm.gdprTimeout,
+        defaultGdprScope: consentForm.gdprDefaultScope,
+      },
+      usp: {
+        enabled: consentForm.uspEnabled,
+        cmpApi: consentForm.uspCmpApi,
+        timeout: consentForm.uspTimeout,
+      },
+    };
+
+    try {
+      const response = await fetch(`/api/publishers/${publisher.id}/config`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          consentManagement: newConsentConfig,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update consent config');
+      }
+
+      setConsentManagement(newConsentConfig);
+      handleConsentConfigClose();
+    } catch (err) {
+      console.error('Failed to save consent config:', err);
+      setConsentModal((prev) => ({ ...prev, isLoading: false }));
+    }
+  };
+
   const formatVersionDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleString();
@@ -1871,6 +1968,78 @@ export function PublisherDetailPage() {
                     )}
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Consent Management Section */}
+          {!showVersionHistory && (
+            <div className="bg-white shadow rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-medium text-gray-900">Consent Management</h2>
+                  <p className="text-sm text-gray-500">
+                    Configure GDPR TCF and US Privacy (CCPA) consent settings.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleConsentConfigClick}
+                  className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
+                >
+                  <svg className="-ml-0.5 mr-1.5 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Configure
+                </button>
+              </div>
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                {/* GDPR Section */}
+                <div className={`border rounded-lg p-4 ${consentManagement?.gdpr?.enabled ? 'border-green-200 bg-green-50' : 'border-gray-200'}`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-medium text-gray-900">GDPR TCF 2.0</h3>
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${consentManagement?.gdpr?.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                      {consentManagement?.gdpr?.enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </div>
+                  {consentManagement?.gdpr?.enabled && (
+                    <dl className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">CMP API</dt>
+                        <dd className="text-gray-900">{consentManagement.gdpr.cmpApi || 'iab'}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">Timeout</dt>
+                        <dd className="text-gray-900">{consentManagement.gdpr.timeout || 10000}ms</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">Default Scope</dt>
+                        <dd className="text-gray-900">{consentManagement.gdpr.defaultGdprScope ? 'Yes' : 'No'}</dd>
+                      </div>
+                    </dl>
+                  )}
+                </div>
+                {/* USP Section */}
+                <div className={`border rounded-lg p-4 ${consentManagement?.usp?.enabled ? 'border-green-200 bg-green-50' : 'border-gray-200'}`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-medium text-gray-900">US Privacy (CCPA)</h3>
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${consentManagement?.usp?.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                      {consentManagement?.usp?.enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </div>
+                  {consentManagement?.usp?.enabled && (
+                    <dl className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">CMP API</dt>
+                        <dd className="text-gray-900">{consentManagement.usp.cmpApi || 'iab'}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">Timeout</dt>
+                        <dd className="text-gray-900">{consentManagement.usp.timeout || 10000}ms</dd>
+                      </div>
+                    </dl>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -3152,6 +3321,150 @@ export function PublisherDetailPage() {
               className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50"
             >
               {userIdModuleModal.isLoading && (
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              )}
+              Save Configuration
+            </button>
+          </div>
+        </form>
+      </FormModal>
+
+      {/* Consent Management Config Modal */}
+      <FormModal
+        isOpen={consentModal.isOpen}
+        onClose={handleConsentConfigClose}
+        title="Configure Consent Management"
+      >
+        <form onSubmit={handleConsentConfigSave} className="space-y-6">
+          {/* GDPR Section */}
+          <div className="border rounded-lg p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-900">GDPR TCF 2.0</h3>
+              <button
+                type="button"
+                onClick={() => setConsentForm((prev) => ({ ...prev, gdprEnabled: !prev.gdprEnabled }))}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${consentForm.gdprEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}
+                role="switch"
+                aria-checked={consentForm.gdprEnabled}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${consentForm.gdprEnabled ? 'translate-x-5' : 'translate-x-0'}`}
+                />
+              </button>
+            </div>
+            {consentForm.gdprEnabled && (
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="gdprCmpApi" className="block text-sm font-medium text-gray-700">
+                    CMP API
+                  </label>
+                  <select
+                    id="gdprCmpApi"
+                    value={consentForm.gdprCmpApi}
+                    onChange={(e) => setConsentForm((prev) => ({ ...prev, gdprCmpApi: e.target.value }))}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  >
+                    <option value="iab">IAB TCF</option>
+                    <option value="static">Static</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="gdprTimeout" className="block text-sm font-medium text-gray-700">
+                    Timeout (ms)
+                  </label>
+                  <input
+                    type="number"
+                    id="gdprTimeout"
+                    value={consentForm.gdprTimeout}
+                    onChange={(e) => setConsentForm((prev) => ({ ...prev, gdprTimeout: parseInt(e.target.value, 10) || 10000 }))}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    min={1000}
+                    max={30000}
+                  />
+                </div>
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="gdprDefaultScope"
+                    checked={consentForm.gdprDefaultScope}
+                    onChange={(e) => setConsentForm((prev) => ({ ...prev, gdprDefaultScope: e.target.checked }))}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <label htmlFor="gdprDefaultScope" className="ml-2 block text-sm text-gray-900">
+                    Default GDPR Scope (applies to all users by default)
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* USP Section */}
+          <div className="border rounded-lg p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-900">US Privacy (CCPA)</h3>
+              <button
+                type="button"
+                onClick={() => setConsentForm((prev) => ({ ...prev, uspEnabled: !prev.uspEnabled }))}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${consentForm.uspEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}
+                role="switch"
+                aria-checked={consentForm.uspEnabled}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${consentForm.uspEnabled ? 'translate-x-5' : 'translate-x-0'}`}
+                />
+              </button>
+            </div>
+            {consentForm.uspEnabled && (
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="uspCmpApi" className="block text-sm font-medium text-gray-700">
+                    CMP API
+                  </label>
+                  <select
+                    id="uspCmpApi"
+                    value={consentForm.uspCmpApi}
+                    onChange={(e) => setConsentForm((prev) => ({ ...prev, uspCmpApi: e.target.value }))}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  >
+                    <option value="iab">IAB USP</option>
+                    <option value="static">Static</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="uspTimeout" className="block text-sm font-medium text-gray-700">
+                    Timeout (ms)
+                  </label>
+                  <input
+                    type="number"
+                    id="uspTimeout"
+                    value={consentForm.uspTimeout}
+                    onChange={(e) => setConsentForm((prev) => ({ ...prev, uspTimeout: parseInt(e.target.value, 10) || 10000 }))}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    min={1000}
+                    max={30000}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end space-x-3 pt-4">
+            <button
+              type="button"
+              onClick={handleConsentConfigClose}
+              className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={consentModal.isLoading}
+              className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50"
+            >
+              {consentModal.isLoading && (
                 <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>

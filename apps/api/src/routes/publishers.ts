@@ -763,6 +763,20 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     config: Record<string, string>;
   }
 
+  interface ConsentManagementConfig {
+    gdpr?: {
+      enabled: boolean;
+      cmpApi?: string;
+      timeout?: number;
+      defaultGdprScope?: boolean;
+    };
+    usp?: {
+      enabled: boolean;
+      cmpApi?: string;
+      timeout?: number;
+    };
+  }
+
   interface UpdateConfigBody {
     bidderTimeout?: number;
     priceGranularity?: string;
@@ -770,6 +784,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     bidderSequence?: string;
     debugMode?: boolean;
     userIdModules?: UserIdModuleConfig[];
+    consentManagement?: ConsentManagementConfig;
   }
 
   // Get publisher config
@@ -799,6 +814,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     return {
       ...config,
       userIdModules: config.userIdModules ? JSON.parse(config.userIdModules) : [],
+      consentManagement: config.consentManagement ? JSON.parse(config.consentManagement) : null,
     };
   });
 
@@ -807,7 +823,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     preHandler: requireAuth,
   }, async (request, reply) => {
     const { id } = request.params;
-    const { bidderTimeout, priceGranularity, enableSendAllBids, bidderSequence, debugMode, userIdModules } = request.body;
+    const { bidderTimeout, priceGranularity, enableSendAllBids, bidderSequence, debugMode, userIdModules, consentManagement } = request.body;
     const user = request.user as TokenPayload;
 
     // Check if publisher exists
@@ -854,6 +870,14 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
         changes.push(`userIdModules: ${previousEnabled.length > 0 ? previousEnabled.join(', ') : 'none'} → ${enabledModules.length > 0 ? enabledModules.join(', ') : 'none'}`);
       }
     }
+    if (consentManagement !== undefined) {
+      const currentConsent = config.consentManagement ? JSON.parse(config.consentManagement) : null;
+      const gdprEnabled = consentManagement?.gdpr?.enabled || false;
+      const previousGdprEnabled = currentConsent?.gdpr?.enabled || false;
+      if (gdprEnabled !== previousGdprEnabled) {
+        changes.push(`GDPR: ${previousGdprEnabled ? 'enabled' : 'disabled'} → ${gdprEnabled ? 'enabled' : 'disabled'}`);
+      }
+    }
 
     // Save current config as a version entry before updating
     db.insert(configVersions).values({
@@ -881,6 +905,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
         ...(bidderSequence !== undefined && { bidderSequence }),
         ...(debugMode !== undefined && { debugMode }),
         ...(userIdModules !== undefined && { userIdModules: JSON.stringify(userIdModules) }),
+        ...(consentManagement !== undefined && { consentManagement: JSON.stringify(consentManagement) }),
         updatedAt: now,
         version: newVersion,
       })
@@ -892,6 +917,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     return {
       ...updated,
       userIdModules: updated?.userIdModules ? JSON.parse(updated.userIdModules) : [],
+      consentManagement: updated?.consentManagement ? JSON.parse(updated.consentManagement) : null,
     };
   });
 

@@ -1652,7 +1652,7 @@ export function PublisherDetailPage() {
       commitHash: Math.random().toString(36).substring(2, 9),
       fileSize: null,
       modules: 12,
-      bidders: publisherBidders.length || 5,
+      bidders: publisherBidders.filter(b => b.enabled).length || 5,
     };
 
     // Add building state to top of list
@@ -1702,7 +1702,7 @@ pbjs.addAdUnits(${JSON.stringify(adUnits.map(u => ({
 })), null, 2)});
 
 // Bidder Adapters
-${publisherBidders.map(b => `// ${b.bidderName} adapter loaded`).join('\\n')}
+${publisherBidders.filter(b => b.enabled).map(b => `// ${b.bidderName} adapter loaded`).join('\\n')}
 
 // GPT Integration
 pbjs.que.push(function() {

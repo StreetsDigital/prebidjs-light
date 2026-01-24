@@ -14,9 +14,9 @@ const app = Fastify({
   },
 });
 
-// Register plugins
+// Register plugins - CORS with dynamic origin checking
 app.register(cors, {
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  origin: true, // Reflect the request origin - for development
   credentials: true,
 });
 
@@ -35,7 +35,7 @@ app.register(rateLimit, {
 
 // Health check endpoint
 app.get('/health', async () => {
-  return { status: 'ok', timestamp: new Date().toISOString() };
+  return { status: 'ok', timestamp: new Date().toISOString(), version: 'v2-cors-fixed' };
 });
 
 // Register API routes

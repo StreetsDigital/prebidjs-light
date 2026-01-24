@@ -5,7 +5,7 @@ import { useAuthStore } from '../stores/authStore';
 export function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { login, isLoading, error, clearError, user } = useAuthStore();
+  const { login, isLoading, error, clearError } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
 

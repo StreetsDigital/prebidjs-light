@@ -1,8 +1,9 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ProtectedRoute, PublicRoute } from './components/auth/ProtectedRoute';
-import { AdminLayout } from './components/layout';
+import { AdminLayout, PublisherLayout } from './components/layout';
 import { Login } from './pages/Login';
-import { DashboardPage } from './pages/admin';
+import { DashboardPage, PublishersPage, PublisherDetailPage, UsersPage } from './pages/admin';
+import { PublisherDashboard } from './pages/publisher';
 import { NotFound } from './pages/NotFound';
 
 // Placeholder components for routes that aren't implemented yet
@@ -37,8 +38,9 @@ function App() {
       >
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="publishers" element={<PlaceholderPage title="Publishers" />} />
-        <Route path="users" element={<PlaceholderPage title="Users" />} />
+        <Route path="publishers" element={<PublishersPage />} />
+        <Route path="publishers/:id" element={<PublisherDetailPage />} />
+        <Route path="users" element={<UsersPage />} />
         <Route path="analytics" element={<PlaceholderPage title="Analytics" />} />
         <Route path="audit-logs" element={<PlaceholderPage title="Audit Logs" />} />
         <Route path="modules" element={<PlaceholderPage title="Modules" />} />
@@ -59,15 +61,25 @@ function App() {
         <Route path="*" element={<PlaceholderPage title="Page Not Found" />} />
       </Route>
 
-      {/* Publisher portal routes (placeholder) */}
+      {/* Publisher portal routes with layout */}
       <Route
-        path="/publisher/*"
+        path="/publisher"
         element={
           <ProtectedRoute allowedRoles={['publisher']}>
-            <PlaceholderPage title="Publisher Portal" />
+            <PublisherLayout />
           </ProtectedRoute>
         }
-      />
+      >
+        <Route index element={<Navigate to="dashboard" replace />} />
+        <Route path="dashboard" element={<PublisherDashboard />} />
+        <Route path="ad-units" element={<PlaceholderPage title="Ad Units" />} />
+        <Route path="bidders" element={<PlaceholderPage title="Bidders" />} />
+        <Route path="settings" element={<PlaceholderPage title="Settings" />} />
+        <Route path="get-code" element={<PlaceholderPage title="Get Code" />} />
+        <Route path="analytics" element={<PlaceholderPage title="Analytics" />} />
+        <Route path="support" element={<PlaceholderPage title="Support" />} />
+        <Route path="*" element={<PlaceholderPage title="Page Not Found" />} />
+      </Route>
 
       {/* Redirects */}
       <Route path="/" element={<Navigate to="/admin/dashboard" replace />} />

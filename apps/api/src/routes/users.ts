@@ -98,6 +98,12 @@ export default async function userRoutes(fastify: FastifyInstance) {
     if (password.length < 8) {
       return reply.code(400).send({ error: 'Password must be at least 8 characters' });
     }
+    if (!/[0-9]/.test(password)) {
+      return reply.code(400).send({ error: 'Password must contain at least one number' });
+    }
+    if (!/[a-z]/.test(password) || !/[A-Z]/.test(password)) {
+      return reply.code(400).send({ error: 'Password must contain both uppercase and lowercase letters' });
+    }
 
     // Check for existing user with same email
     const existing = db.select().from(users).where(eq(users.email, email.toLowerCase())).get();

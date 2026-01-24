@@ -3,7 +3,7 @@ import { ProtectedRoute, PublicRoute } from './components/auth/ProtectedRoute';
 import { AdminLayout, PublisherLayout } from './components/layout';
 import { Login } from './pages/Login';
 import { DashboardPage, PublishersPage, PublisherDetailPage, PublisherCreatePage, UsersPage, ModulesPage } from './pages/admin';
-import { PublisherDashboard } from './pages/publisher';
+import { PublisherDashboard, AdUnitsPage, BiddersPage, GetCodePage } from './pages/publisher';
 import { NotFound } from './pages/NotFound';
 
 // Placeholder components for routes that aren't implemented yet
@@ -73,10 +73,10 @@ function App() {
       >
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<PublisherDashboard />} />
-        <Route path="ad-units" element={<PlaceholderPage title="Ad Units" />} />
-        <Route path="bidders" element={<PlaceholderPage title="Bidders" />} />
+        <Route path="ad-units" element={<AdUnitsPage />} />
+        <Route path="bidders" element={<BiddersPage />} />
         <Route path="settings" element={<PlaceholderPage title="Settings" />} />
-        <Route path="get-code" element={<PlaceholderPage title="Get Code" />} />
+        <Route path="get-code" element={<GetCodePage />} />
         <Route path="analytics" element={<PlaceholderPage title="Analytics" />} />
         <Route path="support" element={<PlaceholderPage title="Support" />} />
         <Route path="*" element={<PlaceholderPage title="Page Not Found" />} />

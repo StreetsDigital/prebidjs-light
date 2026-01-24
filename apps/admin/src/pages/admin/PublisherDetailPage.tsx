@@ -347,7 +347,8 @@ export function PublisherDetailPage() {
   });
 
   // Build state
-  const [builds] = useState<Build[]>(MOCK_BUILDS);
+  const [builds, setBuilds] = useState<Build[]>(MOCK_BUILDS);
+  const [isBuildTriggering, setIsBuildTriggering] = useState(false);
 
   // Bidder state
   const [publisherBidders, setPublisherBidders] = useState<PublisherBidder[]>([]);
@@ -1603,6 +1604,99 @@ export function PublisherDetailPage() {
     }
   };
 
+  // Build handlers
+  const handleTriggerBuild = async () => {
+    setIsBuildTriggering(true);
+
+    // Create new build with "building" status
+    const newBuild: Build = {
+      id: `build_${Date.now()}`,
+      version: builds.length > 0 ?
+        `1.${parseInt(builds[0].version.split('.')[1] || '0') + 1}.0` : '1.0.0',
+      status: 'building',
+      startedAt: new Date().toISOString(),
+      completedAt: null,
+      duration: null,
+      triggeredBy: 'Super Admin',
+      commitHash: Math.random().toString(36).substring(2, 9),
+      fileSize: null,
+      modules: 12,
+      bidders: publisherBidders.length || 5,
+    };
+
+    // Add building state to top of list
+    setBuilds([newBuild, ...builds]);
+
+    // Simulate build process (3 seconds)
+    setTimeout(() => {
+      const completedBuild: Build = {
+        ...newBuild,
+        status: 'success',
+        completedAt: new Date().toISOString(),
+        duration: 120 + Math.floor(Math.random() * 60),
+        fileSize: `${240 + Math.floor(Math.random() * 20)} KB`,
+        scriptUrl: '/cdn/prebid-bundle.min.js',
+      };
+
+      setBuilds((prev) => [completedBuild, ...prev.slice(1)]);
+      setIsBuildTriggering(false);
+    }, 3000);
+  };
+
+  const handleDownloadBuild = () => {
+    if (builds.length === 0 || builds[0].status !== 'success') return;
+
+    // Generate a mock Prebid.js bundle content
+    const bundleContent = `// Prebid.js Bundle for Publisher: ${publisher.id}
+// Version: ${builds[0].version}
+// Generated: ${new Date().toISOString()}
+// Modules: ${builds[0].modules}
+// Bidders: ${builds[0].bidders}
+
+var pbjs = pbjs || {};
+pbjs.que = pbjs.que || [];
+
+// Publisher Config
+pbjs.setConfig({
+  priceGranularity: "medium",
+  enableSendAllBids: true,
+  bidderTimeout: 1500,
+  publisherId: "${publisher.id}"
+});
+
+// Ad Units
+pbjs.addAdUnits(${JSON.stringify(adUnits.map(u => ({
+  code: u.code,
+  mediaTypes: { banner: { sizes: u.sizes.map(s => s.split('x').map(Number)) } }
+})), null, 2)});
+
+// Bidder Adapters
+${publisherBidders.map(b => `// ${b.bidderName} adapter loaded`).join('\\n')}
+
+// GPT Integration
+pbjs.que.push(function() {
+  pbjs.requestBids({
+    bidsBackHandler: function() {
+      pbjs.setTargetingForGPTAsync();
+    }
+  });
+});
+
+console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
+`;
+
+    // Create and download the file
+    const blob = new Blob([bundleContent], { type: 'application/javascript' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `prebid-bundle-${publisher.slug}-v${builds[0].version}.min.js`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const formatVersionDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleString();
@@ -2512,15 +2606,47 @@ export function PublisherDetailPage() {
                   Current Prebid.js build for this publisher.
                 </p>
               </div>
-              <button
-                type="button"
-                className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
-              >
-                <svg className="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-                </svg>
-                Trigger Build
-              </button>
+              <div className="flex items-center space-x-3">
+                {builds.length > 0 && builds[0].status === 'success' && (
+                  <button
+                    type="button"
+                    onClick={handleDownloadBuild}
+                    className="inline-flex items-center rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500"
+                  >
+                    <svg className="-ml-0.5 mr-1.5 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleTriggerBuild}
+                  disabled={isBuildTriggering || (builds.length > 0 && builds[0].status === 'building')}
+                  className={`inline-flex items-center rounded-md px-3 py-2 text-sm font-semibold text-white shadow-sm ${
+                    isBuildTriggering || (builds.length > 0 && builds[0].status === 'building')
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-blue-600 hover:bg-blue-500'
+                  }`}
+                >
+                  {isBuildTriggering || (builds.length > 0 && builds[0].status === 'building') ? (
+                    <>
+                      <svg className="-ml-0.5 mr-1.5 h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                      </svg>
+                      Building...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                      </svg>
+                      Trigger Build
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
             {builds.length > 0 && (

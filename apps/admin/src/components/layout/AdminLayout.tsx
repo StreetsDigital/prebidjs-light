@@ -180,6 +180,14 @@ export function AdminLayout() {
 
   return (
     <div className="flex min-h-screen bg-gray-100 dark:bg-gray-900">
+      {/* Skip to main content link for accessibility */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-4 focus:left-4 focus:bg-blue-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-md focus:shadow-lg"
+      >
+        Skip to main content
+      </a>
+
       {/* Sidebar */}
       <Sidebar />
 
@@ -424,7 +432,7 @@ export function AdminLayout() {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-6">
+        <main id="main-content" className="flex-1 p-6">
           <Outlet />
         </main>
       </div>

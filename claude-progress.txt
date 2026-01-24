@@ -943,3 +943,88 @@ Continued feature verification and implementation, focusing on export functional
 2. Complete T-series (performance)
 3. Clear any in-progress features that may be stuck
 4. Target 80% completion milestone
+
+---
+
+# Session Progress Report - January 24, 2026 (Morning)
+
+## Summary
+Implemented the Website taxonomy feature that adds a Website/Site layer between Publishers and Ad Units, enabling a Publisher -> Websites -> Ad Units hierarchy.
+
+## Feature Implemented
+**Feature #262: Taxonomy issue - Websites included**
+- Description: Publishers can own multiple websites, and websites contain multiple Ad Units
+
+## Tasks Completed
+
+### 1. Database Schema Updates
+- Added `websites` table to database schema (`apps/api/src/db/schema.ts`)
+- Added `websiteId` column to `ad_units` table for future linking
+- Created migration system in `apps/api/src/db/index.ts` for handling existing databases
+- Added appropriate indexes for performance
+
+### 2. API Routes
+- Created `apps/api/src/routes/websites.ts` with full CRUD operations:
+  - GET `/api/publishers/:publisherId/websites` - List websites
+  - GET `/api/publishers/:publisherId/websites/:websiteId` - Get single website
+  - POST `/api/publishers/:publisherId/websites` - Create website
+  - PUT `/api/publishers/:publisherId/websites/:websiteId` - Update website
+  - DELETE `/api/publishers/:publisherId/websites/:websiteId` - Delete website
+- Domain normalization (removes http/https protocol)
+- Duplicate domain prevention per publisher
+- Audit logging for all CRUD operations
+
+### 3. Admin UI Updates
+- Added "Websites" tab to Publisher Detail page
+- Created Website interface and form data types
+- Implemented website list view with cards showing:
+  - Website name and domain
+  - Status badge (active/paused/disabled)
+  - Ad unit count
+  - Notes
+  - Edit and Delete buttons
+- Created "Add Website" modal with form fields:
+  - Website Name (required)
+  - Domain (required)
+  - Notes (optional)
+- Created "Edit Website" modal (pre-populated with existing data)
+- Created delete confirmation dialog
+- Added hash navigation support for `#websites`
+- Toast notifications for success/error feedback
+
+### 4. Verified with Browser Automation
+- Created test website "TEST_WEBSITE_12345" via UI
+- Verified it appears in the list with correct data
+- Tested edit functionality (form pre-population)
+- Tested delete functionality with confirmation
+- Verified data removal after delete
+- No console errors
+
+## Files Modified
+1. `apps/api/src/db/schema.ts` - Added websites table and websiteId to ad_units
+2. `apps/api/src/db/index.ts` - Added migration system for schema updates
+3. `apps/api/src/index.ts` - Registered website routes
+4. `apps/api/src/routes/websites.ts` - New file with website CRUD routes
+5. `apps/admin/src/pages/admin/PublisherDetailPage.tsx` - Added Websites tab and UI
+
+## Ending Stats
+- Passing: 251 features (95.4%)
+- In Progress: 7 features
+- Total: 263 features
+
+## Session Progress
+- Started at: 250 passing features (95.1%)
+- Ended at: 251 passing features (95.4%)
+- Features implemented and verified: 1
+
+## Commits Made
+1. `feat(taxonomy): Add websites layer between publishers and ad units`
+
+## Test Credentials
+- Admin: super_admin (auto-logged in)
+- Servers: API on :3001, Admin on :5173
+
+## Next Steps for Future Agents
+1. Clear the 7 in-progress features that may be stuck
+2. Continue implementing remaining features to reach 100%
+3. Link ad units to websites (optional enhancement)

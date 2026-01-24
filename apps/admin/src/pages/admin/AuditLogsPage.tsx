@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FormModal } from '../../components/ui';
 import { useAuthStore } from '../../stores/authStore';
-import { ArrowDownTrayIcon, CalendarIcon } from '@heroicons/react/24/outline';
+import { ArrowDownTrayIcon, CalendarIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 
 interface AuditLog {
   id: string;
@@ -161,6 +161,7 @@ export function AuditLogsPage() {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const fetchLogs = async () => {
     setIsLoading(true);
@@ -186,6 +187,9 @@ export function AuditLogsPage() {
         if (endDate) params.append('endDate', endDate);
       }
 
+      // Apply sort order
+      params.append('sortOrder', sortOrder);
+
       const response = await fetch(`/api/audit-logs?${params.toString()}`, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -204,7 +208,7 @@ export function AuditLogsPage() {
 
   useEffect(() => {
     fetchLogs();
-  }, [token, actionFilter, datePreset, customStartDate, customEndDate]);
+  }, [token, actionFilter, datePreset, customStartDate, customEndDate, sortOrder]);
 
   const handleExport = () => {
     const timestamp = new Date().toISOString().split('T')[0];
@@ -346,9 +350,17 @@ export function AuditLogsPage() {
             <tr>
               <th
                 scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
               >
-                Timestamp
+                <div className="flex items-center gap-1">
+                  Timestamp
+                  {sortOrder === 'desc' ? (
+                    <ChevronDownIcon className="h-4 w-4" />
+                  ) : (
+                    <ChevronUpIcon className="h-4 w-4" />
+                  )}
+                </div>
               </th>
               <th
                 scope="col"

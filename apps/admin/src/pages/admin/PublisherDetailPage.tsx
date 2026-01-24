@@ -30,6 +30,7 @@ interface AdUnit {
   sizes: string[];
   mediaTypes: string[];
   status: 'active' | 'paused';
+  floorPrice: string | null;
 }
 
 interface AdUnitFormData {
@@ -37,6 +38,7 @@ interface AdUnitFormData {
   name: string;
   sizes: string;
   mediaTypes: string[];
+  floorPrice: string;
 }
 
 interface ConfigVersion {
@@ -230,6 +232,7 @@ export function PublisherDetailPage() {
     name: '',
     sizes: '',
     mediaTypes: ['banner'],
+    floorPrice: '',
   });
   const [deleteAdUnitDialog, setDeleteAdUnitDialog] = useState({
     isOpen: false,
@@ -324,13 +327,14 @@ export function PublisherDetailPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setAdUnits(data.adUnits.map((u: { id: string; code: string; name: string; mediaTypes?: { banner?: { sizes: number[][] } }; status: string }) => ({
+        setAdUnits(data.adUnits.map((u: { id: string; code: string; name: string; mediaTypes?: { banner?: { sizes: number[][] } }; status: string; floorPrice?: string | null }) => ({
           id: u.id,
           code: u.code,
           name: u.name,
           sizes: u.mediaTypes?.banner?.sizes?.map((s: number[]) => s.join('x')) || [],
           mediaTypes: u.mediaTypes ? Object.keys(u.mediaTypes) : ['banner'],
           status: u.status,
+          floorPrice: u.floorPrice || null,
         })));
       }
     } catch (err) {
@@ -558,6 +562,7 @@ export function PublisherDetailPage() {
       name: '',
       sizes: '',
       mediaTypes: ['banner'],
+      floorPrice: '',
     });
     setAdUnitModal({ isOpen: true, isLoading: false });
   };
@@ -593,6 +598,7 @@ export function PublisherDetailPage() {
           mediaTypes: adUnitForm.mediaTypes.includes('banner') ? {
             banner: { sizes: sizesArray },
           } : undefined,
+          floorPrice: adUnitForm.floorPrice || null,
         }),
       });
 
@@ -609,6 +615,7 @@ export function PublisherDetailPage() {
         sizes: sizesArray.map(s => s.join('x')),
         mediaTypes: adUnitForm.mediaTypes,
         status: newAdUnit.status,
+        floorPrice: newAdUnit.floorPrice || null,
       }]);
       handleAdUnitClose();
       // Switch to ad-units tab to show the new ad unit
@@ -1489,6 +1496,16 @@ export function PublisherDetailPage() {
                         ))}
                       </div>
                     </div>
+                    {unit.floorPrice && (
+                      <div>
+                        <span className="text-xs font-medium text-gray-500 uppercase">Floor Price</span>
+                        <div className="mt-1">
+                          <span className="inline-flex items-center rounded bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+                            ${unit.floorPrice} CPM
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -1941,6 +1958,20 @@ export function PublisherDetailPage() {
               required
             />
             <p className="mt-1 text-sm text-gray-500">Comma-separated list of sizes (e.g., 300x250, 728x90)</p>
+          </div>
+          <div>
+            <label htmlFor="adUnitFloorPrice" className="block text-sm font-medium text-gray-700">
+              Floor Price (CPM)
+            </label>
+            <input
+              type="text"
+              id="adUnitFloorPrice"
+              value={adUnitForm.floorPrice}
+              onChange={(e) => setAdUnitForm((prev) => ({ ...prev, floorPrice: e.target.value }))}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              placeholder="1.50"
+            />
+            <p className="mt-1 text-sm text-gray-500">Minimum CPM price for this ad unit (e.g., 1.50)</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">

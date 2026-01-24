@@ -656,11 +656,11 @@ export function PublishersPage() {
                           {publisher.name.charAt(0).toUpperCase()}
                         </span>
                       </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">
+                      <div className="ml-4 min-w-0 max-w-[250px]">
+                        <div className="text-sm font-medium text-gray-900 truncate" title={publisher.name}>
                           {publisher.name}
                         </div>
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm text-gray-500 truncate" title={publisher.slug}>
                           {publisher.slug}
                         </div>
                       </div>

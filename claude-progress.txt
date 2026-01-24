@@ -278,5 +278,102 @@ Continued development by verifying and implementing features related to database
 ## Notes
 - Frontend dev server running on port 5173
 - API server running on port 3001
-- SQLite database with 30 publishers for testing
+- SQLite database with 32 publishers for testing
 - Test credentials: admin@example.com / Admin123!
+
+---
+
+# Session 3 Progress Report
+
+## Session Date: January 24, 2026
+
+## Summary
+Continued development by implementing and verifying multiple features related to embed code functionality, state persistence, and form handling.
+
+## Features Verified/Implemented This Session
+
+### F20: Embed code script loads correctly (id=130) ✅
+- Created `/pb.js` endpoint in API that serves dynamic publisher wrapper script
+- Wrapper includes: config fetching, event system, analytics beacon
+- Created test HTML page to verify embed code functionality
+- Verified script loads, pb namespace available, config fetched
+
+### G01: Page refresh preserves URL state (id=131) ✅
+- Applied filter on publishers list (status=paused)
+- Refreshed page
+- Verified filter still applied from URL params
+
+### G02: Form state handled on refresh (id=132) ✅
+- Opened Create Publisher form, filled fields
+- Refreshed page
+- Verified form cleared (consistent behavior for create forms)
+
+### G03: Session handled on browser reopen (id=133) ✅
+- Logged in, closed browser
+- Reopened browser, navigated to dashboard
+- Verified session persisted (still logged in)
+
+### G04: Multiple tabs sync gracefully (id=134) ✅
+- Opened publishers list in two tabs
+- Created publisher in tab 1 (MultiTab Test Publisher)
+- Refreshed tab 2
+- Verified new publisher appeared
+
+### G05: Back after form submit no duplicate (id=135) ✅
+- Submitted Create Publisher form
+- Clicked browser back
+- Verified no duplicate created (32 total, 1 new publisher)
+
+### G06: Bookmark and return works (id=136) ✅
+- Navigated to specific publisher detail
+- Closed browser
+- Opened bookmarked URL directly
+- Verified correct publisher loaded
+
+### G07: Unsaved changes warning shown (id=137) ✅
+- **IMPLEMENTED** dirty form detection for Edit Publisher modal
+- Added originalEditForm state to track changes
+- Added hasUnsavedChanges() function
+- Added ConfirmDialog for discarding changes
+- Verified warning shows when closing with unsaved changes
+- Verified "Cancel" keeps form open
+
+## Code Changes
+
+### apps/api/src/index.ts
+- Added `/pb.js` endpoint that serves dynamic publisher wrapper script
+- Script is customized per publisher with API key and endpoint
+- Includes config caching, event system, analytics beacon integration
+
+### apps/admin/src/pages/admin/PublisherDetailPage.tsx
+- Added `originalEditForm` state to track initial form values
+- Added `unsavedChangesDialog` state for confirmation dialog
+- Added `hasUnsavedChanges()` function to compare current vs original
+- Modified `handleEditClose` to check for unsaved changes
+- Added `handleDiscardChanges` and `handleCancelDiscard` handlers
+- Added ConfirmDialog component for unsaved changes warning
+
+## Git Commits
+- `a578c46` - feat: Add pb.js wrapper endpoint and unsaved changes warning
+
+## Feature Database Stats
+- Total Features: 263
+- Passing: 109
+- In Progress: 4
+- Percentage Complete: 41.4%
+
+## Session Progress
+- Started at: 101 passing features (38.4%)
+- Ended at: 109 passing features (41.4%)
+- Features verified/implemented: 8
+
+## Next Steps for Future Agents
+1. Continue with feature verification from `feature_get_next`
+2. Focus on remaining G-series features (G08+)
+3. Implement any missing functionality as discovered during verification
+4. Run regression tests on previously passing features periodically
+
+## Notes
+- Test HTML file created at /prebidjs-light/test-embed.html for embed code testing
+- HTTP server running on port 9999 serves test files
+- Publishers created during testing: MultiTab Test Publisher, Back Button Test Publisher

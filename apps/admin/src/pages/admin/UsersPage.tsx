@@ -21,9 +21,16 @@ interface CreateUserForm {
   publisherId: string;
 }
 
+interface Publisher {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 export function UsersPage() {
   const { token } = useAuthStore();
   const [users, setUsers] = useState<User[]>([]);
+  const [publishers, setPublishers] = useState<Publisher[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createDialog, setCreateDialog] = useState({
@@ -71,8 +78,26 @@ export function UsersPage() {
     }
   };
 
+  const fetchPublishers = async () => {
+    try {
+      const response = await fetch('/api/publishers?limit=100', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPublishers(data.publishers);
+      }
+    } catch (err) {
+      console.error('Failed to fetch publishers:', err);
+    }
+  };
+
   useEffect(() => {
     fetchUsers();
+    fetchPublishers();
   }, [token]);
 
   const handleCreateClick = () => {
@@ -418,7 +443,7 @@ export function UsersPage() {
                       <select
                         id="role"
                         value={formData.role}
-                        onChange={(e) => setFormData({ ...formData, role: e.target.value as CreateUserForm['role'] })}
+                        onChange={(e) => setFormData({ ...formData, role: e.target.value as CreateUserForm['role'], publisherId: '' })}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                       >
                         <option value="admin">Admin</option>
@@ -426,6 +451,31 @@ export function UsersPage() {
                         <option value="publisher">Publisher</option>
                       </select>
                     </div>
+
+                    {formData.role === 'publisher' && (
+                      <div>
+                        <label htmlFor="publisherId" className="block text-sm font-medium text-gray-700">
+                          Publisher
+                        </label>
+                        <select
+                          id="publisherId"
+                          required
+                          value={formData.publisherId}
+                          onChange={(e) => setFormData({ ...formData, publisherId: e.target.value })}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                        >
+                          <option value="">Select a publisher...</option>
+                          {publishers.map((pub) => (
+                            <option key={pub.id} value={pub.id}>
+                              {pub.name} ({pub.slug})
+                            </option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-xs text-gray-500">
+                          This user will only have access to data for the selected publisher.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
 

@@ -1,47 +1,55 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 
 interface AdUnit {
   id: string;
   code: string;
   name: string;
-  sizes: string[];
-  mediaTypes: string[];
-  status: 'active' | 'paused' | 'disabled';
+  mediaTypes: {
+    banner?: { sizes: number[][] };
+    video?: { playerSize?: number[] };
+    native?: object;
+  } | null;
+  status: 'active' | 'paused';
 }
 
-// Mock data for demo
-const MOCK_AD_UNITS: AdUnit[] = [
-  {
-    id: '1',
-    code: 'header-banner',
-    name: 'Header Banner',
-    sizes: ['728x90', '970x250'],
-    mediaTypes: ['banner'],
-    status: 'active',
-  },
-  {
-    id: '2',
-    code: 'sidebar-box',
-    name: 'Sidebar Box',
-    sizes: ['300x250', '300x600'],
-    mediaTypes: ['banner'],
-    status: 'active',
-  },
-  {
-    id: '3',
-    code: 'in-article',
-    name: 'In-Article',
-    sizes: ['300x250', '336x280'],
-    mediaTypes: ['banner', 'native'],
-    status: 'paused',
-  },
-];
-
 export function AdUnitsPage() {
-  const { user } = useAuthStore();
-  const [adUnits] = useState<AdUnit[]>(MOCK_AD_UNITS);
+  const { user, token } = useAuthStore();
+  const [adUnits, setAdUnits] = useState<AdUnit[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    const fetchAdUnits = async () => {
+      if (!user?.publisherId) {
+        setError('No publisher assigned to this account');
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/publishers/${user.publisherId}/ad-units`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch ad units');
+        }
+
+        const data = await response.json();
+        setAdUnits(data.adUnits);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchAdUnits();
+  }, [user?.publisherId, token]);
 
   const filteredAdUnits = adUnits.filter(
     (unit) =>
@@ -65,6 +73,32 @@ export function AdUnitsPage() {
       </span>
     );
   };
+
+  const getSizes = (unit: AdUnit): string[] => {
+    if (!unit.mediaTypes?.banner?.sizes) return [];
+    return unit.mediaTypes.banner.sizes.map((s) => `${s[0]}x${s[1]}`);
+  };
+
+  const getMediaTypesList = (unit: AdUnit): string[] => {
+    if (!unit.mediaTypes) return [];
+    return Object.keys(unit.mediaTypes);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-md bg-red-50 p-4">
+        <p className="text-sm text-red-700">{error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -123,21 +157,25 @@ export function AdUnitsPage() {
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase">Sizes</p>
                 <div className="flex flex-wrap gap-1 mt-1">
-                  {unit.sizes.map((size) => (
-                    <span
-                      key={size}
-                      className="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600"
-                    >
-                      {size}
-                    </span>
-                  ))}
+                  {getSizes(unit).length > 0 ? (
+                    getSizes(unit).map((size) => (
+                      <span
+                        key={size}
+                        className="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600"
+                      >
+                        {size}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs text-gray-400">No sizes configured</span>
+                  )}
                 </div>
               </div>
 
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase">Media Types</p>
                 <div className="flex flex-wrap gap-1 mt-1">
-                  {unit.mediaTypes.map((type) => (
+                  {getMediaTypesList(unit).map((type) => (
                     <span
                       key={type}
                       className="inline-flex items-center rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700"

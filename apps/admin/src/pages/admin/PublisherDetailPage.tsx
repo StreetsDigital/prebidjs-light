@@ -865,6 +865,12 @@ export function PublisherDetailPage() {
                   {new Date(publisher.createdAt).toLocaleDateString()}
                 </dd>
               </div>
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Updated</dt>
+                <dd className="mt-1 text-sm text-gray-900">
+                  {new Date(publisher.updatedAt).toLocaleString()}
+                </dd>
+              </div>
               <div className="sm:col-span-2">
                 <dt className="text-sm font-medium text-gray-500">Domains</dt>
                 <dd className="mt-1 text-sm text-gray-900">

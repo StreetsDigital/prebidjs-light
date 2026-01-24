@@ -239,6 +239,7 @@ export function PublisherDetailPage() {
     isLoading: false,
     adUnit: null as AdUnit | null,
   });
+  const [editingAdUnit, setEditingAdUnit] = useState<AdUnit | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
 
   // Config version history state
@@ -557,12 +558,25 @@ export function PublisherDetailPage() {
 
   // Ad Unit handlers
   const handleAddAdUnitClick = () => {
+    setEditingAdUnit(null);
     setAdUnitForm({
       code: '',
       name: '',
       sizes: '',
       mediaTypes: ['banner'],
       floorPrice: '',
+    });
+    setAdUnitModal({ isOpen: true, isLoading: false });
+  };
+
+  const handleEditAdUnitClick = (adUnit: AdUnit) => {
+    setEditingAdUnit(adUnit);
+    setAdUnitForm({
+      code: adUnit.code,
+      name: adUnit.name,
+      sizes: adUnit.sizes.join(', '),
+      mediaTypes: adUnit.mediaTypes,
+      floorPrice: adUnit.floorPrice || '',
     });
     setAdUnitModal({ isOpen: true, isLoading: false });
   };
@@ -586,8 +600,14 @@ export function PublisherDetailPage() {
           return [width, height];
         });
 
-      const response = await fetch(`/api/publishers/${publisher.id}/ad-units`, {
-        method: 'POST',
+      const isEditing = !!editingAdUnit;
+      const url = isEditing
+        ? `/api/publishers/${publisher.id}/ad-units/${editingAdUnit.id}`
+        : `/api/publishers/${publisher.id}/ad-units`;
+      const method = isEditing ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
@@ -604,24 +624,42 @@ export function PublisherDetailPage() {
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || 'Failed to create ad unit');
+        throw new Error(data.error || `Failed to ${isEditing ? 'update' : 'create'} ad unit`);
       }
 
-      const newAdUnit = await response.json();
-      setAdUnits((prev) => [...prev, {
-        id: newAdUnit.id,
-        code: newAdUnit.code,
-        name: newAdUnit.name,
-        sizes: sizesArray.map(s => s.join('x')),
-        mediaTypes: adUnitForm.mediaTypes,
-        status: newAdUnit.status,
-        floorPrice: newAdUnit.floorPrice || null,
-      }]);
+      const updatedAdUnit = await response.json();
+
+      if (isEditing) {
+        setAdUnits((prev) => prev.map((u) =>
+          u.id === editingAdUnit.id
+            ? {
+                id: updatedAdUnit.id,
+                code: updatedAdUnit.code,
+                name: updatedAdUnit.name,
+                sizes: sizesArray.map(s => s.join('x')),
+                mediaTypes: adUnitForm.mediaTypes,
+                status: updatedAdUnit.status,
+                floorPrice: updatedAdUnit.floorPrice || null,
+              }
+            : u
+        ));
+      } else {
+        setAdUnits((prev) => [...prev, {
+          id: updatedAdUnit.id,
+          code: updatedAdUnit.code,
+          name: updatedAdUnit.name,
+          sizes: sizesArray.map(s => s.join('x')),
+          mediaTypes: adUnitForm.mediaTypes,
+          status: updatedAdUnit.status,
+          floorPrice: updatedAdUnit.floorPrice || null,
+        }]);
+      }
       handleAdUnitClose();
+      setEditingAdUnit(null);
       // Switch to ad-units tab to show the new ad unit
       setActiveTab('ad-units');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create ad unit');
+      setError(err instanceof Error ? err.message : `Failed to ${editingAdUnit ? 'update' : 'create'} ad unit`);
       setAdUnitModal((prev) => ({ ...prev, isLoading: false }));
     }
   };
@@ -1458,6 +1496,19 @@ export function PublisherDetailPage() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
+                          handleEditAdUnitClick(unit);
+                        }}
+                        className="text-blue-500 hover:text-blue-700"
+                        title="Edit ad unit"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
                           handleDeleteAdUnitClick(unit);
                         }}
                         className="text-red-500 hover:text-red-700"
@@ -1908,11 +1959,11 @@ export function PublisherDetailPage() {
         </form>
       </FormModal>
 
-      {/* Add Ad Unit Modal */}
+      {/* Add/Edit Ad Unit Modal */}
       <FormModal
         isOpen={adUnitModal.isOpen}
         onClose={handleAdUnitClose}
-        title="Add Ad Unit"
+        title={editingAdUnit ? 'Edit Ad Unit' : 'Add Ad Unit'}
       >
         <form onSubmit={handleAdUnitSubmit} className="space-y-4">
           <div>
@@ -2018,7 +2069,7 @@ export function PublisherDetailPage() {
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
               )}
-              Create Ad Unit
+              {editingAdUnit ? 'Save Changes' : 'Create Ad Unit'}
             </button>
           </div>
         </form>

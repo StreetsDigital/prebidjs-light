@@ -871,12 +871,27 @@ export function PublisherDetailPage() {
 
     setEditModal((prev) => ({ ...prev, isLoading: true }));
 
-    try {
-      const domainsArray = editForm.domains
-        .split(',')
-        .map((d) => d.trim())
-        .filter((d) => d.length > 0);
+    // Save original publisher for rollback on failure
+    const originalPublisher = { ...publisher };
 
+    const domainsArray = editForm.domains
+      .split(',')
+      .map((d) => d.trim())
+      .filter((d) => d.length > 0);
+
+    // Optimistic update - immediately update UI
+    const optimisticPublisher: Publisher = {
+      ...publisher,
+      name: editForm.name,
+      slug: editForm.slug,
+      status: editForm.status as Publisher['status'],
+      domains: domainsArray,
+      notes: editForm.notes || null,
+    };
+    setPublisher(optimisticPublisher);
+    handleEditClose();
+
+    try {
       const response = await fetch(`/api/publishers/${publisher.id}`, {
         method: 'PUT',
         headers: {
@@ -903,10 +918,14 @@ export function PublisherDetailPage() {
         type: 'success',
         message: 'Publisher updated successfully',
       });
-      handleEditClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update publisher');
-      setEditModal((prev) => ({ ...prev, isLoading: false }));
+      // Rollback to original publisher on failure
+      setPublisher(originalPublisher);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update publisher';
+      addToast({
+        type: 'error',
+        message: `Update failed: ${errorMessage}. Changes have been reverted.`,
+      });
     }
   };
 

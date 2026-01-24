@@ -336,10 +336,31 @@ export function PublisherDetailPage() {
     notes: '',
   });
   const [originalEditForm, setOriginalEditForm] = useState<EditFormData | null>(null);
+  const [editFormErrors, setEditFormErrors] = useState<{ domains?: string }>({});
   const [unsavedChangesDialog, setUnsavedChangesDialog] = useState({
     isOpen: false,
     pendingAction: null as (() => void) | null,
   });
+
+  // Domain validation regex - allows standard domains and wildcards (*.example.com)
+  const domainPattern = /^(\*\.)?([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
+
+  const validateDomain = (domain: string): boolean => {
+    const trimmed = domain.trim();
+    if (!trimmed) return true; // Empty is ok (will be filtered out)
+    return domainPattern.test(trimmed);
+  };
+
+  const validateDomainsField = (value: string): string | undefined => {
+    if (value.trim()) {
+      const domains = value.split(',').map(d => d.trim()).filter(d => d.length > 0);
+      const invalidDomains = domains.filter(d => !validateDomain(d));
+      if (invalidDomains.length > 0) {
+        return `Invalid domain format: "${invalidDomains[0]}". Use format like "example.com" or "*.example.com" for wildcards.`;
+      }
+    }
+    return undefined;
+  };
 
   // Ad Units state
   const [adUnits, setAdUnits] = useState<AdUnit[]>([]);
@@ -833,6 +854,14 @@ export function PublisherDetailPage() {
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!publisher) return;
+
+    // Validate domains
+    const domainsError = validateDomainsField(editForm.domains);
+    if (domainsError) {
+      setEditFormErrors({ domains: domainsError });
+      return;
+    }
+    setEditFormErrors({});
 
     setEditModal((prev) => ({ ...prev, isLoading: true }));
 
@@ -3223,10 +3252,27 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
               type="text"
               id="domains"
               value={editForm.domains}
-              onChange={(e) => setEditForm((prev) => ({ ...prev, domains: e.target.value }))}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              placeholder="example.com, www.example.com"
+              onChange={(e) => {
+                setEditForm((prev) => ({ ...prev, domains: e.target.value }));
+                // Clear error when user starts typing
+                if (editFormErrors.domains) {
+                  setEditFormErrors({});
+                }
+              }}
+              aria-invalid={!!editFormErrors.domains}
+              aria-describedby={editFormErrors.domains ? 'edit-domains-error' : undefined}
+              className={`mt-1 block w-full rounded-md shadow-sm focus:ring-blue-500 sm:text-sm ${
+                editFormErrors.domains
+                  ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
+                  : 'border-gray-300 focus:border-blue-500'
+              }`}
+              placeholder="example.com, www.example.com, *.example.com"
             />
+            {editFormErrors.domains && (
+              <p id="edit-domains-error" className="mt-1 text-sm text-red-600">
+                {editFormErrors.domains}
+              </p>
+            )}
           </div>
           <div>
             <label htmlFor="notes" className="block text-sm font-medium text-gray-700">

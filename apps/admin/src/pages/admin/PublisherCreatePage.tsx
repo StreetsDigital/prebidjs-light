@@ -5,6 +5,7 @@ import { useAuthStore } from '../../stores/authStore';
 interface FieldErrors {
   name?: string;
   slug?: string;
+  domains?: string;
 }
 
 export function PublisherCreatePage() {
@@ -20,6 +21,15 @@ export function PublisherCreatePage() {
     domains: '',
     notes: '',
   });
+
+  // Domain validation regex - allows standard domains and wildcards (*.example.com)
+  const domainPattern = /^(\*\.)?([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
+
+  const validateDomain = (domain: string): boolean => {
+    const trimmed = domain.trim();
+    if (!trimmed) return true; // Empty is ok (will be filtered out)
+    return domainPattern.test(trimmed);
+  };
 
   const validateField = (name: string, value: string): string | undefined => {
     switch (name) {
@@ -39,6 +49,15 @@ export function PublisherCreatePage() {
           return 'Slug can only contain lowercase letters, numbers, and hyphens';
         }
         break;
+      case 'domains':
+        if (value.trim()) {
+          const domains = value.split(',').map(d => d.trim()).filter(d => d.length > 0);
+          const invalidDomains = domains.filter(d => !validateDomain(d));
+          if (invalidDomains.length > 0) {
+            return `Invalid domain format: "${invalidDomains[0]}". Use format like "example.com" or "*.example.com" for wildcards.`;
+          }
+        }
+        break;
     }
     return undefined;
   };
@@ -47,12 +66,14 @@ export function PublisherCreatePage() {
     const errors: FieldErrors = {};
     const nameError = validateField('name', form.name);
     const slugError = validateField('slug', form.slug);
+    const domainsError = validateField('domains', form.domains);
 
     if (nameError) errors.name = nameError;
     if (slugError) errors.slug = slugError;
+    if (domainsError) errors.domains = domainsError;
 
     setFieldErrors(errors);
-    setTouched({ name: true, slug: true });
+    setTouched({ name: true, slug: true, domains: true });
 
     return Object.keys(errors).length === 0;
   };
@@ -239,13 +260,32 @@ export function PublisherCreatePage() {
                   id="domains"
                   name="domains"
                   value={form.domains}
-                  onChange={(e) => setForm((prev) => ({ ...prev, domains: e.target.value }))}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  onChange={(e) => {
+                    setForm((prev) => ({ ...prev, domains: e.target.value }));
+                    if (touched.domains) {
+                      const error = validateField('domains', e.target.value);
+                      setFieldErrors((prev) => ({ ...prev, domains: error }));
+                    }
+                  }}
+                  onBlur={() => handleBlur('domains')}
+                  aria-invalid={touched.domains && !!fieldErrors.domains}
+                  aria-describedby={fieldErrors.domains ? 'domains-error' : 'domains-description'}
+                  className={`mt-1 block w-full rounded-md shadow-sm focus:ring-blue-500 sm:text-sm ${
+                    touched.domains && fieldErrors.domains
+                      ? 'border-red-300 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-500'
+                      : 'border-gray-300 focus:border-blue-500'
+                  }`}
                   placeholder="example.com, www.example.com"
                 />
-                <p className="mt-1 text-sm text-gray-500">
-                  Comma-separated list of domains where the publisher's ads can be served.
-                </p>
+                {touched.domains && fieldErrors.domains ? (
+                  <p className="mt-1 text-sm text-red-600" id="domains-error">
+                    {fieldErrors.domains}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-sm text-gray-500" id="domains-description">
+                    Comma-separated list of domains. Supports wildcards like *.example.com
+                  </p>
+                )}
               </div>
 
               <div className="sm:col-span-2">

@@ -161,6 +161,11 @@ export function PublisherDetailPage() {
     sizes: '',
     mediaTypes: ['banner'],
   });
+  const [deleteAdUnitDialog, setDeleteAdUnitDialog] = useState({
+    isOpen: false,
+    isLoading: false,
+    adUnit: null as AdUnit | null,
+  });
   const [activeTab, setActiveTab] = useState('overview');
 
   // Config version history state
@@ -499,6 +504,52 @@ export function PublisherDetailPage() {
         ? prev.mediaTypes.filter((t) => t !== type)
         : [...prev.mediaTypes, type],
     }));
+  };
+
+  // Delete ad unit handlers
+  const handleDeleteAdUnitClick = (adUnit: AdUnit) => {
+    setDeleteAdUnitDialog({
+      isOpen: true,
+      isLoading: false,
+      adUnit,
+    });
+  };
+
+  const handleDeleteAdUnitCancel = () => {
+    setDeleteAdUnitDialog({
+      isOpen: false,
+      isLoading: false,
+      adUnit: null,
+    });
+  };
+
+  const handleDeleteAdUnitConfirm = async () => {
+    if (!publisher || !deleteAdUnitDialog.adUnit) return;
+
+    setDeleteAdUnitDialog((prev) => ({ ...prev, isLoading: true }));
+
+    try {
+      const response = await fetch(
+        `/api/publishers/${publisher.id}/ad-units/${deleteAdUnitDialog.adUnit.id}`,
+        {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to delete ad unit');
+      }
+
+      // Remove the ad unit from state
+      setAdUnits((prev) => prev.filter((u) => u.id !== deleteAdUnitDialog.adUnit?.id));
+      handleDeleteAdUnitCancel();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete ad unit');
+      setDeleteAdUnitDialog((prev) => ({ ...prev, isLoading: false }));
+    }
   };
 
   // Version history handlers
@@ -1129,7 +1180,22 @@ export function PublisherDetailPage() {
                         <code className="bg-gray-100 px-1 rounded">{unit.code}</code>
                       </p>
                     </div>
-                    {getStatusBadge(unit.status)}
+                    <div className="flex items-center space-x-2">
+                      {getStatusBadge(unit.status)}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteAdUnitClick(unit);
+                        }}
+                        className="text-red-500 hover:text-red-700"
+                        title="Delete ad unit"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                   <div className="mt-3 space-y-2">
                     <div>
@@ -1708,6 +1774,19 @@ export function PublisherDetailPage() {
           </div>
         </form>
       </FormModal>
+
+      {/* Delete Ad Unit Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteAdUnitDialog.isOpen}
+        onClose={handleDeleteAdUnitCancel}
+        onConfirm={handleDeleteAdUnitConfirm}
+        title="Delete Ad Unit"
+        message={`Are you sure you want to delete "${deleteAdUnitDialog.adUnit?.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        isLoading={deleteAdUnitDialog.isLoading}
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
+import { useToastStore } from '../../stores/toastStore';
 import { ConfirmDialog, Pagination } from '../../components/ui';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 
@@ -61,6 +62,7 @@ function exportPublishersToCSV(publishers: Publisher[], filename: string): void 
 
 export function PublishersPage() {
   const { token } = useAuthStore();
+  const { addToast } = useToastStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const [publishers, setPublishers] = useState<Publisher[]>([]);
@@ -212,6 +214,7 @@ export function PublishersPage() {
   const handleDeleteConfirm = async () => {
     if (!deleteDialog.publisher) return;
 
+    const publisherName = deleteDialog.publisher.name;
     setDeleteDialog((prev) => ({ ...prev, isDeleting: true }));
 
     try {
@@ -226,7 +229,13 @@ export function PublishersPage() {
         throw new Error('Failed to delete publisher');
       }
 
-      // Refetch to update pagination correctly
+      // Show success toast first
+      addToast({
+        type: 'success',
+        message: `Publisher "${publisherName}" deleted successfully`,
+      });
+
+      // Then refetch and close dialog
       await fetchPublishers();
       handleDeleteCancel();
     } catch (err) {

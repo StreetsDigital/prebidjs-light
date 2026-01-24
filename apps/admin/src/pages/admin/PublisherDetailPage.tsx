@@ -89,6 +89,15 @@ interface AvailableBidder {
   paramsSchema: { key: string; label: string; required: boolean }[];
 }
 
+interface UserIdModule {
+  code: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  config: Record<string, string>;
+  configSchema: { key: string; label: string; required: boolean }[];
+}
+
 const MOCK_BUILDS: Build[] = [
   {
     id: 'build_1',
@@ -193,6 +202,55 @@ const AVAILABLE_BIDDERS: AvailableBidder[] = [
     description: 'Index Exchange bidder adapter for real-time bidding.',
     paramsSchema: [
       { key: 'siteId', label: 'Site ID', required: true },
+    ],
+  },
+];
+
+// Available User ID modules
+const AVAILABLE_USER_ID_MODULES: Omit<UserIdModule, 'enabled'>[] = [
+  {
+    code: 'uid2',
+    name: 'Unified ID 2.0',
+    description: 'The Trade Desk Unified ID 2.0 for cross-device identity.',
+    config: { apiBaseUrl: '' },
+    configSchema: [
+      { key: 'apiBaseUrl', label: 'API Base URL', required: false },
+    ],
+  },
+  {
+    code: 'id5',
+    name: 'ID5',
+    description: 'ID5 universal ID for cookieless identity resolution.',
+    config: { partnerId: '' },
+    configSchema: [
+      { key: 'partnerId', label: 'Partner ID', required: true },
+    ],
+  },
+  {
+    code: 'identityLink',
+    name: 'LiveRamp IdentityLink',
+    description: 'LiveRamp identity resolution for authenticated users.',
+    config: { pid: '' },
+    configSchema: [
+      { key: 'pid', label: 'Publisher ID', required: true },
+    ],
+  },
+  {
+    code: 'sharedId',
+    name: 'SharedID',
+    description: 'Prebid shared ID for first-party identity.',
+    config: { storage: 'cookie' },
+    configSchema: [
+      { key: 'storage', label: 'Storage Type', required: false },
+    ],
+  },
+  {
+    code: 'criteoRtus',
+    name: 'Criteo RTUS',
+    description: 'Criteo real-time user sync for retargeting.',
+    config: { pubId: '' },
+    configSchema: [
+      { key: 'pubId', label: 'Publisher ID', required: true },
     ],
   },
 ];
@@ -314,6 +372,15 @@ export function PublisherDetailPage() {
   const [copyBiddersError, setCopyBiddersError] = useState<string | null>(null);
   const [copyBiddersSuccess, setCopyBiddersSuccess] = useState<string | null>(null);
 
+  // User ID modules state
+  const [userIdModules, setUserIdModules] = useState<UserIdModule[]>([]);
+  const [userIdModuleModal, setUserIdModuleModal] = useState({
+    isOpen: false,
+    isLoading: false,
+    module: null as UserIdModule | null,
+  });
+  const [userIdModuleForm, setUserIdModuleForm] = useState<Record<string, string>>({});
+
   const fetchPublisher = async () => {
     if (!id) return;
 
@@ -389,6 +456,18 @@ export function PublisherDetailPage() {
           debugMode: data.debugMode,
         });
         setCurrentVersion(data.version || 1);
+
+        // Load User ID modules - merge with available modules to get full schema
+        const savedModules = data.userIdModules || [];
+        const mergedModules = AVAILABLE_USER_ID_MODULES.map(availableModule => {
+          const saved = savedModules.find((m: { code: string }) => m.code === availableModule.code);
+          return {
+            ...availableModule,
+            enabled: saved?.enabled || false,
+            config: saved?.config || availableModule.config,
+          };
+        });
+        setUserIdModules(mergedModules);
       }
     } catch (err) {
       console.error('Failed to fetch config:', err);
@@ -1314,6 +1393,99 @@ export function PublisherDetailPage() {
 
   const selectedBidderSchema = availableBidders.find(b => b.code === bidderForm.bidderCode);
 
+  // User ID module handlers
+  const handleUserIdModuleToggle = async (moduleCode: string) => {
+    if (!publisher) return;
+
+    const module = userIdModules.find(m => m.code === moduleCode);
+    if (!module) return;
+
+    const updatedModules = userIdModules.map(m =>
+      m.code === moduleCode ? { ...m, enabled: !m.enabled } : m
+    );
+
+    // Save to API
+    try {
+      const response = await fetch(`/api/publishers/${publisher.id}/config`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          userIdModules: updatedModules.map(m => ({
+            code: m.code,
+            enabled: m.enabled,
+            config: m.config,
+          })),
+        }),
+      });
+
+      if (response.ok) {
+        setUserIdModules(updatedModules);
+      }
+    } catch (err) {
+      console.error('Failed to update User ID modules:', err);
+    }
+  };
+
+  const handleUserIdModuleConfigClick = (module: UserIdModule) => {
+    setUserIdModuleForm({ ...module.config });
+    setUserIdModuleModal({
+      isOpen: true,
+      isLoading: false,
+      module,
+    });
+  };
+
+  const handleUserIdModuleConfigClose = () => {
+    setUserIdModuleModal({
+      isOpen: false,
+      isLoading: false,
+      module: null,
+    });
+    setUserIdModuleForm({});
+  };
+
+  const handleUserIdModuleConfigSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!publisher || !userIdModuleModal.module) return;
+
+    setUserIdModuleModal((prev) => ({ ...prev, isLoading: true }));
+
+    const moduleCode = userIdModuleModal.module.code;
+    const updatedModules = userIdModules.map(m =>
+      m.code === moduleCode ? { ...m, config: { ...userIdModuleForm } } : m
+    );
+
+    try {
+      const response = await fetch(`/api/publishers/${publisher.id}/config`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          userIdModules: updatedModules.map(m => ({
+            code: m.code,
+            enabled: m.enabled,
+            config: m.config,
+          })),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update module config');
+      }
+
+      setUserIdModules(updatedModules);
+      handleUserIdModuleConfigClose();
+    } catch (err) {
+      console.error('Failed to save module config:', err);
+      setUserIdModuleModal((prev) => ({ ...prev, isLoading: false }));
+    }
+  };
+
   const formatVersionDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleString();
@@ -1634,6 +1806,72 @@ export function PublisherDetailPage() {
                   <dd className="mt-1 text-sm text-gray-900">{currentConfig?.debugMode ? 'Enabled' : 'Disabled'}</dd>
                 </div>
               </dl>
+            </div>
+          )}
+
+          {/* User ID Modules Section */}
+          {!showVersionHistory && (
+            <div className="bg-white shadow rounded-lg p-6">
+              <div className="mb-4">
+                <h2 className="text-lg font-medium text-gray-900">User ID Modules</h2>
+                <p className="text-sm text-gray-500">
+                  Configure identity modules for cross-device user identification.
+                </p>
+              </div>
+              <div className="space-y-4">
+                {userIdModules.map((module) => (
+                  <div
+                    key={module.code}
+                    className={`border rounded-lg p-4 ${module.enabled ? 'border-blue-200 bg-blue-50' : 'border-gray-200'}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <div className={`flex-shrink-0 h-10 w-10 rounded-lg flex items-center justify-center ${module.enabled ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                          <span className={`font-semibold text-sm ${module.enabled ? 'text-blue-600' : 'text-gray-600'}`}>
+                            {module.code.substring(0, 2).toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="ml-4">
+                          <h3 className="text-sm font-medium text-gray-900">{module.name}</h3>
+                          <p className="text-xs text-gray-500">{module.description}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        <button
+                          type="button"
+                          onClick={() => handleUserIdModuleConfigClick(module)}
+                          className="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                        >
+                          Configure
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleUserIdModuleToggle(module.code)}
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${module.enabled ? 'bg-blue-600' : 'bg-gray-200'}`}
+                          role="switch"
+                          aria-checked={module.enabled}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${module.enabled ? 'translate-x-5' : 'translate-x-0'}`}
+                          />
+                        </button>
+                      </div>
+                    </div>
+                    {module.enabled && Object.keys(module.config).length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-blue-200">
+                        <dl className="grid grid-cols-2 gap-2 text-xs">
+                          {Object.entries(module.config).map(([key, value]) => (
+                            <div key={key}>
+                              <dt className="font-medium text-gray-500">{key}</dt>
+                              <dd className="text-gray-900">{value || <span className="text-gray-400 italic">Not set</span>}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -2864,6 +3102,62 @@ export function PublisherDetailPage() {
                 </svg>
               )}
               Copy Bidders
+            </button>
+          </div>
+        </form>
+      </FormModal>
+
+      {/* User ID Module Config Modal */}
+      <FormModal
+        isOpen={userIdModuleModal.isOpen}
+        onClose={handleUserIdModuleConfigClose}
+        title={`Configure ${userIdModuleModal.module?.name || 'Module'}`}
+      >
+        <form onSubmit={handleUserIdModuleConfigSave} className="space-y-4">
+          {userIdModuleModal.module && (
+            <>
+              <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                <p className="text-sm text-gray-600">{userIdModuleModal.module.description}</p>
+              </div>
+              {userIdModuleModal.module.configSchema.map((field) => (
+                <div key={field.key}>
+                  <label htmlFor={`uid-${field.key}`} className="block text-sm font-medium text-gray-700">
+                    {field.label}
+                    {field.required && <span className="text-red-500 ml-1">*</span>}
+                  </label>
+                  <input
+                    type="text"
+                    id={`uid-${field.key}`}
+                    value={userIdModuleForm[field.key] || ''}
+                    onChange={(e) => setUserIdModuleForm((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    required={field.required}
+                    placeholder={`Enter ${field.label.toLowerCase()}`}
+                  />
+                </div>
+              ))}
+            </>
+          )}
+          <div className="flex justify-end space-x-3 pt-4">
+            <button
+              type="button"
+              onClick={handleUserIdModuleConfigClose}
+              className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={userIdModuleModal.isLoading}
+              className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50"
+            >
+              {userIdModuleModal.isLoading && (
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              )}
+              Save Configuration
             </button>
           </div>
         </form>

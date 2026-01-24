@@ -757,12 +757,19 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
 
   // ==================== CONFIG ROUTES ====================
 
+  interface UserIdModuleConfig {
+    code: string;
+    enabled: boolean;
+    config: Record<string, string>;
+  }
+
   interface UpdateConfigBody {
     bidderTimeout?: number;
     priceGranularity?: string;
     enableSendAllBids?: boolean;
     bidderSequence?: string;
     debugMode?: boolean;
+    userIdModules?: UserIdModuleConfig[];
   }
 
   // Get publisher config
@@ -789,7 +796,10 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       return reply.code(404).send({ error: 'Config not found' });
     }
 
-    return config;
+    return {
+      ...config,
+      userIdModules: config.userIdModules ? JSON.parse(config.userIdModules) : [],
+    };
   });
 
   // Update publisher config
@@ -797,7 +807,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     preHandler: requireAuth,
   }, async (request, reply) => {
     const { id } = request.params;
-    const { bidderTimeout, priceGranularity, enableSendAllBids, bidderSequence, debugMode } = request.body;
+    const { bidderTimeout, priceGranularity, enableSendAllBids, bidderSequence, debugMode, userIdModules } = request.body;
     const user = request.user as TokenPayload;
 
     // Check if publisher exists
@@ -836,6 +846,14 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     if (debugMode !== undefined && debugMode !== config.debugMode) {
       changes.push(`debugMode: ${config.debugMode ? 'on' : 'off'} → ${debugMode ? 'on' : 'off'}`);
     }
+    if (userIdModules !== undefined) {
+      const currentModules = config.userIdModules ? JSON.parse(config.userIdModules) : [];
+      const enabledModules = userIdModules.filter(m => m.enabled).map(m => m.code);
+      const previousEnabled = currentModules.filter((m: UserIdModuleConfig) => m.enabled).map((m: UserIdModuleConfig) => m.code);
+      if (JSON.stringify(enabledModules.sort()) !== JSON.stringify(previousEnabled.sort())) {
+        changes.push(`userIdModules: ${previousEnabled.length > 0 ? previousEnabled.join(', ') : 'none'} → ${enabledModules.length > 0 ? enabledModules.join(', ') : 'none'}`);
+      }
+    }
 
     // Save current config as a version entry before updating
     db.insert(configVersions).values({
@@ -862,6 +880,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
         ...(enableSendAllBids !== undefined && { enableSendAllBids }),
         ...(bidderSequence !== undefined && { bidderSequence }),
         ...(debugMode !== undefined && { debugMode }),
+        ...(userIdModules !== undefined && { userIdModules: JSON.stringify(userIdModules) }),
         updatedAt: now,
         version: newVersion,
       })
@@ -870,7 +889,10 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
 
     const updated = db.select().from(publisherConfig).where(eq(publisherConfig.publisherId, id)).get();
 
-    return updated;
+    return {
+      ...updated,
+      userIdModules: updated?.userIdModules ? JSON.parse(updated.userIdModules) : [],
+    };
   });
 
   // Get config version history

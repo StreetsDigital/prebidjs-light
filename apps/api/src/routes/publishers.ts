@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { db, publishers, publisherConfig } from '../db';
-import { eq } from 'drizzle-orm';
+import { db, publishers, publisherConfig, adUnits } from '../db';
+import { eq, and } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth, requireAdmin, requireRole, TokenPayload } from '../middleware/auth';
 
@@ -268,5 +268,216 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       embedCode,
       apiKey: publisher.apiKey,
     };
+  });
+
+  // ==================== AD UNITS ROUTES ====================
+
+  interface CreateAdUnitBody {
+    code: string;
+    name: string;
+    mediaTypes?: {
+      banner?: { sizes: number[][] };
+      video?: { playerSize?: number[] };
+      native?: object;
+    };
+    floorPrice?: string;
+  }
+
+  interface UpdateAdUnitBody {
+    code?: string;
+    name?: string;
+    mediaTypes?: {
+      banner?: { sizes: number[][] };
+      video?: { playerSize?: number[] };
+      native?: object;
+    };
+    floorPrice?: string;
+    status?: 'active' | 'paused';
+  }
+
+  // List ad units for a publisher
+  fastify.get<{ Params: { id: string } }>('/:id/ad-units', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const user = request.user as TokenPayload;
+
+    // Check if publisher exists
+    const publisher = db.select().from(publishers).where(eq(publishers.id, id)).get();
+    if (!publisher) {
+      return reply.code(404).send({ error: 'Publisher not found' });
+    }
+
+    // Check authorization
+    if (user.role === 'publisher' && user.publisherId !== id) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+
+    const units = db.select().from(adUnits).where(eq(adUnits.publisherId, id)).all();
+
+    return {
+      adUnits: units.map(u => ({
+        ...u,
+        mediaTypes: u.mediaTypes ? JSON.parse(u.mediaTypes) : null,
+      })),
+    };
+  });
+
+  // Get single ad unit
+  fastify.get<{ Params: { id: string; unitId: string } }>('/:id/ad-units/:unitId', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const { id, unitId } = request.params;
+    const user = request.user as TokenPayload;
+
+    // Check authorization
+    if (user.role === 'publisher' && user.publisherId !== id) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+
+    const unit = db.select().from(adUnits)
+      .where(and(eq(adUnits.id, unitId), eq(adUnits.publisherId, id)))
+      .get();
+
+    if (!unit) {
+      return reply.code(404).send({ error: 'Ad unit not found' });
+    }
+
+    return {
+      ...unit,
+      mediaTypes: unit.mediaTypes ? JSON.parse(unit.mediaTypes) : null,
+    };
+  });
+
+  // Create ad unit
+  fastify.post<{ Params: { id: string }; Body: CreateAdUnitBody }>('/:id/ad-units', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const { code, name, mediaTypes, floorPrice } = request.body;
+    const user = request.user as TokenPayload;
+
+    // Check if publisher exists
+    const publisher = db.select().from(publishers).where(eq(publishers.id, id)).get();
+    if (!publisher) {
+      return reply.code(404).send({ error: 'Publisher not found' });
+    }
+
+    // Check authorization
+    if (user.role === 'publisher' && user.publisherId !== id) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+
+    if (!code || !name) {
+      return reply.code(400).send({ error: 'Code and name are required' });
+    }
+
+    // Check for duplicate code within publisher
+    const existing = db.select().from(adUnits)
+      .where(and(eq(adUnits.publisherId, id), eq(adUnits.code, code)))
+      .get();
+    if (existing) {
+      return reply.code(409).send({ error: 'Ad unit with this code already exists for this publisher' });
+    }
+
+    const now = new Date().toISOString();
+    const unitId = uuidv4();
+
+    db.insert(adUnits).values({
+      id: unitId,
+      publisherId: id,
+      code,
+      name,
+      mediaTypes: mediaTypes ? JSON.stringify(mediaTypes) : null,
+      floorPrice: floorPrice || null,
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    }).run();
+
+    const newUnit = db.select().from(adUnits).where(eq(adUnits.id, unitId)).get();
+
+    return reply.code(201).send({
+      ...newUnit,
+      mediaTypes: newUnit?.mediaTypes ? JSON.parse(newUnit.mediaTypes) : null,
+    });
+  });
+
+  // Update ad unit
+  fastify.put<{ Params: { id: string; unitId: string }; Body: UpdateAdUnitBody }>('/:id/ad-units/:unitId', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const { id, unitId } = request.params;
+    const { code, name, mediaTypes, floorPrice, status } = request.body;
+    const user = request.user as TokenPayload;
+
+    // Check authorization
+    if (user.role === 'publisher' && user.publisherId !== id) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+
+    const unit = db.select().from(adUnits)
+      .where(and(eq(adUnits.id, unitId), eq(adUnits.publisherId, id)))
+      .get();
+
+    if (!unit) {
+      return reply.code(404).send({ error: 'Ad unit not found' });
+    }
+
+    // If code is changing, check for duplicates
+    if (code && code !== unit.code) {
+      const existing = db.select().from(adUnits)
+        .where(and(eq(adUnits.publisherId, id), eq(adUnits.code, code)))
+        .get();
+      if (existing) {
+        return reply.code(409).send({ error: 'Ad unit with this code already exists for this publisher' });
+      }
+    }
+
+    const now = new Date().toISOString();
+
+    db.update(adUnits)
+      .set({
+        ...(code && { code }),
+        ...(name && { name }),
+        ...(mediaTypes !== undefined && { mediaTypes: JSON.stringify(mediaTypes) }),
+        ...(floorPrice !== undefined && { floorPrice }),
+        ...(status && { status }),
+        updatedAt: now,
+      })
+      .where(eq(adUnits.id, unitId))
+      .run();
+
+    const updated = db.select().from(adUnits).where(eq(adUnits.id, unitId)).get();
+
+    return {
+      ...updated,
+      mediaTypes: updated?.mediaTypes ? JSON.parse(updated.mediaTypes) : null,
+    };
+  });
+
+  // Delete ad unit
+  fastify.delete<{ Params: { id: string; unitId: string } }>('/:id/ad-units/:unitId', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const { id, unitId } = request.params;
+    const user = request.user as TokenPayload;
+
+    // Check authorization
+    if (user.role === 'publisher' && user.publisherId !== id) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+
+    const unit = db.select().from(adUnits)
+      .where(and(eq(adUnits.id, unitId), eq(adUnits.publisherId, id)))
+      .get();
+
+    if (!unit) {
+      return reply.code(404).send({ error: 'Ad unit not found' });
+    }
+
+    db.delete(adUnits).where(eq(adUnits.id, unitId)).run();
+
+    return reply.code(204).send();
   });
 }

@@ -247,8 +247,35 @@ export function PublisherDetailPage() {
     }
   };
 
+  const fetchAdUnits = async () => {
+    if (!id) return;
+
+    try {
+      const response = await fetch(`/api/publishers/${id}/ad-units`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setAdUnits(data.adUnits.map((u: { id: string; code: string; name: string; mediaTypes?: { banner?: { sizes: number[][] } }; status: string }) => ({
+          id: u.id,
+          code: u.code,
+          name: u.name,
+          sizes: u.mediaTypes?.banner?.sizes?.map((s: number[]) => s.join('x')) || [],
+          mediaTypes: u.mediaTypes ? Object.keys(u.mediaTypes) : ['banner'],
+          status: u.status,
+        })));
+      }
+    } catch (err) {
+      console.error('Failed to fetch ad units:', err);
+    }
+  };
+
   useEffect(() => {
     fetchPublisher();
+    fetchAdUnits();
   }, [id, token]);
 
   const handleRegenerateClick = () => {
@@ -373,29 +400,55 @@ export function PublisherDetailPage() {
 
   const handleAdUnitSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!publisher) return;
     setAdUnitModal((prev) => ({ ...prev, isLoading: true }));
 
-    // Simulate API call - in real app this would be an actual API call
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    try {
+      const sizesArray = adUnitForm.sizes
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+        .map((s) => {
+          const [width, height] = s.split('x').map(Number);
+          return [width, height];
+        });
 
-    const sizesArray = adUnitForm.sizes
-      .split(',')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
+      const response = await fetch(`/api/publishers/${publisher.id}/ad-units`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          code: adUnitForm.code,
+          name: adUnitForm.name,
+          mediaTypes: adUnitForm.mediaTypes.includes('banner') ? {
+            banner: { sizes: sizesArray },
+          } : undefined,
+        }),
+      });
 
-    const newAdUnit: AdUnit = {
-      id: `unit_${Date.now()}`,
-      code: adUnitForm.code,
-      name: adUnitForm.name,
-      sizes: sizesArray,
-      mediaTypes: adUnitForm.mediaTypes,
-      status: 'active',
-    };
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to create ad unit');
+      }
 
-    setAdUnits((prev) => [...prev, newAdUnit]);
-    handleAdUnitClose();
-    // Switch to ad-units tab to show the new ad unit
-    setActiveTab('ad-units');
+      const newAdUnit = await response.json();
+      setAdUnits((prev) => [...prev, {
+        id: newAdUnit.id,
+        code: newAdUnit.code,
+        name: newAdUnit.name,
+        sizes: sizesArray.map(s => s.join('x')),
+        mediaTypes: adUnitForm.mediaTypes,
+        status: newAdUnit.status,
+      }]);
+      handleAdUnitClose();
+      // Switch to ad-units tab to show the new ad unit
+      setActiveTab('ad-units');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create ad unit');
+      setAdUnitModal((prev) => ({ ...prev, isLoading: false }));
+    }
   };
 
   const handleMediaTypeToggle = (type: string) => {

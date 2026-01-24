@@ -2,6 +2,8 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { ProtectedRoute, PublicRoute } from './components/auth/ProtectedRoute';
 import { AdminLayout, PublisherLayout } from './components/layout';
 import { Login } from './pages/Login';
+import { ForgotPassword } from './pages/ForgotPassword';
+import { ResetPassword } from './pages/ResetPassword';
 import { DashboardPage, PublishersPage, PublisherDetailPage, PublisherCreatePage, UsersPage, ModulesPage, AnalyticsPage, AuditLogsPage, ProfilePage } from './pages/admin';
 import { PublisherDashboard, AdUnitsPage, BiddersPage, GetCodePage } from './pages/publisher';
 import { NotFound } from './pages/NotFound';
@@ -23,6 +25,22 @@ function App() {
         element={
           <PublicRoute>
             <Login />
+          </PublicRoute>
+        }
+      />
+      <Route
+        path="/forgot-password"
+        element={
+          <PublicRoute>
+            <ForgotPassword />
+          </PublicRoute>
+        }
+      />
+      <Route
+        path="/reset-password"
+        element={
+          <PublicRoute>
+            <ResetPassword />
           </PublicRoute>
         }
       />

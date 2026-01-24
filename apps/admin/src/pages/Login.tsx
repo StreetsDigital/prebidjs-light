@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 
 export function Login() {
@@ -116,12 +116,12 @@ export function Login() {
             </div>
 
             <div className="text-sm">
-              <a
-                href="/forgot-password"
+              <Link
+                to="/forgot-password"
                 className="font-medium text-blue-600 hover:text-blue-500"
               >
                 Forgot your password?
-              </a>
+              </Link>
             </div>
           </div>
 

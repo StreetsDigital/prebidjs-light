@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { db, users, sessions } from '../db';
-import { eq } from 'drizzle-orm';
+import { db, users, sessions, passwordResetTokens } from '../db';
+import { eq, and, isNull } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -221,14 +221,88 @@ export default async function authRoutes(fastify: FastifyInstance) {
       // Generate password reset token
       const resetToken = uuidv4();
 
+      // Token expires in 1 hour
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 1);
+
+      // Store the reset token
+      db.insert(passwordResetTokens).values({
+        id: uuidv4(),
+        userId: user.id,
+        token: resetToken,
+        expiresAt: expiresAt.toISOString(),
+        createdAt: new Date().toISOString(),
+      }).run();
+
       // In development, log the reset link to console
       console.log('\n=== PASSWORD RESET LINK ===');
       console.log(`User: ${user.email}`);
-      console.log(`Reset link: http://localhost:3000/reset-password?token=${resetToken}`);
+      console.log(`Reset link: http://localhost:5173/reset-password?token=${resetToken}`);
+      console.log(`Expires at: ${expiresAt.toISOString()}`);
       console.log('===========================\n');
     }
 
     // Always return success to prevent email enumeration
     return { message: 'If an account with that email exists, a password reset link has been sent.' };
+  });
+
+  // Reset password endpoint
+  fastify.post<{ Body: { token: string; password: string } }>('/reset-password', async (request, reply) => {
+    const { token, password } = request.body;
+
+    if (!token || !password) {
+      return reply.code(400).send({ message: 'Token and password are required' });
+    }
+
+    if (password.length < 8) {
+      return reply.code(400).send({ message: 'Password must be at least 8 characters' });
+    }
+
+    // Find the reset token
+    const resetToken = db.select().from(passwordResetTokens)
+      .where(and(
+        eq(passwordResetTokens.token, token),
+        isNull(passwordResetTokens.usedAt)
+      ))
+      .get();
+
+    if (!resetToken) {
+      return reply.code(400).send({ message: 'Invalid or expired reset token' });
+    }
+
+    // Check if token has expired
+    if (new Date(resetToken.expiresAt) < new Date()) {
+      return reply.code(400).send({ message: 'Invalid or expired reset token' });
+    }
+
+    // Find the user
+    const user = db.select().from(users).where(eq(users.id, resetToken.userId)).get();
+
+    if (!user) {
+      return reply.code(400).send({ message: 'Invalid or expired reset token' });
+    }
+
+    // Hash the new password
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    // Update the user's password
+    db.update(users)
+      .set({
+        passwordHash,
+        updatedAt: new Date().toISOString()
+      })
+      .where(eq(users.id, user.id))
+      .run();
+
+    // Mark the token as used
+    db.update(passwordResetTokens)
+      .set({ usedAt: new Date().toISOString() })
+      .where(eq(passwordResetTokens.id, resetToken.id))
+      .run();
+
+    // Invalidate all user sessions for security
+    db.delete(sessions).where(eq(sessions.userId, user.id)).run();
+
+    return { message: 'Password has been reset successfully' };
   });
 }

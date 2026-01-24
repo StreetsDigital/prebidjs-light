@@ -8,6 +8,7 @@ interface Module {
   description: string;
   enabled: boolean;
   config: Record<string, string>;
+  docsUrl?: string;
 }
 
 const BIDDER_ADAPTERS: Module[] = [
@@ -18,6 +19,7 @@ const BIDDER_ADAPTERS: Module[] = [
     description: 'AppNexus (Xandr) bidder adapter for programmatic advertising.',
     enabled: true,
     config: { placementId: '12345678' },
+    docsUrl: 'https://docs.prebid.org/dev-docs/bidders/appnexus.html',
   },
   {
     id: '2',
@@ -26,6 +28,7 @@ const BIDDER_ADAPTERS: Module[] = [
     description: 'Rubicon Project bidder adapter for premium inventory.',
     enabled: false,
     config: { accountId: '', siteId: '', zoneId: '' },
+    docsUrl: 'https://docs.prebid.org/dev-docs/bidders/rubicon.html',
   },
   {
     id: '3',
@@ -34,6 +37,7 @@ const BIDDER_ADAPTERS: Module[] = [
     description: 'OpenX bidder adapter for display and video advertising.',
     enabled: true,
     config: { delDomain: 'example-d.openx.net', unit: '123456' },
+    docsUrl: 'https://docs.prebid.org/dev-docs/bidders/openx.html',
   },
   {
     id: '4',
@@ -42,6 +46,7 @@ const BIDDER_ADAPTERS: Module[] = [
     description: 'PubMatic bidder adapter for header bidding.',
     enabled: false,
     config: { publisherId: '', adSlot: '' },
+    docsUrl: 'https://docs.prebid.org/dev-docs/bidders/pubmatic.html',
   },
   {
     id: '5',
@@ -50,6 +55,7 @@ const BIDDER_ADAPTERS: Module[] = [
     description: 'Index Exchange bidder adapter for real-time bidding.',
     enabled: false,
     config: { siteId: '' },
+    docsUrl: 'https://docs.prebid.org/dev-docs/bidders/ix.html',
   },
 ];
 
@@ -61,6 +67,7 @@ const USER_ID_MODULES: Module[] = [
     description: 'The Trade Desk Unified ID 2.0 for cross-device identity.',
     enabled: true,
     config: { apiBaseUrl: 'https://prod.uidapi.com' },
+    docsUrl: 'https://docs.prebid.org/dev-docs/modules/userid-submodules/unified2.html',
   },
   {
     id: 'uid2',
@@ -69,6 +76,7 @@ const USER_ID_MODULES: Module[] = [
     description: 'ID5 universal ID for cookieless identity resolution.',
     enabled: false,
     config: { partnerId: '' },
+    docsUrl: 'https://docs.prebid.org/dev-docs/modules/userid-submodules/id5id.html',
   },
   {
     id: 'uid3',
@@ -77,6 +85,7 @@ const USER_ID_MODULES: Module[] = [
     description: 'LiveRamp identity resolution for authenticated users.',
     enabled: false,
     config: { pid: '' },
+    docsUrl: 'https://docs.prebid.org/dev-docs/modules/userid-submodules/identitylink.html',
   },
   {
     id: 'uid4',
@@ -85,6 +94,7 @@ const USER_ID_MODULES: Module[] = [
     description: 'Prebid shared ID for first-party identity.',
     enabled: true,
     config: { storage: 'cookie' },
+    docsUrl: 'https://docs.prebid.org/dev-docs/modules/userid-submodules/sharedid.html',
   },
   {
     id: 'uid5',
@@ -93,6 +103,7 @@ const USER_ID_MODULES: Module[] = [
     description: 'Criteo real-time user sync for retargeting.',
     enabled: false,
     config: { pubId: '' },
+    docsUrl: 'https://docs.prebid.org/dev-docs/modules/userid-submodules/criteo.html',
   },
 ];
 
@@ -104,6 +115,7 @@ const RTD_MODULES: Module[] = [
     description: 'Permutive real-time data for audience targeting.',
     enabled: true,
     config: { projectId: '' },
+    docsUrl: 'https://docs.prebid.org/dev-docs/modules/permutiveRtdProvider.html',
   },
   {
     id: 'rtd2',
@@ -112,6 +124,7 @@ const RTD_MODULES: Module[] = [
     description: 'Brand Metrics for attention measurement.',
     enabled: false,
     config: { scriptId: '' },
+    docsUrl: 'https://docs.prebid.org/dev-docs/modules/brandmetricsRtdProvider.html',
   },
   {
     id: 'rtd3',
@@ -120,6 +133,7 @@ const RTD_MODULES: Module[] = [
     description: 'Oracle BlueKai for data management.',
     enabled: false,
     config: { siteId: '' },
+    docsUrl: 'https://docs.prebid.org/dev-docs/modules/bluekaiRtdProvider.html',
   },
   {
     id: 'rtd4',
@@ -128,6 +142,7 @@ const RTD_MODULES: Module[] = [
     description: 'Greenbids for sustainable ad tech optimization.',
     enabled: false,
     config: { pbuid: '' },
+    docsUrl: 'https://docs.prebid.org/dev-docs/modules/greenbidsRtdProvider.html',
   },
   {
     id: 'rtd5',
@@ -136,6 +151,7 @@ const RTD_MODULES: Module[] = [
     description: 'Sirdata contextual and audience data.',
     enabled: true,
     config: { partnerId: '', key: '' },
+    docsUrl: 'https://docs.prebid.org/dev-docs/modules/sirdataRtdProvider.html',
   },
 ];
 
@@ -191,6 +207,20 @@ function ModuleList({
                 </div>
               </div>
               <div className="flex items-center space-x-4 ml-4">
+                {module.docsUrl && (
+                  <a
+                    href={module.docsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-gray-400 hover:text-blue-600 transition-colors"
+                    title={`View ${module.name} documentation`}
+                  >
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                    <span className="sr-only">View documentation</span>
+                  </a>
+                )}
                 <button
                   type="button"
                   onClick={() => onToggle(module.id)}

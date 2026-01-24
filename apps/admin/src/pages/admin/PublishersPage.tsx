@@ -228,8 +228,13 @@ export function PublishersPage() {
   const handleExportAll = async () => {
     setIsExporting(true);
     try {
-      // Fetch ALL publishers (without pagination) for export
-      const response = await fetch('/api/publishers?limit=10000', {
+      // Build URL with current filters applied
+      const params = new URLSearchParams();
+      params.set('limit', '10000');
+      if (statusFilter) params.set('status', statusFilter);
+      if (searchQuery) params.set('search', searchQuery);
+
+      const response = await fetch(`/api/publishers?${params.toString()}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -241,7 +246,9 @@ export function PublishersPage() {
 
       const data = await response.json();
       const timestamp = new Date().toISOString().split('T')[0];
-      const filename = `publishers-${timestamp}.csv`;
+      // Include filter info in filename if filters are applied
+      const filterSuffix = statusFilter ? `-${statusFilter}` : '';
+      const filename = `publishers${filterSuffix}-${timestamp}.csv`;
       exportPublishersToCSV(data.publishers, filename);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to export publishers');
@@ -292,7 +299,7 @@ export function PublishersPage() {
             className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:opacity-50"
           >
             <ArrowDownTrayIcon className="-ml-0.5 mr-1.5 h-5 w-5 text-gray-500" />
-            {isExporting ? 'Exporting...' : 'Export All'}
+            {isExporting ? 'Exporting...' : (statusFilter || searchQuery) ? 'Export Filtered' : 'Export All'}
           </button>
           <Link
             to="/admin/publishers/new"

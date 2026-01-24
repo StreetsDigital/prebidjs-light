@@ -132,7 +132,7 @@ interface UserIdModule {
   description: string;
   enabled: boolean;
   config: Record<string, string>;
-  configSchema: { key: string; label: string; required: boolean }[];
+  configSchema: { key: string; label: string; required: boolean; type?: 'text' | 'url' | 'number' }[];
 }
 
 interface ConsentManagementConfig {
@@ -268,7 +268,7 @@ const AVAILABLE_USER_ID_MODULES: Omit<UserIdModule, 'enabled'>[] = [
     description: 'The Trade Desk Unified ID 2.0 for cross-device identity.',
     config: { apiBaseUrl: '' },
     configSchema: [
-      { key: 'apiBaseUrl', label: 'API Base URL', required: false },
+      { key: 'apiBaseUrl', label: 'API Base URL', required: false, type: 'url' },
     ],
   },
   {
@@ -454,6 +454,7 @@ export function PublisherDetailPage() {
     module: null as UserIdModule | null,
   });
   const [userIdModuleForm, setUserIdModuleForm] = useState<Record<string, string>>({});
+  const [userIdModuleFormErrors, setUserIdModuleFormErrors] = useState<Record<string, string>>({});
 
   // Consent management state
   const [consentManagement, setConsentManagement] = useState<ConsentManagementConfig | null>(null);
@@ -1724,12 +1725,32 @@ export function PublisherDetailPage() {
       module: null,
     });
     setUserIdModuleForm({});
+    setUserIdModuleFormErrors({});
   };
 
   const handleUserIdModuleConfigSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!publisher || !userIdModuleModal.module) return;
 
+    // Validate URL fields
+    const errors: Record<string, string> = {};
+    const urlPattern = /^https?:\/\/.+/i;
+
+    for (const field of userIdModuleModal.module.configSchema) {
+      const value = userIdModuleForm[field.key];
+      if (field.type === 'url' && value && value.trim() !== '') {
+        if (!urlPattern.test(value)) {
+          errors[field.key] = 'Please enter a valid URL (must start with http:// or https://)';
+        }
+      }
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setUserIdModuleFormErrors(errors);
+      return;
+    }
+
+    setUserIdModuleFormErrors({});
     setUserIdModuleModal((prev) => ({ ...prev, isLoading: true }));
 
     const moduleCode = userIdModuleModal.module.code;
@@ -4329,11 +4350,32 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
                     type="text"
                     id={`uid-${field.key}`}
                     value={userIdModuleForm[field.key] || ''}
-                    onChange={(e) => setUserIdModuleForm((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    onChange={(e) => {
+                      setUserIdModuleForm((prev) => ({ ...prev, [field.key]: e.target.value }));
+                      // Clear error when user starts typing
+                      if (userIdModuleFormErrors[field.key]) {
+                        setUserIdModuleFormErrors((prev) => {
+                          const newErrors = { ...prev };
+                          delete newErrors[field.key];
+                          return newErrors;
+                        });
+                      }
+                    }}
+                    className={`mt-1 block w-full rounded-md shadow-sm focus:ring-blue-500 sm:text-sm ${
+                      userIdModuleFormErrors[field.key]
+                        ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
+                        : 'border-gray-300 focus:border-blue-500'
+                    }`}
                     required={field.required}
-                    placeholder={`Enter ${field.label.toLowerCase()}`}
+                    placeholder={field.type === 'url' ? 'https://example.com' : `Enter ${field.label.toLowerCase()}`}
+                    aria-invalid={!!userIdModuleFormErrors[field.key]}
+                    aria-describedby={userIdModuleFormErrors[field.key] ? `uid-${field.key}-error` : undefined}
                   />
+                  {userIdModuleFormErrors[field.key] && (
+                    <p id={`uid-${field.key}-error`} className="mt-1 text-sm text-red-600">
+                      {userIdModuleFormErrors[field.key]}
+                    </p>
+                  )}
                 </div>
               ))}
             </>

@@ -1,126 +1,23 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FormModal } from '../../components/ui';
+import { useAuthStore } from '../../stores/authStore';
 
 interface AuditLog {
   id: string;
   timestamp: string;
-  action: 'create' | 'update' | 'delete' | 'login' | 'logout' | 'config_change';
+  action: string;
   resource: string;
-  resourceId: string;
-  userId: string;
+  resourceId: string | null;
+  userId: string | null;
   userName: string;
   userEmail: string;
   ipAddress: string;
   userAgent: string;
-  details: Record<string, unknown>;
+  details: {
+    oldValues?: Record<string, unknown> | null;
+    newValues?: Record<string, unknown> | null;
+  };
 }
-
-const MOCK_LOGS: AuditLog[] = [
-  {
-    id: '1',
-    timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-    action: 'login',
-    resource: 'session',
-    resourceId: 'sess_123',
-    userId: 'user_1',
-    userName: 'Super Admin',
-    userEmail: 'admin@example.com',
-    ipAddress: '192.168.1.100',
-    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-    details: { method: 'password' },
-  },
-  {
-    id: '2',
-    timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-    action: 'create',
-    resource: 'publisher',
-    resourceId: 'pub_456',
-    userId: 'user_1',
-    userName: 'Super Admin',
-    userEmail: 'admin@example.com',
-    ipAddress: '192.168.1.100',
-    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-    details: { name: 'New Publisher', slug: 'new-publisher' },
-  },
-  {
-    id: '3',
-    timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-    action: 'update',
-    resource: 'publisher',
-    resourceId: 'pub_123',
-    userId: 'user_1',
-    userName: 'Super Admin',
-    userEmail: 'admin@example.com',
-    ipAddress: '192.168.1.100',
-    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-    details: { field: 'status', oldValue: 'active', newValue: 'paused' },
-  },
-  {
-    id: '4',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
-    action: 'config_change',
-    resource: 'bidder',
-    resourceId: 'appnexus',
-    userId: 'user_2',
-    userName: 'Staff Admin',
-    userEmail: 'staff@example.com',
-    ipAddress: '192.168.1.101',
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-    details: { bidder: 'appnexus', enabled: true },
-  },
-  {
-    id: '5',
-    timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-    action: 'delete',
-    resource: 'ad_unit',
-    resourceId: 'unit_789',
-    userId: 'user_1',
-    userName: 'Super Admin',
-    userEmail: 'admin@example.com',
-    ipAddress: '192.168.1.100',
-    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-    details: { name: 'Old Ad Unit', code: 'old-unit' },
-  },
-  {
-    id: '6',
-    timestamp: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
-    action: 'logout',
-    resource: 'session',
-    resourceId: 'sess_122',
-    userId: 'user_3',
-    userName: 'Publisher User',
-    userEmail: 'publisher@example.com',
-    ipAddress: '192.168.1.102',
-    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0)',
-    details: { reason: 'user_initiated' },
-  },
-  {
-    id: '7',
-    timestamp: new Date(Date.now() - 1000 * 60 * 240).toISOString(),
-    action: 'create',
-    resource: 'user',
-    resourceId: 'user_4',
-    userId: 'user_1',
-    userName: 'Super Admin',
-    userEmail: 'admin@example.com',
-    ipAddress: '192.168.1.100',
-    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-    details: { email: 'newuser@example.com', role: 'publisher' },
-  },
-  {
-    id: '8',
-    timestamp: new Date(Date.now() - 1000 * 60 * 300).toISOString(),
-    action: 'update',
-    resource: 'user',
-    resourceId: 'user_2',
-    userId: 'user_1',
-    userName: 'Super Admin',
-    userEmail: 'admin@example.com',
-    ipAddress: '192.168.1.100',
-    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-    details: { field: 'role', oldValue: 'publisher', newValue: 'admin' },
-  },
-];
 
 const ACTION_TYPES = [
   { value: '', label: 'All Actions' },
@@ -165,13 +62,40 @@ function getActionBadge(action: string) {
 }
 
 export function AuditLogsPage() {
-  const [logs] = useState<AuditLog[]>(MOCK_LOGS);
+  const { token } = useAuthStore();
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [actionFilter, setActionFilter] = useState('');
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
 
-  const filteredLogs = actionFilter
-    ? logs.filter((log) => log.action === actionFilter)
-    : logs;
+  const fetchLogs = async () => {
+    setIsLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: '100' });
+      if (actionFilter) {
+        params.append('action', actionFilter);
+      }
+      const response = await fetch(`/api/audit-logs?${params.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setLogs(data.logs);
+      }
+    } catch (err) {
+      console.error('Failed to fetch audit logs:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLogs();
+  }, [token, actionFilter]);
+
+  const filteredLogs = logs;
 
   return (
     <div className="space-y-6">
@@ -213,14 +137,20 @@ export function AuditLogsPage() {
             </button>
           )}
           <div className="ml-auto text-sm text-gray-500">
-            Showing {filteredLogs.length} of {logs.length} entries
+            {isLoading ? 'Loading...' : `Showing ${filteredLogs.length} entries`}
           </div>
         </div>
       </div>
 
       {/* Logs List */}
       <div className="bg-white shadow rounded-lg overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          </div>
+        ) : (
+          <>
+            <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
               <th
@@ -303,6 +233,8 @@ export function AuditLogsPage() {
           <div className="px-6 py-12 text-center text-sm text-gray-500">
             No audit logs found matching your filter.
           </div>
+        )}
+          </>
         )}
       </div>
 

@@ -54,50 +54,7 @@ interface ConfigVersion {
   };
 }
 
-const MOCK_CONFIG_VERSIONS: ConfigVersion[] = [
-  {
-    id: 'v1',
-    version: 3,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-    createdBy: 'Super Admin',
-    changes: 'Updated bidder timeout from 1200ms to 1500ms',
-    config: {
-      bidderTimeout: 1500,
-      priceGranularity: 'medium',
-      sendAllBids: true,
-      bidderSequence: 'random',
-      debugMode: false,
-    },
-  },
-  {
-    id: 'v2',
-    version: 2,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
-    createdBy: 'Staff Admin',
-    changes: 'Enabled send all bids feature',
-    config: {
-      bidderTimeout: 1200,
-      priceGranularity: 'medium',
-      sendAllBids: true,
-      bidderSequence: 'random',
-      debugMode: false,
-    },
-  },
-  {
-    id: 'v3',
-    version: 1,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
-    createdBy: 'Super Admin',
-    changes: 'Initial configuration',
-    config: {
-      bidderTimeout: 1000,
-      priceGranularity: 'low',
-      sendAllBids: false,
-      bidderSequence: 'fixed',
-      debugMode: true,
-    },
-  },
-];
+// Config versions are now loaded from API
 
 interface Build {
   id: string;
@@ -207,7 +164,9 @@ export function PublisherDetailPage() {
   const [activeTab, setActiveTab] = useState('overview');
 
   // Config version history state
-  const [configVersions] = useState<ConfigVersion[]>(MOCK_CONFIG_VERSIONS);
+  const [configVersions, setConfigVersions] = useState<ConfigVersion[]>([]);
+  const [currentConfig, setCurrentConfig] = useState<{ bidderTimeout: number; priceGranularity: string; sendAllBids: boolean; bidderSequence: string; debugMode: boolean } | null>(null);
+  const [currentVersion, setCurrentVersion] = useState<number>(1);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<ConfigVersion | null>(null);
   const [rollbackDialog, setRollbackDialog] = useState({
@@ -218,6 +177,19 @@ export function PublisherDetailPage() {
 
   // Build state
   const [builds] = useState<Build[]>(MOCK_BUILDS);
+
+  // Config editing state
+  const [configModal, setConfigModal] = useState({
+    isOpen: false,
+    isLoading: false,
+  });
+  const [configForm, setConfigForm] = useState({
+    bidderTimeout: 1500,
+    priceGranularity: 'medium',
+    sendAllBids: true,
+    bidderSequence: 'random',
+    debugMode: false,
+  });
 
   const fetchPublisher = async () => {
     if (!id) return;
@@ -273,9 +245,78 @@ export function PublisherDetailPage() {
     }
   };
 
+  const fetchConfig = async () => {
+    if (!id) return;
+
+    try {
+      const response = await fetch(`/api/publishers/${id}/config`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCurrentConfig({
+          bidderTimeout: data.bidderTimeout,
+          priceGranularity: data.priceGranularity,
+          sendAllBids: data.enableSendAllBids,
+          bidderSequence: data.bidderSequence,
+          debugMode: data.debugMode,
+        });
+        setCurrentVersion(data.version || 1);
+      }
+    } catch (err) {
+      console.error('Failed to fetch config:', err);
+    }
+  };
+
+  const fetchConfigVersions = async () => {
+    if (!id) return;
+
+    try {
+      const response = await fetch(`/api/publishers/${id}/config/versions`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setConfigVersions(data.versions.map((v: { id: string; version: number; createdAt: string; changedBy: string; changeSummary: string; config: { bidderTimeout: number; priceGranularity: string; enableSendAllBids: boolean; bidderSequence: string; debugMode: boolean } }) => ({
+          id: v.id,
+          version: v.version,
+          createdAt: v.createdAt,
+          createdBy: v.changedBy,
+          changes: v.changeSummary,
+          config: {
+            bidderTimeout: v.config.bidderTimeout,
+            priceGranularity: v.config.priceGranularity,
+            sendAllBids: v.config.enableSendAllBids,
+            bidderSequence: v.config.bidderSequence,
+            debugMode: v.config.debugMode,
+          },
+        })));
+        if (data.currentConfig) {
+          setCurrentConfig({
+            bidderTimeout: data.currentConfig.bidderTimeout,
+            priceGranularity: data.currentConfig.priceGranularity,
+            sendAllBids: data.currentConfig.enableSendAllBids,
+            bidderSequence: data.currentConfig.bidderSequence,
+            debugMode: data.currentConfig.debugMode,
+          });
+          setCurrentVersion(data.currentVersion);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch config versions:', err);
+    }
+  };
+
   useEffect(() => {
     fetchPublisher();
     fetchAdUnits();
+    fetchConfig();
   }, [id, token]);
 
   const handleRegenerateClick = () => {
@@ -462,6 +503,7 @@ export function PublisherDetailPage() {
 
   // Version history handlers
   const handleVersionHistoryClick = () => {
+    fetchConfigVersions();
     setShowVersionHistory(true);
     setSelectedVersion(null);
   };
@@ -505,6 +547,67 @@ export function PublisherDetailPage() {
     });
     setSelectedVersion(null);
     setShowVersionHistory(false);
+  };
+
+  // Config editing handlers
+  const handleEditConfigClick = () => {
+    if (currentConfig) {
+      setConfigForm({
+        bidderTimeout: currentConfig.bidderTimeout,
+        priceGranularity: currentConfig.priceGranularity,
+        sendAllBids: currentConfig.sendAllBids,
+        bidderSequence: currentConfig.bidderSequence,
+        debugMode: currentConfig.debugMode,
+      });
+    }
+    setConfigModal({ isOpen: true, isLoading: false });
+  };
+
+  const handleConfigClose = () => {
+    setConfigModal({ isOpen: false, isLoading: false });
+  };
+
+  const handleConfigSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!publisher) return;
+
+    setConfigModal((prev) => ({ ...prev, isLoading: true }));
+
+    try {
+      const response = await fetch(`/api/publishers/${publisher.id}/config`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          bidderTimeout: configForm.bidderTimeout,
+          priceGranularity: configForm.priceGranularity,
+          enableSendAllBids: configForm.sendAllBids,
+          bidderSequence: configForm.bidderSequence,
+          debugMode: configForm.debugMode,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to update config');
+      }
+
+      const updated = await response.json();
+      setCurrentConfig({
+        bidderTimeout: updated.bidderTimeout,
+        priceGranularity: updated.priceGranularity,
+        sendAllBids: updated.enableSendAllBids,
+        bidderSequence: updated.bidderSequence,
+        debugMode: updated.debugMode,
+      });
+      setCurrentVersion(updated.version);
+      handleConfigClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update config');
+      setConfigModal((prev) => ({ ...prev, isLoading: false }));
+    }
   };
 
   const formatVersionDate = (dateString: string) => {
@@ -756,37 +859,49 @@ export function PublisherDetailPage() {
                     Configure Prebid.js settings for this publisher.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleVersionHistoryClick}
-                  className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
-                >
-                  <svg className="-ml-0.5 mr-1.5 h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Version History
-                </button>
+                <div className="flex space-x-2">
+                  <button
+                    type="button"
+                    onClick={handleEditConfigClick}
+                    className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
+                  >
+                    <svg className="-ml-0.5 mr-1.5 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    Edit Config
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleVersionHistoryClick}
+                    className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                  >
+                    <svg className="-ml-0.5 mr-1.5 h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Version History
+                  </button>
+                </div>
               </div>
               <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Bidder Timeout</dt>
-                  <dd className="mt-1 text-sm text-gray-900">1500ms</dd>
+                  <dd className="mt-1 text-sm text-gray-900">{currentConfig?.bidderTimeout || 1500}ms</dd>
                 </div>
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Price Granularity</dt>
-                  <dd className="mt-1 text-sm text-gray-900">medium</dd>
+                  <dd className="mt-1 text-sm text-gray-900">{currentConfig?.priceGranularity || 'medium'}</dd>
                 </div>
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Send All Bids</dt>
-                  <dd className="mt-1 text-sm text-gray-900">Enabled</dd>
+                  <dd className="mt-1 text-sm text-gray-900">{currentConfig?.sendAllBids ? 'Enabled' : 'Disabled'}</dd>
                 </div>
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Bidder Sequence</dt>
-                  <dd className="mt-1 text-sm text-gray-900">random</dd>
+                  <dd className="mt-1 text-sm text-gray-900">{currentConfig?.bidderSequence || 'random'}</dd>
                 </div>
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Debug Mode</dt>
-                  <dd className="mt-1 text-sm text-gray-900">Disabled</dd>
+                  <dd className="mt-1 text-sm text-gray-900">{currentConfig?.debugMode ? 'Enabled' : 'Disabled'}</dd>
                 </div>
               </dl>
             </div>
@@ -813,7 +928,42 @@ export function PublisherDetailPage() {
                 </div>
               </div>
               <div className="divide-y divide-gray-200">
-                {configVersions.map((version, index) => (
+                {/* Current version */}
+                {currentConfig && (
+                  <div
+                    className="py-4 hover:bg-gray-50 cursor-pointer rounded-lg px-2 -mx-2"
+                    onClick={() => handleVersionSelect({
+                      id: 'current',
+                      version: currentVersion,
+                      createdAt: new Date().toISOString(),
+                      createdBy: 'Current',
+                      changes: 'Current configuration',
+                      config: currentConfig,
+                    })}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center bg-green-100 text-green-700">
+                          <span className="text-sm font-semibold">v{currentVersion}</span>
+                        </div>
+                        <div className="ml-4">
+                          <p className="text-sm font-medium text-gray-900">
+                            Current configuration
+                            <span className="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                              Current
+                            </span>
+                          </p>
+                          <p className="text-sm text-gray-500">Active configuration</p>
+                        </div>
+                      </div>
+                      <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </div>
+                )}
+                {/* Historical versions */}
+                {configVersions.map((version) => (
                   <div
                     key={version.id}
                     className="py-4 hover:bg-gray-50 cursor-pointer rounded-lg px-2 -mx-2"
@@ -821,19 +971,12 @@ export function PublisherDetailPage() {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                          index === 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                        }`}>
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-100 text-gray-600">
                           <span className="text-sm font-semibold">v{version.version}</span>
                         </div>
                         <div className="ml-4">
                           <p className="text-sm font-medium text-gray-900">
                             {version.changes}
-                            {index === 0 && (
-                              <span className="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
-                                Current
-                              </span>
-                            )}
                           </p>
                           <p className="text-sm text-gray-500">
                             by {version.createdBy} • {formatVersionDate(version.createdAt)}
@@ -1462,6 +1605,109 @@ export function PublisherDetailPage() {
         variant="warning"
         isLoading={rollbackDialog.isLoading}
       />
+
+      {/* Edit Config Modal */}
+      <FormModal
+        isOpen={configModal.isOpen}
+        onClose={handleConfigClose}
+        title="Edit Prebid Configuration"
+      >
+        <form onSubmit={handleConfigSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="bidderTimeout" className="block text-sm font-medium text-gray-700">
+              Bidder Timeout (ms)
+            </label>
+            <input
+              type="number"
+              id="bidderTimeout"
+              value={configForm.bidderTimeout}
+              onChange={(e) => setConfigForm((prev) => ({ ...prev, bidderTimeout: parseInt(e.target.value, 10) || 1500 }))}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              min={100}
+              max={10000}
+              required
+            />
+          </div>
+          <div>
+            <label htmlFor="priceGranularity" className="block text-sm font-medium text-gray-700">
+              Price Granularity
+            </label>
+            <select
+              id="priceGranularity"
+              value={configForm.priceGranularity}
+              onChange={(e) => setConfigForm((prev) => ({ ...prev, priceGranularity: e.target.value }))}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+            >
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="auto">Auto</option>
+              <option value="dense">Dense</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="bidderSequence" className="block text-sm font-medium text-gray-700">
+              Bidder Sequence
+            </label>
+            <select
+              id="bidderSequence"
+              value={configForm.bidderSequence}
+              onChange={(e) => setConfigForm((prev) => ({ ...prev, bidderSequence: e.target.value }))}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+            >
+              <option value="random">Random</option>
+              <option value="fixed">Fixed</option>
+            </select>
+          </div>
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="sendAllBids"
+              checked={configForm.sendAllBids}
+              onChange={(e) => setConfigForm((prev) => ({ ...prev, sendAllBids: e.target.checked }))}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="sendAllBids" className="ml-2 block text-sm text-gray-900">
+              Send All Bids
+            </label>
+          </div>
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="debugMode"
+              checked={configForm.debugMode}
+              onChange={(e) => setConfigForm((prev) => ({ ...prev, debugMode: e.target.checked }))}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="debugMode" className="ml-2 block text-sm text-gray-900">
+              Debug Mode
+            </label>
+          </div>
+          <div className="flex justify-end space-x-3 pt-4">
+            <button
+              type="button"
+              onClick={handleConfigClose}
+              disabled={configModal.isLoading}
+              className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={configModal.isLoading}
+              className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50"
+            >
+              {configModal.isLoading && (
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              )}
+              Save Changes
+            </button>
+          </div>
+        </form>
+      </FormModal>
     </div>
   );
 }

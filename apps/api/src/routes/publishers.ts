@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { db, publishers, publisherConfig, adUnits, publisherBidders } from '../db';
-import { eq, and } from 'drizzle-orm';
+import { db, publishers, publisherConfig, adUnits, publisherBidders, configVersions, auditLogs } from '../db';
+import { eq, and, desc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth, requireAdmin, requireRole, TokenPayload } from '../middleware/auth';
 
@@ -150,6 +150,20 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       updatedAt: now,
     }).run();
 
+    // Log audit entry
+    db.insert(auditLogs).values({
+      id: uuidv4(),
+      userId: user.userId,
+      action: 'CREATE',
+      entityType: 'publisher',
+      entityId: id,
+      oldValues: null,
+      newValues: JSON.stringify({ name, slug, domains: domains || [], status: 'active', notes: notes || null }),
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'] || null,
+      createdAt: now,
+    }).run();
+
     const newPublisher = db.select().from(publishers).where(eq(publishers.id, id)).get();
 
     return reply.code(201).send({
@@ -164,11 +178,21 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const { id } = request.params;
     const { name, slug, domains, status, notes } = request.body;
+    const user = request.user as TokenPayload;
 
     const publisher = db.select().from(publishers).where(eq(publishers.id, id)).get();
     if (!publisher) {
       return reply.code(404).send({ error: 'Publisher not found' });
     }
+
+    // Store old values for audit log
+    const oldValues = {
+      name: publisher.name,
+      slug: publisher.slug,
+      domains: publisher.domains ? JSON.parse(publisher.domains) : [],
+      status: publisher.status,
+      notes: publisher.notes,
+    };
 
     // If slug is being changed, check for duplicates
     if (slug && slug !== publisher.slug) {
@@ -194,6 +218,26 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
 
     const updated = db.select().from(publishers).where(eq(publishers.id, id)).get();
 
+    // Log audit entry
+    db.insert(auditLogs).values({
+      id: uuidv4(),
+      userId: user.userId,
+      action: 'UPDATE',
+      entityType: 'publisher',
+      entityId: id,
+      oldValues: JSON.stringify(oldValues),
+      newValues: JSON.stringify({
+        name: updated?.name,
+        slug: updated?.slug,
+        domains: updated?.domains ? JSON.parse(updated.domains) : [],
+        status: updated?.status,
+        notes: updated?.notes,
+      }),
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'] || null,
+      createdAt: now,
+    }).run();
+
     return {
       ...updated,
       domains: updated?.domains ? JSON.parse(updated.domains) : [],
@@ -205,11 +249,34 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     preHandler: requireAdmin,
   }, async (request, reply) => {
     const { id } = request.params;
+    const user = request.user as TokenPayload;
 
     const publisher = db.select().from(publishers).where(eq(publishers.id, id)).get();
     if (!publisher) {
       return reply.code(404).send({ error: 'Publisher not found' });
     }
+
+    const now = new Date().toISOString();
+
+    // Log audit entry before deleting
+    db.insert(auditLogs).values({
+      id: uuidv4(),
+      userId: user.userId,
+      action: 'DELETE',
+      entityType: 'publisher',
+      entityId: id,
+      oldValues: JSON.stringify({
+        name: publisher.name,
+        slug: publisher.slug,
+        domains: publisher.domains ? JSON.parse(publisher.domains) : [],
+        status: publisher.status,
+        notes: publisher.notes,
+      }),
+      newValues: null,
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'] || null,
+      createdAt: now,
+    }).run();
 
     // Delete related config
     db.delete(publisherConfig).where(eq(publisherConfig.publisherId, id)).run();
@@ -735,7 +802,44 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     }
 
     const now = new Date().toISOString();
+    const newVersion = (config.version || 1) + 1;
 
+    // Build change summary
+    const changes: string[] = [];
+    if (bidderTimeout !== undefined && bidderTimeout !== config.bidderTimeout) {
+      changes.push(`bidderTimeout: ${config.bidderTimeout}ms → ${bidderTimeout}ms`);
+    }
+    if (priceGranularity !== undefined && priceGranularity !== config.priceGranularity) {
+      changes.push(`priceGranularity: ${config.priceGranularity} → ${priceGranularity}`);
+    }
+    if (enableSendAllBids !== undefined && enableSendAllBids !== config.enableSendAllBids) {
+      changes.push(`sendAllBids: ${config.enableSendAllBids ? 'enabled' : 'disabled'} → ${enableSendAllBids ? 'enabled' : 'disabled'}`);
+    }
+    if (bidderSequence !== undefined && bidderSequence !== config.bidderSequence) {
+      changes.push(`bidderSequence: ${config.bidderSequence} → ${bidderSequence}`);
+    }
+    if (debugMode !== undefined && debugMode !== config.debugMode) {
+      changes.push(`debugMode: ${config.debugMode ? 'on' : 'off'} → ${debugMode ? 'on' : 'off'}`);
+    }
+
+    // Save current config as a version entry before updating
+    db.insert(configVersions).values({
+      id: uuidv4(),
+      publisherId: id,
+      version: config.version || 1,
+      configSnapshot: JSON.stringify({
+        bidderTimeout: config.bidderTimeout,
+        priceGranularity: config.priceGranularity,
+        enableSendAllBids: config.enableSendAllBids,
+        bidderSequence: config.bidderSequence,
+        debugMode: config.debugMode,
+      }),
+      changedBy: user.userId,
+      changeSummary: changes.length > 0 ? changes.join(', ') : 'Configuration updated',
+      createdAt: now,
+    }).run();
+
+    // Update the config
     db.update(publisherConfig)
       .set({
         ...(bidderTimeout !== undefined && { bidderTimeout }),
@@ -744,7 +848,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
         ...(bidderSequence !== undefined && { bidderSequence }),
         ...(debugMode !== undefined && { debugMode }),
         updatedAt: now,
-        version: (config.version || 1) + 1,
+        version: newVersion,
       })
       .where(eq(publisherConfig.publisherId, id))
       .run();
@@ -752,5 +856,61 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     const updated = db.select().from(publisherConfig).where(eq(publisherConfig.publisherId, id)).get();
 
     return updated;
+  });
+
+  // Get config version history
+  fastify.get<{ Params: { id: string } }>('/:id/config/versions', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const user = request.user as TokenPayload;
+
+    // Check if publisher exists
+    const publisher = db.select().from(publishers).where(eq(publishers.id, id)).get();
+    if (!publisher) {
+      return reply.code(404).send({ error: 'Publisher not found' });
+    }
+
+    // Check authorization
+    if (user.role === 'publisher' && user.publisherId !== id) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+
+    // Get config versions ordered by version descending
+    const versions = db.select().from(configVersions)
+      .where(eq(configVersions.publisherId, id))
+      .orderBy(desc(configVersions.version))
+      .all();
+
+    // Get current config for display
+    const currentConfig = db.select().from(publisherConfig).where(eq(publisherConfig.publisherId, id)).get();
+
+    // Get user names for display
+    const { users } = await import('../db');
+    const userMap = new Map<string, string>();
+    const userIds = [...new Set(versions.map(v => v.changedBy).filter(Boolean))];
+    if (userIds.length > 0) {
+      const userRecords = db.select().from(users).all();
+      userRecords.forEach(u => userMap.set(u.id, u.name));
+    }
+
+    return {
+      currentVersion: currentConfig?.version || 1,
+      currentConfig: currentConfig ? {
+        bidderTimeout: currentConfig.bidderTimeout,
+        priceGranularity: currentConfig.priceGranularity,
+        enableSendAllBids: currentConfig.enableSendAllBids,
+        bidderSequence: currentConfig.bidderSequence,
+        debugMode: currentConfig.debugMode,
+      } : null,
+      versions: versions.map(v => ({
+        id: v.id,
+        version: v.version,
+        config: JSON.parse(v.configSnapshot),
+        changedBy: v.changedBy ? userMap.get(v.changedBy) || 'Unknown' : 'System',
+        changeSummary: v.changeSummary,
+        createdAt: v.createdAt,
+      })),
+    };
   });
 }

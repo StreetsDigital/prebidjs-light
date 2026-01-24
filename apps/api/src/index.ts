@@ -13,6 +13,7 @@ import auditLogsRoutes from './routes/audit-logs';
 import scheduledReportsRoutes from './routes/scheduled-reports';
 import analyticsRoutes from './routes/analytics';
 import buildsRoutes from './routes/builds';
+import abTestRoutes from './routes/ab-tests';
 
 const app = Fastify({
   logger: {
@@ -55,6 +56,7 @@ app.register(auditLogsRoutes, { prefix: '/api/audit-logs' });
 app.register(scheduledReportsRoutes, { prefix: '/api/scheduled-reports' });
 app.register(analyticsRoutes, { prefix: '/api/analytics' });
 app.register(buildsRoutes, { prefix: '/api' });
+app.register(abTestRoutes, { prefix: '/api/publishers' });
 
 // Placeholder for other routes
 // app.register(configRoutes, { prefix: '/api/config' });
@@ -276,12 +278,14 @@ app.get('/pb.js', async (request, reply) => {
 
 // Public config endpoint (high performance)
 // Uses publisher slug or ID (public identifier) instead of API key for security
+// Supports A/B testing via variant query param or random selection
 app.get('/c/:publisherSlug', async (request, reply) => {
   const { publisherSlug } = request.params as { publisherSlug: string };
+  const { variant: variantParam } = request.query as { variant?: string };
 
   // Import db and schema
-  const { db, publishers, publisherConfig, adUnits, publisherBidders } = await import('./db');
-  const { eq, or } = await import('drizzle-orm');
+  const { db, publishers, publisherConfig, adUnits, publisherBidders, abTests, abTestVariants } = await import('./db');
+  const { eq, or, and } = await import('drizzle-orm');
 
   // Find publisher by slug or ID (not API key - keep that secret)
   const publisher = db.select().from(publishers).where(
@@ -305,8 +309,57 @@ app.get('/c/:publisherSlug', async (request, reply) => {
   // Get bidders
   const bidders = db.select().from(publisherBidders).where(eq(publisherBidders.publisherId, publisher.id)).all();
 
-  // Build Prebid-compatible config
-  const prebidConfig = {
+  // Check for active A/B test
+  const activeTest = db
+    .select()
+    .from(abTests)
+    .where(and(eq(abTests.publisherId, publisher.id), eq(abTests.status, 'running')))
+    .get();
+
+  let selectedVariant: typeof abTestVariants.$inferSelect | null = null;
+  let abTestInfo: { testId: string; testName: string; variantId: string; variantName: string } | null = null;
+
+  if (activeTest) {
+    const variants = db
+      .select()
+      .from(abTestVariants)
+      .where(eq(abTestVariants.testId, activeTest.id))
+      .all();
+
+    if (variants.length > 0) {
+      // Check if a specific variant was requested
+      if (variantParam) {
+        selectedVariant = variants.find(v => v.id === variantParam || v.name === variantParam) || null;
+      }
+
+      // If no specific variant requested or not found, randomly select based on traffic percentages
+      if (!selectedVariant) {
+        const random = Math.random() * 100;
+        let cumulative = 0;
+        for (const v of variants) {
+          cumulative += v.trafficPercent;
+          if (random <= cumulative) {
+            selectedVariant = v;
+            break;
+          }
+        }
+        // Fallback to first variant if somehow nothing was selected
+        if (!selectedVariant) {
+          selectedVariant = variants[0];
+        }
+      }
+
+      abTestInfo = {
+        testId: activeTest.id,
+        testName: activeTest.name,
+        variantId: selectedVariant.id,
+        variantName: selectedVariant.name,
+      };
+    }
+  }
+
+  // Build base Prebid-compatible config
+  let prebidConfig: Record<string, any> = {
     publisherId: publisher.id,
     publisherName: publisher.name,
     domains: publisher.domains ? JSON.parse(publisher.domains) : [],
@@ -334,8 +387,43 @@ app.get('/c/:publisherSlug', async (request, reply) => {
     generatedAt: new Date().toISOString(),
   };
 
-  // Set cache headers
-  reply.header('Cache-Control', 'public, max-age=300'); // 5 minute cache
+  // Apply A/B test variant overrides if selected (and not control)
+  if (selectedVariant && !selectedVariant.isControl) {
+    if (selectedVariant.bidderTimeout) {
+      prebidConfig.config.bidderTimeout = selectedVariant.bidderTimeout;
+    }
+    if (selectedVariant.priceGranularity) {
+      prebidConfig.config.priceGranularity = selectedVariant.priceGranularity;
+    }
+    if (selectedVariant.enableSendAllBids !== null) {
+      prebidConfig.config.enableSendAllBids = !!selectedVariant.enableSendAllBids;
+    }
+    if (selectedVariant.bidderSequence) {
+      prebidConfig.config.bidderSequence = selectedVariant.bidderSequence;
+    }
+    if (selectedVariant.floorsConfig) {
+      prebidConfig.config.floors = JSON.parse(selectedVariant.floorsConfig);
+    }
+    if (selectedVariant.bidderOverrides) {
+      const overrides = JSON.parse(selectedVariant.bidderOverrides);
+      // Apply bidder-specific overrides
+      prebidConfig.bidders = prebidConfig.bidders.map((b: any) => {
+        if (overrides[b.bidderCode]) {
+          return { ...b, ...overrides[b.bidderCode] };
+        }
+        return b;
+      });
+    }
+  }
+
+  // Add A/B test info to the response
+  if (abTestInfo) {
+    prebidConfig.abTest = abTestInfo;
+  }
+
+  // Set cache headers (shorter for A/B tests to allow variant switching)
+  const cacheTime = activeTest ? 60 : 300; // 1 minute for A/B tests, 5 minutes otherwise
+  reply.header('Cache-Control', `public, max-age=${cacheTime}`);
 
   return prebidConfig;
 });

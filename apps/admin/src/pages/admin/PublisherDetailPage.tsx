@@ -199,6 +199,47 @@ interface AvailableAdmin {
   email: string;
 }
 
+// A/B Test interfaces
+interface ABTestVariant {
+  id: string;
+  name: string;
+  trafficPercent: number;
+  isControl: boolean;
+  bidderTimeout?: number;
+  priceGranularity?: string;
+  enableSendAllBids?: boolean;
+  bidderSequence?: string;
+  floorsConfig?: any;
+  bidderOverrides?: any;
+}
+
+interface ABTest {
+  id: string;
+  publisherId: string;
+  name: string;
+  description?: string;
+  status: 'draft' | 'running' | 'paused' | 'completed';
+  startDate?: string;
+  endDate?: string;
+  variants: ABTestVariant[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ABTestFormData {
+  name: string;
+  description: string;
+  variants: Array<{
+    name: string;
+    trafficPercent: number;
+    isControl: boolean;
+    bidderTimeout?: number;
+    priceGranularity?: string;
+    enableSendAllBids?: boolean;
+    bidderSequence?: string;
+  }>;
+}
+
 const MOCK_BUILDS: Build[] = [
   {
     id: 'build_1',
@@ -601,6 +642,27 @@ export function PublisherDetailPage() {
     admin: null as AssignedAdmin | null,
   });
 
+  // A/B Tests state
+  const [abTests, setAbTests] = useState<ABTest[]>([]);
+  const [abTestModal, setAbTestModal] = useState({
+    isOpen: false,
+    isLoading: false,
+  });
+  const [editingAbTest, setEditingAbTest] = useState<ABTest | null>(null);
+  const [abTestForm, setAbTestForm] = useState<ABTestFormData>({
+    name: '',
+    description: '',
+    variants: [
+      { name: 'Control', trafficPercent: 50, isControl: true },
+      { name: 'Variant A', trafficPercent: 50, isControl: false },
+    ],
+  });
+  const [deleteAbTestDialog, setDeleteAbTestDialog] = useState({
+    isOpen: false,
+    isLoading: false,
+    test: null as ABTest | null,
+  });
+
   const fetchPublisher = async () => {
     if (!id) return;
 
@@ -793,6 +855,26 @@ export function PublisherDetailPage() {
     }
   };
 
+  // Fetch A/B tests
+  const fetchAbTests = async () => {
+    if (!id) return;
+
+    try {
+      const response = await fetch(`/api/publishers/${id}/ab-tests`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setAbTests(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch A/B tests:', err);
+    }
+  };
+
   const fetchConfigVersions = async () => {
     if (!id) return;
 
@@ -940,6 +1022,7 @@ export function PublisherDetailPage() {
     fetchAvailableBidders();
     fetchAllPublishers();
     fetchBuilds();
+    fetchAbTests();
   }, [id, token]);
 
   // Hash navigation - handle URL hash to switch tabs and scroll to sections
@@ -1669,6 +1752,225 @@ export function PublisherDetailPage() {
       addToast(err instanceof Error ? err.message : 'Failed to remove admin', 'error');
       setRemoveAdminDialog((prev) => ({ ...prev, isLoading: false }));
     }
+  };
+
+  // A/B Test handlers
+  const handleCreateAbTestClick = () => {
+    setEditingAbTest(null);
+    setAbTestForm({
+      name: '',
+      description: '',
+      variants: [
+        { name: 'Control', trafficPercent: 50, isControl: true },
+        { name: 'Variant A', trafficPercent: 50, isControl: false },
+      ],
+    });
+    setAbTestModal({ isOpen: true, isLoading: false });
+  };
+
+  const handleEditAbTestClick = (test: ABTest) => {
+    setEditingAbTest(test);
+    setAbTestForm({
+      name: test.name,
+      description: test.description || '',
+      variants: test.variants.map(v => ({
+        name: v.name,
+        trafficPercent: v.trafficPercent,
+        isControl: v.isControl,
+        bidderTimeout: v.bidderTimeout,
+        priceGranularity: v.priceGranularity,
+        enableSendAllBids: v.enableSendAllBids,
+        bidderSequence: v.bidderSequence,
+      })),
+    });
+    setAbTestModal({ isOpen: true, isLoading: false });
+  };
+
+  const handleCloseAbTestModal = () => {
+    setAbTestModal({ isOpen: false, isLoading: false });
+    setEditingAbTest(null);
+    setAbTestForm({
+      name: '',
+      description: '',
+      variants: [
+        { name: 'Control', trafficPercent: 50, isControl: true },
+        { name: 'Variant A', trafficPercent: 50, isControl: false },
+      ],
+    });
+  };
+
+  const handleAddVariant = () => {
+    const totalPercent = abTestForm.variants.reduce((sum, v) => sum + v.trafficPercent, 0);
+    const newPercent = Math.max(0, Math.min(100 - totalPercent, 25));
+
+    setAbTestForm(prev => ({
+      ...prev,
+      variants: [
+        ...prev.variants,
+        {
+          name: `Variant ${String.fromCharCode(65 + prev.variants.length - 1)}`,
+          trafficPercent: newPercent,
+          isControl: false,
+        },
+      ],
+    }));
+  };
+
+  const handleRemoveVariant = (index: number) => {
+    if (abTestForm.variants.length <= 2) return; // Minimum 2 variants
+
+    setAbTestForm(prev => ({
+      ...prev,
+      variants: prev.variants.filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleVariantChange = (index: number, field: string, value: any) => {
+    setAbTestForm(prev => ({
+      ...prev,
+      variants: prev.variants.map((v, i) =>
+        i === index ? { ...v, [field]: value } : v
+      ),
+    }));
+  };
+
+  const handleAbTestSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Validate traffic percentages sum to 100
+    const totalPercent = abTestForm.variants.reduce((sum, v) => sum + v.trafficPercent, 0);
+    if (totalPercent !== 100) {
+      addToast('Traffic percentages must sum to 100%', 'error');
+      return;
+    }
+
+    // Validate exactly one control
+    const controlCount = abTestForm.variants.filter(v => v.isControl).length;
+    if (controlCount !== 1) {
+      addToast('Exactly one control variant is required', 'error');
+      return;
+    }
+
+    setAbTestModal(prev => ({ ...prev, isLoading: true }));
+
+    try {
+      const url = editingAbTest
+        ? `/api/publishers/${id}/ab-tests/${editingAbTest.id}`
+        : `/api/publishers/${id}/ab-tests`;
+
+      const method = editingAbTest ? 'PUT' : 'POST';
+
+      const body = editingAbTest
+        ? { name: abTestForm.name, description: abTestForm.description }
+        : {
+            name: abTestForm.name,
+            description: abTestForm.description,
+            variants: abTestForm.variants,
+          };
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save A/B test');
+      }
+
+      await fetchAbTests();
+      addToast(editingAbTest ? 'A/B test updated successfully' : 'A/B test created successfully', 'success');
+      handleCloseAbTestModal();
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to save A/B test', 'error');
+      setAbTestModal(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  const handleAbTestStatusChange = async (test: ABTest, status: 'running' | 'paused' | 'completed') => {
+    try {
+      const response = await fetch(`/api/publishers/${id}/ab-tests/${test.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update A/B test status');
+      }
+
+      await fetchAbTests();
+      addToast(`A/B test ${status === 'running' ? 'started' : status}`, 'success');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to update A/B test', 'error');
+    }
+  };
+
+  const handleDeleteAbTestClick = (test: ABTest) => {
+    setDeleteAbTestDialog({
+      isOpen: true,
+      isLoading: false,
+      test,
+    });
+  };
+
+  const handleDeleteAbTestCancel = () => {
+    setDeleteAbTestDialog({
+      isOpen: false,
+      isLoading: false,
+      test: null,
+    });
+  };
+
+  const handleDeleteAbTestConfirm = async () => {
+    if (!deleteAbTestDialog.test) return;
+
+    setDeleteAbTestDialog(prev => ({ ...prev, isLoading: true }));
+
+    try {
+      const response = await fetch(
+        `/api/publishers/${id}/ab-tests/${deleteAbTestDialog.test.id}`,
+        {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to delete A/B test');
+      }
+
+      setAbTests(prev => prev.filter(t => t.id !== deleteAbTestDialog.test?.id));
+      addToast('A/B test deleted successfully', 'success');
+      handleDeleteAbTestCancel();
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to delete A/B test', 'error');
+      setDeleteAbTestDialog(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  const getAbTestStatusBadge = (status: string) => {
+    const badges: Record<string, { bg: string; text: string }> = {
+      draft: { bg: 'bg-gray-100', text: 'text-gray-800' },
+      running: { bg: 'bg-green-100', text: 'text-green-800' },
+      paused: { bg: 'bg-yellow-100', text: 'text-yellow-800' },
+      completed: { bg: 'bg-blue-100', text: 'text-blue-800' },
+    };
+    const badge = badges[status] || badges.draft;
+    return (
+      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.bg} ${badge.text}`}>
+        {status}
+      </span>
+    );
   };
 
   // Version history handlers
@@ -4086,6 +4388,240 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
         </div>
       ),
     },
+    {
+      id: 'ab-tests',
+      label: 'A/B Tests',
+      content: (
+        <div className="space-y-6">
+          {/* A/B Tests Header */}
+          <div className="bg-white shadow rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-medium text-gray-900">A/B Tests</h2>
+                <p className="text-sm text-gray-500">
+                  Split traffic between different wrapper configurations to compare performance.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCreateAbTestClick}
+                className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
+              >
+                <svg className="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                </svg>
+                Create A/B Test
+              </button>
+            </div>
+
+            {/* Active Test Banner */}
+            {abTests.some(t => t.status === 'running') && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                <div className="flex items-center">
+                  <svg className="h-5 w-5 text-green-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="text-sm font-medium text-green-800">
+                    A/B test is currently running: {abTests.find(t => t.status === 'running')?.name}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* A/B Tests List */}
+            {abTests.length === 0 ? (
+              <div className="text-center py-12">
+                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">No A/B tests</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  Create an A/B test to experiment with different configurations.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-200">
+                {abTests.map(test => (
+                  <div key={test.id} className="py-4 first:pt-0">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <h3 className="text-sm font-medium text-gray-900">{test.name}</h3>
+                          {getAbTestStatusBadge(test.status)}
+                        </div>
+                        {test.description && (
+                          <p className="mt-1 text-sm text-gray-500">{test.description}</p>
+                        )}
+                        <p className="mt-1 text-xs text-gray-400">
+                          Created {new Date(test.createdAt).toLocaleDateString()} •{' '}
+                          {test.variants.length} variants
+                        </p>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        {test.status === 'draft' && (
+                          <button
+                            type="button"
+                            onClick={() => handleAbTestStatusChange(test, 'running')}
+                            className="inline-flex items-center rounded-md bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-500"
+                          >
+                            Start
+                          </button>
+                        )}
+                        {test.status === 'running' && (
+                          <button
+                            type="button"
+                            onClick={() => handleAbTestStatusChange(test, 'paused')}
+                            className="inline-flex items-center rounded-md bg-yellow-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-yellow-500"
+                          >
+                            Pause
+                          </button>
+                        )}
+                        {test.status === 'paused' && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleAbTestStatusChange(test, 'running')}
+                              className="inline-flex items-center rounded-md bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-500"
+                            >
+                              Resume
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleAbTestStatusChange(test, 'completed')}
+                              className="inline-flex items-center rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500"
+                            >
+                              Complete
+                            </button>
+                          </>
+                        )}
+                        {(test.status === 'draft' || test.status === 'paused') && (
+                          <button
+                            type="button"
+                            onClick={() => handleEditAbTestClick(test)}
+                            className="text-gray-400 hover:text-gray-600"
+                            title="Edit"
+                          >
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAbTestClick(test)}
+                          className="text-gray-400 hover:text-red-600"
+                          title="Delete"
+                        >
+                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Variants Table */}
+                    <div className="mt-4 overflow-hidden rounded-lg border border-gray-200">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Variant</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Traffic</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Config Overrides</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {test.variants.map(variant => (
+                            <tr key={variant.id}>
+                              <td className="px-4 py-2 text-sm font-medium text-gray-900">{variant.name}</td>
+                              <td className="px-4 py-2 text-sm text-gray-600">
+                                <div className="flex items-center">
+                                  <div className="w-16 bg-gray-200 rounded-full h-2 mr-2">
+                                    <div
+                                      className="bg-blue-600 h-2 rounded-full"
+                                      style={{ width: `${variant.trafficPercent}%` }}
+                                    ></div>
+                                  </div>
+                                  {variant.trafficPercent}%
+                                </div>
+                              </td>
+                              <td className="px-4 py-2 text-sm">
+                                {variant.isControl ? (
+                                  <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-800">
+                                    Control
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+                                    Variant
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-2 text-sm text-gray-500">
+                                {variant.isControl ? (
+                                  <span className="text-gray-400">Base config</span>
+                                ) : (
+                                  <span>
+                                    {variant.bidderTimeout && `Timeout: ${variant.bidderTimeout}ms`}
+                                    {variant.priceGranularity && ` Granularity: ${variant.priceGranularity}`}
+                                    {!variant.bidderTimeout && !variant.priceGranularity && (
+                                      <span className="text-gray-400">No overrides</span>
+                                    )}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* How A/B Testing Works */}
+          <div className="bg-blue-50 shadow rounded-lg p-6">
+            <h3 className="text-lg font-medium text-blue-900 mb-4">How A/B Testing Works</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <div className="flex items-center mb-2">
+                  <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center mr-3">
+                    <span className="text-blue-600 font-semibold">1</span>
+                  </div>
+                  <h4 className="font-medium text-blue-900">Create Variants</h4>
+                </div>
+                <p className="text-sm text-blue-700 ml-11">
+                  Define multiple config variants with different settings (timeout, price granularity, etc.)
+                </p>
+              </div>
+              <div>
+                <div className="flex items-center mb-2">
+                  <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center mr-3">
+                    <span className="text-blue-600 font-semibold">2</span>
+                  </div>
+                  <h4 className="font-medium text-blue-900">Split Traffic</h4>
+                </div>
+                <p className="text-sm text-blue-700 ml-11">
+                  Set traffic percentages for each variant. Users are randomly assigned to a variant.
+                </p>
+              </div>
+              <div>
+                <div className="flex items-center mb-2">
+                  <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center mr-3">
+                    <span className="text-blue-600 font-semibold">3</span>
+                  </div>
+                  <h4 className="font-medium text-blue-900">Analyze Results</h4>
+                </div>
+                <p className="text-sm text-blue-700 ml-11">
+                  Compare performance metrics between variants using the Analytics tab.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      ),
+    },
   ];
 
   // Build breadcrumb items based on current tab
@@ -6147,6 +6683,211 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
         message={`Are you sure you want to delete build v${deleteBuildDialog.build?.version}? This will permanently remove the build files from storage and cannot be undone.`}
         confirmText="Delete"
         isLoading={deleteBuildDialog.isLoading}
+        variant="danger"
+      />
+
+      {/* A/B Test Modal */}
+      <FormModal
+        isOpen={abTestModal.isOpen}
+        onClose={handleCloseAbTestModal}
+        title={editingAbTest ? 'Edit A/B Test' : 'Create A/B Test'}
+      >
+        <form onSubmit={handleAbTestSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="ab-test-name" className="block text-sm font-medium text-gray-700">
+              Test Name *
+            </label>
+            <input
+              type="text"
+              id="ab-test-name"
+              value={abTestForm.name}
+              onChange={(e) => setAbTestForm(prev => ({ ...prev, name: e.target.value }))}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              placeholder="e.g., Timeout Optimization Test"
+              required
+            />
+          </div>
+
+          <div>
+            <label htmlFor="ab-test-description" className="block text-sm font-medium text-gray-700">
+              Description
+            </label>
+            <textarea
+              id="ab-test-description"
+              value={abTestForm.description}
+              onChange={(e) => setAbTestForm(prev => ({ ...prev, description: e.target.value }))}
+              rows={2}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              placeholder="Describe what you're testing..."
+            />
+          </div>
+
+          {!editingAbTest && (
+            <>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Variants *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleAddVariant}
+                    disabled={abTestForm.variants.length >= 5}
+                    className="text-sm text-blue-600 hover:text-blue-500 disabled:text-gray-400"
+                  >
+                    + Add Variant
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {abTestForm.variants.map((variant, index) => (
+                    <div key={index} className="border border-gray-200 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <input
+                          type="text"
+                          value={variant.name}
+                          onChange={(e) => handleVariantChange(index, 'name', e.target.value)}
+                          className="text-sm font-medium border-gray-300 rounded-md focus:border-blue-500 focus:ring-blue-500"
+                          placeholder="Variant Name"
+                        />
+                        <div className="flex items-center space-x-2">
+                          <label className="flex items-center">
+                            <input
+                              type="radio"
+                              name="control"
+                              checked={variant.isControl}
+                              onChange={() => {
+                                setAbTestForm(prev => ({
+                                  ...prev,
+                                  variants: prev.variants.map((v, i) => ({
+                                    ...v,
+                                    isControl: i === index,
+                                  })),
+                                }));
+                              }}
+                              className="mr-1 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-xs text-gray-600">Control</span>
+                          </label>
+                          {abTestForm.variants.length > 2 && !variant.isControl && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveVariant(index)}
+                              className="text-gray-400 hover:text-red-600"
+                            >
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Traffic %</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={variant.trafficPercent}
+                            onChange={(e) => handleVariantChange(index, 'trafficPercent', parseInt(e.target.value) || 0)}
+                            className="block w-full text-sm border-gray-300 rounded-md focus:border-blue-500 focus:ring-blue-500"
+                          />
+                        </div>
+
+                        {!variant.isControl && (
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Bidder Timeout (ms)</label>
+                            <input
+                              type="number"
+                              min="100"
+                              max="10000"
+                              value={variant.bidderTimeout || ''}
+                              onChange={(e) => handleVariantChange(index, 'bidderTimeout', parseInt(e.target.value) || undefined)}
+                              className="block w-full text-sm border-gray-300 rounded-md focus:border-blue-500 focus:ring-blue-500"
+                              placeholder="Override timeout"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {!variant.isControl && (
+                        <div className="mt-2">
+                          <label className="block text-xs text-gray-500 mb-1">Price Granularity</label>
+                          <select
+                            value={variant.priceGranularity || ''}
+                            onChange={(e) => handleVariantChange(index, 'priceGranularity', e.target.value || undefined)}
+                            className="block w-full text-sm border-gray-300 rounded-md focus:border-blue-500 focus:ring-blue-500"
+                          >
+                            <option value="">Use default</option>
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                            <option value="auto">Auto</option>
+                            <option value="dense">Dense</option>
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Traffic percentage validation */}
+                <div className="mt-2">
+                  {(() => {
+                    const total = abTestForm.variants.reduce((sum, v) => sum + v.trafficPercent, 0);
+                    return total !== 100 ? (
+                      <p className="text-sm text-red-600">
+                        Traffic percentages must sum to 100% (currently {total}%)
+                      </p>
+                    ) : (
+                      <p className="text-sm text-green-600">
+                        Traffic percentages sum to 100%
+                      </p>
+                    );
+                  })()}
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="flex justify-end space-x-3 pt-4 border-t">
+            <button
+              type="button"
+              onClick={handleCloseAbTestModal}
+              className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={abTestModal.isLoading}
+              className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 disabled:bg-blue-400"
+            >
+              {abTestModal.isLoading ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                  </svg>
+                  Saving...
+                </>
+              ) : editingAbTest ? 'Update Test' : 'Create Test'}
+            </button>
+          </div>
+        </form>
+      </FormModal>
+
+      {/* Delete A/B Test Confirmation */}
+      <ConfirmDialog
+        isOpen={deleteAbTestDialog.isOpen}
+        onClose={handleDeleteAbTestCancel}
+        onConfirm={handleDeleteAbTestConfirm}
+        title="Delete A/B Test"
+        message={`Are you sure you want to delete the A/B test "${deleteAbTestDialog.test?.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        isLoading={deleteAbTestDialog.isLoading}
         variant="danger"
       />
     </div>

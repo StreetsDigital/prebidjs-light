@@ -231,6 +231,34 @@ export function initializeDatabase() {
       received_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS ab_tests (
+      id TEXT PRIMARY KEY,
+      publisher_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'running', 'paused', 'completed')),
+      start_date TEXT,
+      end_date TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS ab_test_variants (
+      id TEXT PRIMARY KEY,
+      test_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      traffic_percent INTEGER NOT NULL DEFAULT 50,
+      is_control INTEGER NOT NULL DEFAULT 0,
+      bidder_timeout INTEGER,
+      price_granularity TEXT,
+      enable_send_all_bids INTEGER,
+      bidder_sequence TEXT,
+      floors_config TEXT,
+      bidder_overrides TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     -- Create indexes
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
@@ -246,6 +274,9 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_analytics_events_publisher ON analytics_events(publisher_id);
     CREATE INDEX IF NOT EXISTS idx_analytics_events_type ON analytics_events(event_type);
     CREATE INDEX IF NOT EXISTS idx_analytics_events_timestamp ON analytics_events(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_ab_tests_publisher ON ab_tests(publisher_id);
+    CREATE INDEX IF NOT EXISTS idx_ab_tests_status ON ab_tests(status);
+    CREATE INDEX IF NOT EXISTS idx_ab_test_variants_test ON ab_test_variants(test_id);
   `);
 
   // Run migrations for existing databases
@@ -303,6 +334,43 @@ function runMigrations() {
       },
       postSql: `
         CREATE INDEX IF NOT EXISTS idx_publishers_deleted_at ON publishers(deleted_at);
+      `
+    },
+    {
+      name: 'add_ab_testing_tables',
+      sql: `
+        CREATE TABLE IF NOT EXISTS ab_tests (
+          id TEXT PRIMARY KEY,
+          publisher_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'running', 'paused', 'completed')),
+          start_date TEXT,
+          end_date TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS ab_test_variants (
+          id TEXT PRIMARY KEY,
+          test_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          traffic_percent INTEGER NOT NULL DEFAULT 50,
+          is_control INTEGER NOT NULL DEFAULT 0,
+          bidder_timeout INTEGER,
+          price_granularity TEXT,
+          enable_send_all_bids INTEGER,
+          bidder_sequence TEXT,
+          floors_config TEXT,
+          bidder_overrides TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `,
+      postSql: `
+        CREATE INDEX IF NOT EXISTS idx_ab_tests_publisher ON ab_tests(publisher_id);
+        CREATE INDEX IF NOT EXISTS idx_ab_tests_status ON ab_tests(status);
+        CREATE INDEX IF NOT EXISTS idx_ab_test_variants_test ON ab_test_variants(test_id);
       `
     }
   ];

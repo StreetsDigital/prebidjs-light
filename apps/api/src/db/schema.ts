@@ -194,6 +194,37 @@ export const passwordResetTokens = sqliteTable('password_reset_tokens', {
   createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
 });
 
+// A/B Tests table for traffic splitting
+export const abTests = sqliteTable('ab_tests', {
+  id: text('id').primaryKey(),
+  publisherId: text('publisher_id').notNull(),
+  name: text('name').notNull(),
+  description: text('description'),
+  status: text('status', { enum: ['draft', 'running', 'paused', 'completed'] }).notNull().default('draft'),
+  startDate: text('start_date'),
+  endDate: text('end_date'),
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+// A/B Test Variants table
+export const abTestVariants = sqliteTable('ab_test_variants', {
+  id: text('id').primaryKey(),
+  testId: text('test_id').notNull(),
+  name: text('name').notNull(), // e.g., "Control", "Variant A", "Variant B"
+  trafficPercent: integer('traffic_percent').notNull().default(50), // 0-100
+  isControl: integer('is_control', { mode: 'boolean' }).notNull().default(false),
+  // Config overrides (JSON - only the settings that differ from the base config)
+  bidderTimeout: integer('bidder_timeout'),
+  priceGranularity: text('price_granularity'),
+  enableSendAllBids: integer('enable_send_all_bids', { mode: 'boolean' }),
+  bidderSequence: text('bidder_sequence'),
+  floorsConfig: text('floors_config'), // JSON
+  bidderOverrides: text('bidder_overrides'), // JSON - bidder-specific overrides
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
+});
+
 // Analytics events table (simplified version of ClickHouse schema for development)
 export const analyticsEvents = sqliteTable('analytics_events', {
   id: text('id').primaryKey(),

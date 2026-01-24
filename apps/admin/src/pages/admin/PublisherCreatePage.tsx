@@ -2,11 +2,18 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 
+interface FieldErrors {
+  name?: string;
+  slug?: string;
+}
+
 export function PublisherCreatePage() {
   const navigate = useNavigate();
   const { token } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [form, setForm] = useState({
     name: '',
     slug: '',
@@ -14,8 +21,55 @@ export function PublisherCreatePage() {
     notes: '',
   });
 
+  const validateField = (name: string, value: string): string | undefined => {
+    switch (name) {
+      case 'name':
+        if (!value.trim()) {
+          return 'Publisher name is required';
+        }
+        if (value.trim().length < 2) {
+          return 'Publisher name must be at least 2 characters';
+        }
+        break;
+      case 'slug':
+        if (!value.trim()) {
+          return 'Slug is required';
+        }
+        if (!/^[a-z0-9-]+$/.test(value)) {
+          return 'Slug can only contain lowercase letters, numbers, and hyphens';
+        }
+        break;
+    }
+    return undefined;
+  };
+
+  const validateForm = (): boolean => {
+    const errors: FieldErrors = {};
+    const nameError = validateField('name', form.name);
+    const slugError = validateField('slug', form.slug);
+
+    if (nameError) errors.name = nameError;
+    if (slugError) errors.slug = slugError;
+
+    setFieldErrors(errors);
+    setTouched({ name: true, slug: true });
+
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleBlur = (field: string) => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+    const error = validateField(field, form[field as keyof typeof form]);
+    setFieldErrors((prev) => ({ ...prev, [field]: error }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!validateForm()) {
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -122,10 +176,21 @@ export function PublisherCreatePage() {
                   name="name"
                   value={form.name}
                   onChange={(e) => handleNameChange(e.target.value)}
-                  required
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  onBlur={() => handleBlur('name')}
+                  aria-invalid={touched.name && !!fieldErrors.name}
+                  aria-describedby={fieldErrors.name ? 'name-error' : undefined}
+                  className={`mt-1 block w-full rounded-md shadow-sm focus:ring-blue-500 sm:text-sm ${
+                    touched.name && fieldErrors.name
+                      ? 'border-red-300 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-500'
+                      : 'border-gray-300 focus:border-blue-500'
+                  }`}
                   placeholder="Acme Publishing"
                 />
+                {touched.name && fieldErrors.name && (
+                  <p className="mt-1 text-sm text-red-600" id="name-error">
+                    {fieldErrors.name}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -137,14 +202,32 @@ export function PublisherCreatePage() {
                   id="slug"
                   name="slug"
                   value={form.slug}
-                  onChange={(e) => setForm((prev) => ({ ...prev, slug: e.target.value }))}
-                  required
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  onChange={(e) => {
+                    setForm((prev) => ({ ...prev, slug: e.target.value }));
+                    if (touched.slug) {
+                      const error = validateField('slug', e.target.value);
+                      setFieldErrors((prev) => ({ ...prev, slug: error }));
+                    }
+                  }}
+                  onBlur={() => handleBlur('slug')}
+                  aria-invalid={touched.slug && !!fieldErrors.slug}
+                  aria-describedby={fieldErrors.slug ? 'slug-error' : 'slug-description'}
+                  className={`mt-1 block w-full rounded-md shadow-sm focus:ring-blue-500 sm:text-sm ${
+                    touched.slug && fieldErrors.slug
+                      ? 'border-red-300 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-500'
+                      : 'border-gray-300 focus:border-blue-500'
+                  }`}
                   placeholder="acme-publishing"
                 />
-                <p className="mt-1 text-sm text-gray-500">
-                  Unique identifier for the publisher. Auto-generated from name.
-                </p>
+                {touched.slug && fieldErrors.slug ? (
+                  <p className="mt-1 text-sm text-red-600" id="slug-error">
+                    {fieldErrors.slug}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-sm text-gray-500" id="slug-description">
+                    Unique identifier for the publisher. Auto-generated from name.
+                  </p>
+                )}
               </div>
 
               <div className="sm:col-span-2">

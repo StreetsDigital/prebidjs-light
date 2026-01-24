@@ -31,6 +31,12 @@ interface AdUnit {
   mediaTypes: string[];
   status: 'active' | 'paused';
   floorPrice: string | null;
+  sizeMapping: SizeMappingRule[] | null;
+}
+
+interface SizeMappingRule {
+  minViewport: [number, number];
+  sizes: number[][];
 }
 
 interface AdUnitFormData {
@@ -39,6 +45,7 @@ interface AdUnitFormData {
   sizes: string;
   mediaTypes: string[];
   floorPrice: string;
+  sizeMapping: SizeMappingRule[];
 }
 
 interface ConfigVersion {
@@ -312,6 +319,7 @@ export function PublisherDetailPage() {
     sizes: '',
     mediaTypes: ['banner'],
     floorPrice: '',
+    sizeMapping: [],
   });
   const [deleteAdUnitDialog, setDeleteAdUnitDialog] = useState({
     isOpen: false,
@@ -451,7 +459,7 @@ export function PublisherDetailPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setAdUnits(data.adUnits.map((u: { id: string; code: string; name: string; mediaTypes?: { banner?: { sizes: number[][] } }; status: string; floorPrice?: string | null }) => ({
+        setAdUnits(data.adUnits.map((u: { id: string; code: string; name: string; mediaTypes?: { banner?: { sizes: number[][] } }; status: string; floorPrice?: string | null; sizeMapping?: SizeMappingRule[] | null }) => ({
           id: u.id,
           code: u.code,
           name: u.name,
@@ -459,6 +467,7 @@ export function PublisherDetailPage() {
           mediaTypes: u.mediaTypes ? Object.keys(u.mediaTypes) : ['banner'],
           status: u.status,
           floorPrice: u.floorPrice || null,
+          sizeMapping: u.sizeMapping || null,
         })));
       }
     } catch (err) {
@@ -759,6 +768,7 @@ export function PublisherDetailPage() {
       sizes: '',
       mediaTypes: ['banner'],
       floorPrice: '',
+      sizeMapping: [],
     });
     setAdUnitModal({ isOpen: true, isLoading: false });
   };
@@ -771,6 +781,7 @@ export function PublisherDetailPage() {
       sizes: adUnit.sizes.join(', '),
       mediaTypes: adUnit.mediaTypes,
       floorPrice: adUnit.floorPrice || '',
+      sizeMapping: adUnit.sizeMapping || [],
     });
     setAdUnitModal({ isOpen: true, isLoading: false });
   };
@@ -783,6 +794,7 @@ export function PublisherDetailPage() {
       sizes: adUnit.sizes.join(', '),
       mediaTypes: adUnit.mediaTypes,
       floorPrice: adUnit.floorPrice || '',
+      sizeMapping: adUnit.sizeMapping || [],
     });
     setAdUnitModal({ isOpen: true, isLoading: false });
   };
@@ -825,6 +837,7 @@ export function PublisherDetailPage() {
             banner: { sizes: sizesArray },
           } : undefined,
           floorPrice: adUnitForm.floorPrice || null,
+          sizeMapping: adUnitForm.sizeMapping.length > 0 ? adUnitForm.sizeMapping : null,
         }),
       });
 
@@ -846,6 +859,7 @@ export function PublisherDetailPage() {
                 mediaTypes: adUnitForm.mediaTypes,
                 status: updatedAdUnit.status,
                 floorPrice: updatedAdUnit.floorPrice || null,
+                sizeMapping: updatedAdUnit.sizeMapping || null,
               }
             : u
         ));
@@ -858,6 +872,7 @@ export function PublisherDetailPage() {
           mediaTypes: adUnitForm.mediaTypes,
           status: updatedAdUnit.status,
           floorPrice: updatedAdUnit.floorPrice || null,
+          sizeMapping: updatedAdUnit.sizeMapping || null,
         }]);
       }
       handleAdUnitClose();
@@ -2881,6 +2896,91 @@ export function PublisherDetailPage() {
                 </label>
               ))}
             </div>
+          </div>
+          {/* Size Mapping Section */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Size Mapping (Responsive Ads)
+              </label>
+              <button
+                type="button"
+                onClick={() => setAdUnitForm((prev) => ({
+                  ...prev,
+                  sizeMapping: [...prev.sizeMapping, { minViewport: [0, 0], sizes: [[300, 250]] }],
+                }))}
+                className="text-sm text-blue-600 hover:text-blue-500"
+              >
+                + Add Rule
+              </button>
+            </div>
+            {adUnitForm.sizeMapping.length === 0 ? (
+              <p className="text-sm text-gray-500 italic">No size mapping rules. Ad will use default sizes.</p>
+            ) : (
+              <div className="space-y-3">
+                {adUnitForm.sizeMapping.map((rule, index) => (
+                  <div key={index} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-medium text-gray-500">Rule {index + 1}</span>
+                      <button
+                        type="button"
+                        onClick={() => setAdUnitForm((prev) => ({
+                          ...prev,
+                          sizeMapping: prev.sizeMapping.filter((_, i) => i !== index),
+                        }))}
+                        className="text-red-500 hover:text-red-700 text-sm"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Min Viewport (WxH)</label>
+                        <input
+                          type="text"
+                          value={`${rule.minViewport[0]}x${rule.minViewport[1]}`}
+                          onChange={(e) => {
+                            const [w, h] = e.target.value.split('x').map(Number);
+                            setAdUnitForm((prev) => ({
+                              ...prev,
+                              sizeMapping: prev.sizeMapping.map((r, i) =>
+                                i === index ? { ...r, minViewport: [w || 0, h || 0] } : r
+                              ),
+                            }));
+                          }}
+                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                          placeholder="1024x768"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Sizes</label>
+                        <input
+                          type="text"
+                          value={rule.sizes.map(s => s.join('x')).join(', ')}
+                          onChange={(e) => {
+                            const sizes = e.target.value.split(',').map(s => {
+                              const [w, h] = s.trim().split('x').map(Number);
+                              return [w || 0, h || 0];
+                            });
+                            setAdUnitForm((prev) => ({
+                              ...prev,
+                              sizeMapping: prev.sizeMapping.map((r, i) =>
+                                i === index ? { ...r, sizes } : r
+                              ),
+                            }));
+                          }}
+                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                          placeholder="300x250, 728x90"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="mt-1 text-xs text-gray-500">
+              Define different ad sizes for different viewport widths. Rules are applied in order.
+            </p>
           </div>
           <div className="flex justify-end space-x-3 pt-4">
             <button

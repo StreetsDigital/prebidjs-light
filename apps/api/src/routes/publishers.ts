@@ -354,6 +354,11 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
 
   // ==================== AD UNITS ROUTES ====================
 
+  interface SizeMappingRule {
+    minViewport: [number, number];
+    sizes: number[][];
+  }
+
   interface CreateAdUnitBody {
     code: string;
     name: string;
@@ -363,6 +368,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       native?: object;
     };
     floorPrice?: string;
+    sizeMapping?: SizeMappingRule[];
   }
 
   interface UpdateAdUnitBody {
@@ -375,6 +381,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     };
     floorPrice?: string;
     status?: 'active' | 'paused';
+    sizeMapping?: SizeMappingRule[];
   }
 
   // List ad units for a publisher
@@ -401,6 +408,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       adUnits: units.map(u => ({
         ...u,
         mediaTypes: u.mediaTypes ? JSON.parse(u.mediaTypes) : null,
+        sizeMapping: u.sizeMapping ? JSON.parse(u.sizeMapping) : null,
       })),
     };
   });
@@ -428,6 +436,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     return {
       ...unit,
       mediaTypes: unit.mediaTypes ? JSON.parse(unit.mediaTypes) : null,
+      sizeMapping: unit.sizeMapping ? JSON.parse(unit.sizeMapping) : null,
     };
   });
 
@@ -436,7 +445,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     preHandler: requireAuth,
   }, async (request, reply) => {
     const { id } = request.params;
-    const { code, name, mediaTypes, floorPrice } = request.body;
+    const { code, name, mediaTypes, floorPrice, sizeMapping } = request.body;
     const user = request.user as TokenPayload;
 
     // Check if publisher exists
@@ -472,6 +481,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       name,
       mediaTypes: mediaTypes ? JSON.stringify(mediaTypes) : null,
       floorPrice: floorPrice || null,
+      sizeMapping: sizeMapping ? JSON.stringify(sizeMapping) : null,
       status: 'active',
       createdAt: now,
       updatedAt: now,
@@ -482,6 +492,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     return reply.code(201).send({
       ...newUnit,
       mediaTypes: newUnit?.mediaTypes ? JSON.parse(newUnit.mediaTypes) : null,
+      sizeMapping: newUnit?.sizeMapping ? JSON.parse(newUnit.sizeMapping) : null,
     });
   });
 
@@ -490,7 +501,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     preHandler: requireAuth,
   }, async (request, reply) => {
     const { id, unitId } = request.params;
-    const { code, name, mediaTypes, floorPrice, status } = request.body;
+    const { code, name, mediaTypes, floorPrice, status, sizeMapping } = request.body;
     const user = request.user as TokenPayload;
 
     // Check authorization
@@ -525,6 +536,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
         ...(mediaTypes !== undefined && { mediaTypes: JSON.stringify(mediaTypes) }),
         ...(floorPrice !== undefined && { floorPrice }),
         ...(status && { status }),
+        ...(sizeMapping !== undefined && { sizeMapping: JSON.stringify(sizeMapping) }),
         updatedAt: now,
       })
       .where(eq(adUnits.id, unitId))
@@ -535,6 +547,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     return {
       ...updated,
       mediaTypes: updated?.mediaTypes ? JSON.parse(updated.mediaTypes) : null,
+      sizeMapping: updated?.sizeMapping ? JSON.parse(updated.sizeMapping) : null,
     };
   });
 

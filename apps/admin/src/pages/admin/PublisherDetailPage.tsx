@@ -841,6 +841,44 @@ export function PublisherDetailPage() {
     }
   };
 
+  // Config export handler
+  const handleExportConfig = () => {
+    if (!publisher || !currentConfig) return;
+
+    // Build Prebid.js compatible config object
+    const prebidConfig = {
+      debug: currentConfig.debugMode,
+      bidderTimeout: currentConfig.bidderTimeout,
+      priceGranularity: currentConfig.priceGranularity,
+      sendAllBids: currentConfig.sendAllBids,
+      bidderSequence: currentConfig.bidderSequence,
+      publisherId: publisher.id,
+      publisherName: publisher.name,
+      publisherSlug: publisher.slug,
+      domains: publisher.domains,
+      adUnits: adUnits.map(unit => ({
+        code: unit.code,
+        mediaTypes: unit.mediaTypes,
+        bids: publisherBidders
+          .filter(b => b.enabled)
+          .map(b => ({
+            bidder: b.bidderCode,
+            params: b.params || {},
+          })),
+      })),
+      exportedAt: new Date().toISOString(),
+    };
+
+    // Download as JSON file
+    const filename = `${publisher.slug}-prebid-config.json`;
+    const blob = new Blob([JSON.stringify(prebidConfig, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
   // Config editing handlers
   const handleEditConfigClick = () => {
     if (currentConfig) {
@@ -1295,6 +1333,16 @@ export function PublisherDetailPage() {
                   </p>
                 </div>
                 <div className="flex space-x-2">
+                  <button
+                    type="button"
+                    onClick={handleExportConfig}
+                    className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                  >
+                    <svg className="-ml-0.5 mr-1.5 h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Export Config
+                  </button>
                   <button
                     type="button"
                     onClick={handleEditConfigClick}

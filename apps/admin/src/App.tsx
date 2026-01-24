@@ -2,7 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { ProtectedRoute, PublicRoute } from './components/auth/ProtectedRoute';
 import { AdminLayout, PublisherLayout } from './components/layout';
 import { Login } from './pages/Login';
-import { DashboardPage, PublishersPage, PublisherDetailPage, UsersPage } from './pages/admin';
+import { DashboardPage, PublishersPage, PublisherDetailPage, UsersPage, ModulesPage } from './pages/admin';
 import { PublisherDashboard } from './pages/publisher';
 import { NotFound } from './pages/NotFound';
 
@@ -43,7 +43,7 @@ function App() {
         <Route path="users" element={<UsersPage />} />
         <Route path="analytics" element={<PlaceholderPage title="Analytics" />} />
         <Route path="audit-logs" element={<PlaceholderPage title="Audit Logs" />} />
-        <Route path="modules" element={<PlaceholderPage title="Modules" />} />
+        <Route path="modules" element={<ModulesPage />} />
         <Route path="*" element={<PlaceholderPage title="Page Not Found" />} />
       </Route>
 

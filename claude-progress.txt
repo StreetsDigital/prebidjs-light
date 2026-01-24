@@ -1353,7 +1353,90 @@ Modified `apps/admin/src/pages/admin/PublishersPage.tsx`:
 
 ## Next Steps for Future Agents
 1. Clear the 7 stuck in-progress features (need feature_clear_in_progress permission)
-2. Feature J10 requires actual Prebid build service implementation with file storage
-3. The remaining 8 features (255 + 7 + 1 = 263) may all be related to unimplemented subsystems
-4. Project is at 97% completion - close to feature complete!
+2. The remaining features may be related to unimplemented subsystems
+3. Project is at 97% completion - close to feature complete!
+
+---
+
+# Session Progress Report - January 24, 2026 (Continued)
+
+## Summary
+Implemented Feature #168 (J10) - Build system with file storage and cleanup functionality.
+
+## Feature Implemented
+**Feature #168 (J10): Delete build cleans up files**
+- Description: Verify build cleanup
+
+## Tasks Completed
+
+### 1. Backend Build Service
+Created `apps/api/src/routes/builds.ts` with:
+- GET `/:publisherId/builds` - List builds for a publisher
+- POST `/:publisherId/builds` - Trigger a new build
+- GET `/:publisherId/builds/:buildId` - Get build status
+- DELETE `/:publisherId/builds/:buildId` - Delete build and cleanup files
+- GET `/:publisherId/builds/:buildId/download` - Download build file
+- GET `/builds/:filename` - Serve build files statically
+
+Build files are stored in `apps/api/data/builds/` directory.
+
+### 2. Build File Generation
+- Generates mock Prebid.js bundle with publisher config, ad units, bidders
+- Creates unique filename based on publisher slug, version, and config hash
+- Stores file size in database
+- Supports build status tracking (building → ready/failed)
+
+### 3. Build File Cleanup
+- DELETE endpoint removes build record from database
+- Also deletes the associated .min.js file from disk
+- Audit logging for TRIGGER_BUILD and DELETE_BUILD actions
+
+### 4. Frontend Updates
+Modified `apps/admin/src/pages/admin/PublisherDetailPage.tsx`:
+- Removed MOCK_BUILDS constant - now fetches real data from API
+- Added fetchBuilds() function to load builds from database
+- Updated handleTriggerBuild() to use real API with polling for completion
+- Added deleteBuildDialog state and handlers
+- Added delete confirmation dialog for builds
+- Added delete button (trash icon) to each build in history
+- Shows empty state when no builds exist
+
+## Verification Steps
+1. ✅ Navigated to publisher Build tab
+2. ✅ Clicked "Trigger Build" button
+3. ✅ Verified build created with "building" status
+4. ✅ Waited for completion - status changed to "success"
+5. ✅ Verified build file created on disk: `/apps/api/data/builds/prebid-aaaa-pagination-test-publisher-v1.0.0-682258db.min.js`
+6. ✅ Clicked delete button on build
+7. ✅ Confirmed deletion in dialog
+8. ✅ Verified build removed from UI
+9. ✅ Verified build file deleted from disk (directory now empty)
+10. ✅ Toast notification confirmed deletion
+
+## Files Modified
+1. `apps/api/src/routes/builds.ts` - New file with build CRUD operations
+2. `apps/api/src/index.ts` - Registered builds routes
+3. `apps/admin/src/pages/admin/PublisherDetailPage.tsx` - Real API integration, delete functionality
+
+## Commits Made
+1. `feat(builds): Add build system with file storage and cleanup`
+
+## Ending Stats
+- Passing: 256 features (97.3%)
+- In Progress: 7 features (stuck from previous sessions)
+- Total: 263 features
+
+## Session Progress
+- Previous: 255 passing features (97.0%)
+- Current: 256 passing features (97.3%)
+- Features implemented: 1 (J10 - Delete build cleans up files)
+
+## Test Credentials
+- Admin: super_admin (auto-logged in)
+- Servers: API on :3001, Admin on :5173
+
+## Next Steps for Future Agents
+1. Clear the 7 stuck in-progress features
+2. Review and complete remaining features
+3. Project is at 97.3% completion!
 

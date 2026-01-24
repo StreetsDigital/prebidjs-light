@@ -767,16 +767,36 @@ export function PublisherDetailPage() {
   };
 
   const handleRollbackConfirm = async () => {
+    if (!publisher || !rollbackDialog.version) return;
     setRollbackDialog((prev) => ({ ...prev, isLoading: true }));
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setRollbackDialog({
-      isOpen: false,
-      isLoading: false,
-      version: null,
-    });
-    setSelectedVersion(null);
-    setShowVersionHistory(false);
+
+    try {
+      const response = await fetch(`/api/publishers/${publisher.id}/config/rollback/${rollbackDialog.version.id}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to rollback config');
+      }
+
+      // Refetch config data
+      await fetchConfig();
+      await fetchConfigVersions();
+
+      setRollbackDialog({
+        isOpen: false,
+        isLoading: false,
+        version: null,
+      });
+      setSelectedVersion(null);
+      setShowVersionHistory(false);
+    } catch (err) {
+      console.error('Rollback failed:', err);
+      setRollbackDialog((prev) => ({ ...prev, isLoading: false }));
+    }
   };
 
   // Config editing handlers

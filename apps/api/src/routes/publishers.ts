@@ -913,4 +913,110 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       })),
     };
   });
+
+  // Rollback to a specific config version
+  fastify.post<{ Params: { id: string; versionId: string } }>('/:id/config/rollback/:versionId', {
+    preHandler: requireAdmin,
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id', 'versionId'],
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          versionId: { type: 'string', format: 'uuid' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { id, versionId } = request.params;
+    const user = request.user as TokenPayload;
+
+    // Verify publisher exists
+    const publisher = db.select().from(publishers).where(eq(publishers.id, id)).get();
+    if (!publisher) {
+      return reply.code(404).send({ error: 'Publisher not found' });
+    }
+
+    // Get the version to rollback to
+    const targetVersion = db.select().from(configVersions)
+      .where(eq(configVersions.id, versionId))
+      .get();
+
+    if (!targetVersion) {
+      return reply.code(404).send({ error: 'Config version not found' });
+    }
+
+    // Parse the stored config snapshot
+    const targetConfig = JSON.parse(targetVersion.configSnapshot);
+
+    // Get current config
+    const currentConfig = db.select().from(publisherConfig).where(eq(publisherConfig.publisherId, id)).get();
+    if (!currentConfig) {
+      return reply.code(404).send({ error: 'Publisher config not found' });
+    }
+
+    const newVersion = (currentConfig.version || 1) + 1;
+
+    // Save current config as a version entry before rollback
+    db.insert(configVersions).values({
+      id: crypto.randomUUID(),
+      publisherId: id,
+      version: currentConfig.version || 1,
+      configSnapshot: JSON.stringify({
+        bidderTimeout: currentConfig.bidderTimeout,
+        priceGranularity: currentConfig.priceGranularity,
+        enableSendAllBids: currentConfig.enableSendAllBids,
+        bidderSequence: currentConfig.bidderSequence,
+        debugMode: currentConfig.debugMode,
+      }),
+      changeSummary: `Rollback to version ${targetVersion.version}`,
+      changedBy: user.userId,
+      createdAt: new Date().toISOString(),
+    }).run();
+
+    // Update the config with the target version's values
+    db.update(publisherConfig)
+      .set({
+        bidderTimeout: targetConfig.bidderTimeout,
+        priceGranularity: targetConfig.priceGranularity,
+        enableSendAllBids: targetConfig.enableSendAllBids,
+        bidderSequence: targetConfig.bidderSequence,
+        debugMode: targetConfig.debugMode,
+        version: newVersion,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(publisherConfig.publisherId, id))
+      .run();
+
+    // Log the rollback action
+    db.insert(auditLogs).values({
+      id: uuidv4(),
+      userId: user.userId,
+      action: 'config_change',
+      entityType: 'publisher_config',
+      entityId: id,
+      oldValues: JSON.stringify({
+        version: currentConfig.version,
+        bidderTimeout: currentConfig.bidderTimeout,
+        priceGranularity: currentConfig.priceGranularity,
+      }),
+      newValues: JSON.stringify({
+        type: 'rollback',
+        version: newVersion,
+        fromVersion: currentConfig.version,
+        toVersion: targetVersion.version,
+        bidderTimeout: targetConfig.bidderTimeout,
+        priceGranularity: targetConfig.priceGranularity,
+      }),
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'] || null,
+      createdAt: new Date().toISOString(),
+    }).run();
+
+    return {
+      success: true,
+      message: `Rolled back to version ${targetVersion.version}`,
+      newVersion,
+    };
+  });
 }

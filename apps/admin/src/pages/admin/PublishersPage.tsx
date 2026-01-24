@@ -77,6 +77,16 @@ export function PublishersPage() {
     isDeleting: false,
   });
   const [isExporting, setIsExporting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkActionDialog, setBulkActionDialog] = useState<{
+    isOpen: boolean;
+    action: 'pause' | 'activate' | 'disable' | null;
+    isProcessing: boolean;
+  }>({
+    isOpen: false,
+    action: null,
+    isProcessing: false,
+  });
 
   // Get filter values from URL
   const currentPage = parseInt(searchParams.get('page') || '1', 10);
@@ -257,6 +267,97 @@ export function PublishersPage() {
     }
   };
 
+  // Selection handlers
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set(publishers.map(p => p.id)));
+    } else {
+      setSelectedIds(new Set());
+    }
+  };
+
+  const handleSelectOne = (id: string, checked: boolean) => {
+    const newSelected = new Set(selectedIds);
+    if (checked) {
+      newSelected.add(id);
+    } else {
+      newSelected.delete(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const isAllSelected = publishers.length > 0 && selectedIds.size === publishers.length;
+  const isSomeSelected = selectedIds.size > 0 && selectedIds.size < publishers.length;
+
+  // Bulk action handlers
+  const handleBulkActionClick = (action: 'pause' | 'activate' | 'disable') => {
+    setBulkActionDialog({
+      isOpen: true,
+      action,
+      isProcessing: false,
+    });
+  };
+
+  const handleBulkActionCancel = () => {
+    setBulkActionDialog({
+      isOpen: false,
+      action: null,
+      isProcessing: false,
+    });
+  };
+
+  const handleBulkActionConfirm = async () => {
+    if (!bulkActionDialog.action || selectedIds.size === 0) return;
+
+    setBulkActionDialog((prev) => ({ ...prev, isProcessing: true }));
+
+    const statusMap = {
+      pause: 'paused',
+      activate: 'active',
+      disable: 'disabled',
+    };
+
+    try {
+      const response = await fetch('/api/publishers/bulk/status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ids: Array.from(selectedIds),
+          status: statusMap[bulkActionDialog.action],
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update publishers');
+      }
+
+      // Clear selection and refresh
+      setSelectedIds(new Set());
+      await fetchPublishers();
+      handleBulkActionCancel();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update publishers');
+      setBulkActionDialog((prev) => ({ ...prev, isProcessing: false }));
+    }
+  };
+
+  const getBulkActionMessage = () => {
+    const count = selectedIds.size;
+    switch (bulkActionDialog.action) {
+      case 'pause':
+        return `Are you sure you want to pause ${count} publisher(s)? They will stop serving ads until reactivated.`;
+      case 'activate':
+        return `Are you sure you want to activate ${count} publisher(s)? They will start serving ads immediately.`;
+      case 'disable':
+        return `Are you sure you want to disable ${count} publisher(s)? This will completely stop all ad serving.`;
+      default:
+        return '';
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const styles = {
       active: 'bg-green-100 text-green-800',
@@ -364,6 +465,47 @@ export function PublishersPage() {
         </div>
       </div>
 
+      {/* Bulk Actions Bar */}
+      {selectedIds.size > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-blue-700">
+              {selectedIds.size} publisher{selectedIds.size !== 1 ? 's' : ''} selected
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleBulkActionClick('activate')}
+                className="inline-flex items-center rounded-md bg-green-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-green-500"
+              >
+                Activate
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBulkActionClick('pause')}
+                className="inline-flex items-center rounded-md bg-yellow-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-yellow-500"
+              >
+                Pause
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBulkActionClick('disable')}
+                className="inline-flex items-center rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-red-500"
+              >
+                Disable
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedIds(new Set())}
+                className="inline-flex items-center rounded-md bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+              >
+                Clear Selection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className="rounded-md bg-red-50 p-4">
           <div className="flex">
@@ -423,6 +565,17 @@ export function PublishersPage() {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
+              <th scope="col" className="w-12 px-3 py-3">
+                <input
+                  type="checkbox"
+                  checked={isAllSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = isSomeSelected;
+                  }}
+                  onChange={(e) => handleSelectAll(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+              </th>
               <th
                 scope="col"
                 className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
@@ -468,7 +621,7 @@ export function PublishersPage() {
             {publishers.length === 0 ? (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="px-6 py-12 text-center text-sm text-gray-500"
                 >
                   {statusFilter || searchQuery
@@ -478,7 +631,15 @@ export function PublishersPage() {
               </tr>
             ) : (
               publishers.map((publisher) => (
-                <tr key={publisher.id} className="hover:bg-gray-50">
+                <tr key={publisher.id} className={`hover:bg-gray-50 ${selectedIds.has(publisher.id) ? 'bg-blue-50' : ''}`}>
+                  <td className="w-12 px-3 py-4">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(publisher.id)}
+                      onChange={(e) => handleSelectOne(publisher.id, e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -568,6 +729,19 @@ export function PublishersPage() {
         cancelText="Cancel"
         variant="danger"
         isLoading={deleteDialog.isDeleting}
+      />
+
+      {/* Bulk Action Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={bulkActionDialog.isOpen}
+        onClose={handleBulkActionCancel}
+        onConfirm={handleBulkActionConfirm}
+        title={`Bulk ${bulkActionDialog.action === 'activate' ? 'Activate' : bulkActionDialog.action === 'pause' ? 'Pause' : 'Disable'} Publishers`}
+        message={getBulkActionMessage()}
+        confirmText={bulkActionDialog.action === 'activate' ? 'Activate' : bulkActionDialog.action === 'pause' ? 'Pause' : 'Disable'}
+        cancelText="Cancel"
+        variant={bulkActionDialog.action === 'disable' ? 'danger' : bulkActionDialog.action === 'pause' ? 'warning' : 'primary'}
+        isLoading={bulkActionDialog.isProcessing}
       />
     </div>
   );

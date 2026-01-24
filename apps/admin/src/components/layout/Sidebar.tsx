@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuthStore, UserRole } from '../../stores/authStore';
+
+const SIDEBAR_COLLAPSED_KEY = 'pbjs_sidebar_collapsed';
 
 interface MenuItem {
   name: string;
@@ -85,8 +87,17 @@ const menuItems: MenuItem[] = [
 
 export function Sidebar() {
   const { user } = useAuthStore();
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  // Initialize from localStorage for persistence across page refreshes
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+    return stored === 'true';
+  });
   const userRole = user?.role || 'publisher';
+
+  // Persist collapsed state to localStorage
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(isCollapsed));
+  }, [isCollapsed]);
 
   // Filter menu items based on user role
   const visibleMenuItems = menuItems.filter(item => item.roles.includes(userRole));

@@ -1,27 +1,25 @@
 Analytics Report - Last 7 days
+Generated: 2026-01-24T06:54:46.597Z
 
-Revenue Data
-Date,Revenue
-Mon,$4500
-Tue,$5200
-Wed,$4800
-Thu,$6100
-Fri,$5900
-Sat,$3200
-Sun,$2800
-Total,$32500
+Summary Metrics
+Metric,Value
+Total Events,609
+Events Last 24h,609
+Unique Publishers,5
+Total Revenue,$643.20
+Impressions,127
+Bids Requested,227
+Bids Received,128
+Bids Won,127
 
-Latency Data
-Bidder,Avg Latency (ms),P95 Latency (ms)
-AppNexus,45,120
-Rubicon,62,145
-Index,38,95
-OpenX,55,130
-PubMatic,48,110
-
-Fill Rate Data
-Ad Unit,Fill Rate (%),Requests
-Header Banner,87,125000
-Sidebar Box,92,98000
-In-Article,78,145000
-Footer,65,67000
+Bidder Performance
+Bidder,Requests,Responses,Won,Timeouts,Avg CPM,Avg Latency (ms),Fill Rate (%)
+appnexus,1,1,2,0,$2.50,93,100.0
+bidder-0,25,26,25,0,$4.98,0,104.0
+bidder-1,24,25,26,0,$5.25,0,104.2
+bidder-2,25,24,25,0,$5.06,0,96.0
+bidder-3,26,25,24,0,$4.90,0,96.2
+bidder-4,25,26,25,0,$5.08,0,104.0
+openx,0,0,0,0,$4.50,0,0.0
+rubicon,1,1,1,0,$3.25,120,100.0
+testBidder,100,0,0,0,$2.52,0,0.0

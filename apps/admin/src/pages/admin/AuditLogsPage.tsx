@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FormModal } from '../../components/ui';
 import { useAuthStore } from '../../stores/authStore';
+import { ArrowDownTrayIcon, CalendarIcon } from '@heroicons/react/24/outline';
 
 interface AuditLog {
   id: string;
@@ -28,6 +29,96 @@ const ACTION_TYPES = [
   { value: 'delete', label: 'Delete' },
   { value: 'config_change', label: 'Config Change' },
 ];
+
+const DATE_PRESETS = [
+  { value: 'today', label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: 'last_7_days', label: 'Last 7 days' },
+  { value: 'last_30_days', label: 'Last 30 days' },
+  { value: 'this_month', label: 'This month' },
+  { value: 'custom', label: 'Custom range' },
+];
+
+function getDateRange(preset: string): { startDate: string; endDate: string } {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const endOfToday = new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1);
+
+  switch (preset) {
+    case 'today':
+      return {
+        startDate: today.toISOString(),
+        endDate: endOfToday.toISOString(),
+      };
+    case 'yesterday': {
+      const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+      return {
+        startDate: yesterday.toISOString(),
+        endDate: new Date(today.getTime() - 1).toISOString(),
+      };
+    }
+    case 'last_7_days': {
+      const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return {
+        startDate: sevenDaysAgo.toISOString(),
+        endDate: endOfToday.toISOString(),
+      };
+    }
+    case 'last_30_days': {
+      const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+      return {
+        startDate: thirtyDaysAgo.toISOString(),
+        endDate: endOfToday.toISOString(),
+      };
+    }
+    case 'this_month': {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      return {
+        startDate: startOfMonth.toISOString(),
+        endDate: endOfToday.toISOString(),
+      };
+    }
+    default:
+      return { startDate: '', endDate: '' };
+  }
+}
+
+function formatDateForInput(isoString: string): string {
+  if (!isoString) return '';
+  return isoString.split('T')[0];
+}
+
+function exportToCSV(logs: AuditLog[], filename: string): void {
+  const headers = ['Timestamp', 'Action', 'Resource', 'Resource ID', 'User Name', 'User Email', 'IP Address', 'User Agent', 'Old Values', 'New Values'];
+  const rows = logs.map(log => [
+    new Date(log.timestamp).toISOString(),
+    log.action,
+    log.resource,
+    log.resourceId || '',
+    log.userName,
+    log.userEmail,
+    log.ipAddress,
+    log.userAgent,
+    log.details.oldValues ? JSON.stringify(log.details.oldValues) : '',
+    log.details.newValues ? JSON.stringify(log.details.newValues) : '',
+  ]);
+
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')),
+  ].join('\n');
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
 function formatTimestamp(timestamp: string): string {
   const date = new Date(timestamp);
@@ -66,6 +157,9 @@ export function AuditLogsPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [actionFilter, setActionFilter] = useState('');
+  const [datePreset, setDatePreset] = useState('last_7_days');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
 
   const fetchLogs = async () => {
@@ -75,6 +169,23 @@ export function AuditLogsPage() {
       if (actionFilter) {
         params.append('action', actionFilter);
       }
+
+      // Apply date filters
+      if (datePreset === 'custom') {
+        if (customStartDate) {
+          params.append('startDate', new Date(customStartDate).toISOString());
+        }
+        if (customEndDate) {
+          const endDate = new Date(customEndDate);
+          endDate.setHours(23, 59, 59, 999);
+          params.append('endDate', endDate.toISOString());
+        }
+      } else if (datePreset) {
+        const { startDate, endDate } = getDateRange(datePreset);
+        if (startDate) params.append('startDate', startDate);
+        if (endDate) params.append('endDate', endDate);
+      }
+
       const response = await fetch(`/api/audit-logs?${params.toString()}`, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -93,7 +204,13 @@ export function AuditLogsPage() {
 
   useEffect(() => {
     fetchLogs();
-  }, [token, actionFilter]);
+  }, [token, actionFilter, datePreset, customStartDate, customEndDate]);
+
+  const handleExport = () => {
+    const timestamp = new Date().toISOString().split('T')[0];
+    const filename = `audit-logs-${timestamp}.csv`;
+    exportToCSV(logs, filename);
+  };
 
   const filteredLogs = logs;
 
@@ -110,8 +227,9 @@ export function AuditLogsPage() {
       {/* Filters */}
       <div className="bg-white shadow rounded-lg p-4">
         <div className="flex flex-wrap gap-4 items-center">
+          {/* Action Type Filter */}
           <div>
-            <label htmlFor="action-filter" className="sr-only">
+            <label htmlFor="action-filter" className="block text-xs font-medium text-gray-500 mb-1">
               Filter by action
             </label>
             <select
@@ -127,17 +245,90 @@ export function AuditLogsPage() {
               ))}
             </select>
           </div>
-          {actionFilter && (
+
+          {/* Date Range Filter */}
+          <div>
+            <label htmlFor="date-preset" className="block text-xs font-medium text-gray-500 mb-1">
+              Date range
+            </label>
+            <select
+              id="date-preset"
+              value={datePreset}
+              onChange={(e) => setDatePreset(e.target.value)}
+              className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 px-3 pr-10"
+            >
+              {DATE_PRESETS.map((preset) => (
+                <option key={preset.value} value={preset.value}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Custom Date Range */}
+          {datePreset === 'custom' && (
+            <>
+              <div>
+                <label htmlFor="start-date" className="block text-xs font-medium text-gray-500 mb-1">
+                  Start date
+                </label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    id="start-date"
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 px-3"
+                  />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="end-date" className="block text-xs font-medium text-gray-500 mb-1">
+                  End date
+                </label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    id="end-date"
+                    value={customEndDate}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 px-3"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Clear Filters */}
+          {(actionFilter || datePreset !== 'last_7_days') && (
             <button
               type="button"
-              onClick={() => setActionFilter('')}
-              className="text-sm text-gray-500 hover:text-gray-700"
+              onClick={() => {
+                setActionFilter('');
+                setDatePreset('last_7_days');
+                setCustomStartDate('');
+                setCustomEndDate('');
+              }}
+              className="text-sm text-gray-500 hover:text-gray-700 self-end pb-1.5"
             >
-              Clear filter
+              Clear filters
             </button>
           )}
-          <div className="ml-auto text-sm text-gray-500">
-            {isLoading ? 'Loading...' : `Showing ${filteredLogs.length} entries`}
+
+          {/* Export Button and Count */}
+          <div className="ml-auto flex items-end gap-4">
+            <div className="text-sm text-gray-500 pb-1.5">
+              {isLoading ? 'Loading...' : `Showing ${filteredLogs.length} entries`}
+            </div>
+            <button
+              type="button"
+              onClick={handleExport}
+              disabled={isLoading || filteredLogs.length === 0}
+              className="inline-flex items-center gap-x-1.5 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ArrowDownTrayIcon className="-ml-0.5 h-5 w-5" aria-hidden="true" />
+              Export
+            </button>
           </div>
         </div>
       </div>

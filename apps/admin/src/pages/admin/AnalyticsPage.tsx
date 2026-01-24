@@ -33,35 +33,90 @@ interface ScheduledReport {
   createdAt: string;
 }
 
-// Mock chart data
-const mockRevenueData = [
-  { date: 'Mon', revenue: 4500 },
-  { date: 'Tue', revenue: 5200 },
-  { date: 'Wed', revenue: 4800 },
-  { date: 'Thu', revenue: 6100 },
-  { date: 'Fri', revenue: 5900 },
-  { date: 'Sat', revenue: 3200 },
-  { date: 'Sun', revenue: 2800 },
-];
+// Analytics data types
+interface AnalyticsStats {
+  totalEvents: number;
+  eventsLast24h: number;
+  uniquePublishers: number;
+  totalRevenue: number;
+  eventsByType: Record<string, number>;
+}
 
-const mockLatencyData = [
-  { bidder: 'AppNexus', avg: 45, p95: 120 },
-  { bidder: 'Rubicon', avg: 62, p95: 145 },
-  { bidder: 'Index', avg: 38, p95: 95 },
-  { bidder: 'OpenX', avg: 55, p95: 130 },
-  { bidder: 'PubMatic', avg: 48, p95: 110 },
-];
+interface BidderStats {
+  bidderCode: string;
+  bidsRequested: number;
+  bidsReceived: number;
+  bidsWon: number;
+  bidsTimeout: number;
+  avgCpm: number;
+  avgLatency: number;
+}
 
-const mockFillRateData = [
-  { adUnit: 'Header Banner', fillRate: 87, requests: 125000 },
-  { adUnit: 'Sidebar Box', fillRate: 92, requests: 98000 },
-  { adUnit: 'In-Article', fillRate: 78, requests: 145000 },
-  { adUnit: 'Footer', fillRate: 65, requests: 67000 },
-];
+// Fetch analytics stats from API
+async function fetchAnalyticsStats(): Promise<AnalyticsStats> {
+  try {
+    const res = await fetch(`${API_BASE}/api/analytics/stats`);
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.error('Failed to fetch analytics stats:', err);
+  }
+  return {
+    totalEvents: 0,
+    eventsLast24h: 0,
+    uniquePublishers: 0,
+    totalRevenue: 0,
+    eventsByType: {},
+  };
+}
+
+// Fetch bidder stats from API
+async function fetchBidderStats(): Promise<BidderStats[]> {
+  try {
+    const res = await fetch(`${API_BASE}/api/analytics/bidders`);
+    if (res.ok) {
+      const data = await res.json();
+      return data.bidders || [];
+    }
+  } catch (err) {
+    console.error('Failed to fetch bidder stats:', err);
+  }
+  return [];
+}
 
 function RevenueChart() {
-  const maxRevenue = Math.max(...mockRevenueData.map(d => d.revenue));
-  const totalRevenue = mockRevenueData.reduce((sum, d) => sum + d.revenue, 0);
+  const [stats, setStats] = useState<AnalyticsStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchAnalyticsStats().then((data) => {
+      setStats(data);
+      setLoading(false);
+    });
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-gray-200 rounded w-1/4"></div>
+          <div className="grid grid-cols-4 gap-4">
+            <div className="h-24 bg-gray-200 rounded"></div>
+            <div className="h-24 bg-gray-200 rounded"></div>
+            <div className="h-24 bg-gray-200 rounded"></div>
+            <div className="h-24 bg-gray-200 rounded"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const totalRevenue = stats?.totalRevenue || 0;
+  const impressions = stats?.eventsByType?.impression || 0;
+  const bidsWon = stats?.eventsByType?.bidWon || 0;
+  const totalEvents = stats?.totalEvents || 0;
+  const eCPM = impressions > 0 ? (totalRevenue / impressions) * 1000 : 0;
 
   return (
     <div className="space-y-6">
@@ -69,39 +124,34 @@ function RevenueChart() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-lg shadow p-4">
           <p className="text-sm font-medium text-gray-500">Total Revenue</p>
-          <p className="text-2xl font-semibold text-gray-900">${totalRevenue.toLocaleString()}</p>
-          <p className="text-sm text-green-600">+12% vs last week</p>
+          <p className="text-2xl font-semibold text-gray-900">${totalRevenue.toFixed(2)}</p>
+          <p className="text-sm text-gray-500">From {bidsWon} winning bids</p>
         </div>
         <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm font-medium text-gray-500">Avg Daily</p>
-          <p className="text-2xl font-semibold text-gray-900">${Math.round(totalRevenue / 7).toLocaleString()}</p>
+          <p className="text-sm font-medium text-gray-500">Total Impressions</p>
+          <p className="text-2xl font-semibold text-gray-900">{impressions.toLocaleString()}</p>
+          <p className="text-sm text-gray-500">Last 24h: {stats?.eventsLast24h || 0}</p>
         </div>
         <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm font-medium text-gray-500">Best Day</p>
-          <p className="text-2xl font-semibold text-gray-900">Thursday</p>
-          <p className="text-sm text-gray-500">$6,100</p>
+          <p className="text-sm font-medium text-gray-500">Total Events</p>
+          <p className="text-2xl font-semibold text-gray-900">{totalEvents.toLocaleString()}</p>
+          <p className="text-sm text-gray-500">{stats?.uniquePublishers || 0} publishers</p>
         </div>
         <div className="bg-white rounded-lg shadow p-4">
           <p className="text-sm font-medium text-gray-500">eCPM</p>
-          <p className="text-2xl font-semibold text-gray-900">$3.76</p>
-          <p className="text-sm text-green-600">+5% vs last week</p>
+          <p className="text-2xl font-semibold text-gray-900">${eCPM.toFixed(2)}</p>
+          <p className="text-sm text-gray-500">Revenue per 1000 impressions</p>
         </div>
       </div>
 
-      {/* Revenue Bar Chart */}
+      {/* Event Breakdown */}
       <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Daily Revenue</h3>
-        <div className="flex items-end justify-between h-64 gap-2">
-          {mockRevenueData.map((data) => (
-            <div key={data.date} className="flex-1 flex flex-col items-center">
-              <div className="w-full flex flex-col items-center">
-                <span className="text-sm text-gray-600 mb-2">${data.revenue.toLocaleString()}</span>
-                <div
-                  className="w-full bg-blue-500 rounded-t-lg transition-all duration-300 hover:bg-blue-600"
-                  style={{ height: `${(data.revenue / maxRevenue) * 200}px` }}
-                />
-              </div>
-              <span className="mt-2 text-sm font-medium text-gray-600">{data.date}</span>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Event Breakdown</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {Object.entries(stats?.eventsByType || {}).map(([eventType, count]) => (
+            <div key={eventType} className="bg-gray-50 rounded-lg p-4">
+              <p className="text-sm font-medium text-gray-500 capitalize">{eventType}</p>
+              <p className="text-xl font-semibold text-gray-900">{count.toLocaleString()}</p>
             </div>
           ))}
         </div>
@@ -111,7 +161,42 @@ function RevenueChart() {
 }
 
 function LatencyChart() {
-  const maxLatency = Math.max(...mockLatencyData.map(d => d.p95));
+  const [bidders, setBidders] = useState<BidderStats[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchBidderStats().then((data) => {
+      setBidders(data);
+      setLoading(false);
+    });
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-gray-200 rounded w-1/4"></div>
+          <div className="space-y-2">
+            <div className="h-8 bg-gray-200 rounded"></div>
+            <div className="h-8 bg-gray-200 rounded"></div>
+            <div className="h-8 bg-gray-200 rounded"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const biddersWithLatency = bidders.filter(b => b.avgLatency > 0);
+  const maxLatency = Math.max(...biddersWithLatency.map(d => d.avgLatency), 1);
+  const avgLatency = biddersWithLatency.length > 0
+    ? Math.round(biddersWithLatency.reduce((sum, b) => sum + b.avgLatency, 0) / biddersWithLatency.length)
+    : 0;
+  const fastestBidder = biddersWithLatency.length > 0
+    ? biddersWithLatency.reduce((prev, curr) => prev.avgLatency < curr.avgLatency ? prev : curr)
+    : null;
+  const totalTimeouts = bidders.reduce((sum, b) => sum + b.bidsTimeout, 0);
+  const totalRequests = bidders.reduce((sum, b) => sum + b.bidsRequested, 0);
+  const timeoutRate = totalRequests > 0 ? (totalTimeouts / totalRequests) * 100 : 0;
 
   return (
     <div className="space-y-6">
@@ -119,120 +204,162 @@ function LatencyChart() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-lg shadow p-4">
           <p className="text-sm font-medium text-gray-500">Avg Response Time</p>
-          <p className="text-2xl font-semibold text-gray-900">50ms</p>
-          <p className="text-sm text-green-600">-8% vs last week</p>
+          <p className="text-2xl font-semibold text-gray-900">{avgLatency}ms</p>
+          <p className="text-sm text-gray-500">{biddersWithLatency.length} bidders with data</p>
         </div>
         <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm font-medium text-gray-500">P95 Latency</p>
-          <p className="text-2xl font-semibold text-gray-900">120ms</p>
+          <p className="text-sm font-medium text-gray-500">Total Bidders</p>
+          <p className="text-2xl font-semibold text-gray-900">{bidders.length}</p>
+          <p className="text-sm text-gray-500">{totalRequests} requests</p>
         </div>
         <div className="bg-white rounded-lg shadow p-4">
           <p className="text-sm font-medium text-gray-500">Fastest Bidder</p>
-          <p className="text-2xl font-semibold text-gray-900">Index</p>
-          <p className="text-sm text-gray-500">38ms avg</p>
+          <p className="text-2xl font-semibold text-gray-900">{fastestBidder?.bidderCode || 'N/A'}</p>
+          <p className="text-sm text-gray-500">{fastestBidder ? `${fastestBidder.avgLatency}ms avg` : 'No data'}</p>
         </div>
         <div className="bg-white rounded-lg shadow p-4">
           <p className="text-sm font-medium text-gray-500">Timeout Rate</p>
-          <p className="text-2xl font-semibold text-gray-900">2.3%</p>
-          <p className="text-sm text-green-600">-0.5% vs last week</p>
+          <p className="text-2xl font-semibold text-gray-900">{timeoutRate.toFixed(1)}%</p>
+          <p className="text-sm text-gray-500">{totalTimeouts} timeouts</p>
         </div>
       </div>
 
       {/* Latency by Bidder */}
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Bidder Latency (ms)</h3>
-        <div className="space-y-4">
-          {mockLatencyData.map((data) => (
-            <div key={data.bidder} className="flex items-center gap-4">
-              <div className="w-24 text-sm font-medium text-gray-700">{data.bidder}</div>
-              <div className="flex-1">
-                <div className="relative h-8 bg-gray-100 rounded-lg overflow-hidden">
-                  <div
-                    className="absolute h-full bg-green-500 rounded-lg"
-                    style={{ width: `${(data.avg / maxLatency) * 100}%` }}
-                  />
-                  <div
-                    className="absolute h-full bg-yellow-400 rounded-lg opacity-50"
-                    style={{ width: `${(data.p95 / maxLatency) * 100}%` }}
-                  />
-                  <div className="absolute inset-0 flex items-center px-3">
-                    <span className="text-sm font-medium text-gray-800">
-                      Avg: {data.avg}ms | P95: {data.p95}ms
-                    </span>
+        {bidders.length === 0 ? (
+          <p className="text-gray-500">No bidder data available</p>
+        ) : (
+          <div className="space-y-4">
+            {bidders.map((data) => (
+              <div key={data.bidderCode} className="flex items-center gap-4">
+                <div className="w-28 text-sm font-medium text-gray-700 truncate" title={data.bidderCode}>
+                  {data.bidderCode}
+                </div>
+                <div className="flex-1">
+                  <div className="relative h-8 bg-gray-100 rounded-lg overflow-hidden">
+                    <div
+                      className="absolute h-full bg-green-500 rounded-lg"
+                      style={{ width: `${Math.min((data.avgLatency / Math.max(maxLatency, 1)) * 100, 100)}%` }}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-between px-3">
+                      <span className="text-sm font-medium text-gray-800">
+                        {data.avgLatency}ms
+                      </span>
+                      <span className="text-xs text-gray-600">
+                        {data.bidsRequested} req / {data.bidsWon} won
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-        <div className="mt-4 flex gap-4 text-sm">
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-green-500 rounded" />
-            <span className="text-gray-600">Average</span>
+            ))}
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-yellow-400 rounded" />
-            <span className="text-gray-600">P95</span>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
 }
 
 function FillRateChart() {
+  const [bidders, setBidders] = useState<BidderStats[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchBidderStats().then((data) => {
+      setBidders(data);
+      setLoading(false);
+    });
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-gray-200 rounded w-1/4"></div>
+          <div className="space-y-2">
+            <div className="h-8 bg-gray-200 rounded"></div>
+            <div className="h-8 bg-gray-200 rounded"></div>
+            <div className="h-8 bg-gray-200 rounded"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const totalRequests = bidders.reduce((sum, b) => sum + b.bidsRequested, 0);
+  const totalResponses = bidders.reduce((sum, b) => sum + b.bidsReceived, 0);
+  const totalWon = bidders.reduce((sum, b) => sum + b.bidsWon, 0);
+  const overallFillRate = totalRequests > 0 ? (totalResponses / totalRequests) * 100 : 0;
+
+  const biddersWithFillRate = bidders.map(b => ({
+    ...b,
+    fillRate: b.bidsRequested > 0 ? (b.bidsReceived / b.bidsRequested) * 100 : 0,
+  })).sort((a, b) => b.fillRate - a.fillRate);
+
+  const bestBidder = biddersWithFillRate.length > 0 ? biddersWithFillRate[0] : null;
+
   return (
     <div className="space-y-6">
       {/* Summary Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-lg shadow p-4">
           <p className="text-sm font-medium text-gray-500">Overall Fill Rate</p>
-          <p className="text-2xl font-semibold text-gray-900">82%</p>
-          <p className="text-sm text-green-600">+3% vs last week</p>
+          <p className="text-2xl font-semibold text-gray-900">{overallFillRate.toFixed(1)}%</p>
+          <p className="text-sm text-gray-500">Responses / Requests</p>
         </div>
         <div className="bg-white rounded-lg shadow p-4">
           <p className="text-sm font-medium text-gray-500">Total Requests</p>
-          <p className="text-2xl font-semibold text-gray-900">435K</p>
+          <p className="text-2xl font-semibold text-gray-900">{totalRequests.toLocaleString()}</p>
         </div>
         <div className="bg-white rounded-lg shadow p-4">
           <p className="text-sm font-medium text-gray-500">Filled Requests</p>
-          <p className="text-2xl font-semibold text-gray-900">357K</p>
+          <p className="text-2xl font-semibold text-gray-900">{totalResponses.toLocaleString()}</p>
+          <p className="text-sm text-gray-500">{totalWon} winning bids</p>
         </div>
         <div className="bg-white rounded-lg shadow p-4">
           <p className="text-sm font-medium text-gray-500">Best Performing</p>
-          <p className="text-2xl font-semibold text-gray-900">Sidebar Box</p>
-          <p className="text-sm text-gray-500">92% fill rate</p>
+          <p className="text-2xl font-semibold text-gray-900">{bestBidder?.bidderCode || 'N/A'}</p>
+          <p className="text-sm text-gray-500">{bestBidder ? `${bestBidder.fillRate.toFixed(1)}% fill rate` : 'No data'}</p>
         </div>
       </div>
 
-      {/* Fill Rate by Ad Unit */}
+      {/* Fill Rate by Bidder */}
       <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Fill Rate by Ad Unit</h3>
-        <div className="space-y-4">
-          {mockFillRateData.map((data) => (
-            <div key={data.adUnit} className="flex items-center gap-4">
-              <div className="w-32 text-sm font-medium text-gray-700">{data.adUnit}</div>
-              <div className="flex-1">
-                <div className="relative h-8 bg-gray-100 rounded-lg overflow-hidden">
-                  <div
-                    className={`absolute h-full rounded-lg ${
-                      data.fillRate >= 85
-                        ? 'bg-green-500'
-                        : data.fillRate >= 70
-                        ? 'bg-yellow-500'
-                        : 'bg-red-500'
-                    }`}
-                    style={{ width: `${data.fillRate}%` }}
-                  />
-                  <div className="absolute inset-0 flex items-center justify-between px-3">
-                    <span className="text-sm font-medium text-gray-800">{data.fillRate}%</span>
-                    <span className="text-sm text-gray-600">{data.requests.toLocaleString()} requests</span>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Fill Rate by Bidder</h3>
+        {bidders.length === 0 ? (
+          <p className="text-gray-500">No bidder data available</p>
+        ) : (
+          <div className="space-y-4">
+            {biddersWithFillRate.map((data) => (
+              <div key={data.bidderCode} className="flex items-center gap-4">
+                <div className="w-28 text-sm font-medium text-gray-700 truncate" title={data.bidderCode}>
+                  {data.bidderCode}
+                </div>
+                <div className="flex-1">
+                  <div className="relative h-8 bg-gray-100 rounded-lg overflow-hidden">
+                    <div
+                      className={`absolute h-full rounded-lg ${
+                        data.fillRate >= 85
+                          ? 'bg-green-500'
+                          : data.fillRate >= 70
+                          ? 'bg-yellow-500'
+                          : 'bg-red-500'
+                      }`}
+                      style={{ width: `${Math.min(data.fillRate, 100)}%` }}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-between px-3">
+                      <span className="text-sm font-medium text-gray-800">{data.fillRate.toFixed(1)}%</span>
+                      <span className="text-sm text-gray-600">
+                        {data.bidsReceived} / {data.bidsRequested} requests
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
         <div className="mt-4 flex gap-4 text-sm">
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 bg-green-500 rounded" />

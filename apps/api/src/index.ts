@@ -57,19 +57,22 @@ app.register(analyticsRoutes, { prefix: '/api/analytics' });
 // app.register(analyticsRoutes, { prefix: '/api/analytics' });
 
 // Wrapper script endpoint - serves the pb.js script for publishers
+// Uses publisher slug (public identifier) instead of API key for security
 app.get('/pb.js', async (request, reply) => {
   const { id } = request.query as { id?: string };
 
   if (!id) {
-    return reply.code(400).type('text/plain').send('// Error: Missing publisher API key');
+    return reply.code(400).type('text/plain').send('// Error: Missing publisher identifier');
   }
 
   // Import db and schema
   const { db, publishers } = await import('./db');
-  const { eq } = await import('drizzle-orm');
+  const { eq, or } = await import('drizzle-orm');
 
-  // Validate publisher exists and is active
-  const publisher = db.select().from(publishers).where(eq(publishers.apiKey, id)).get();
+  // Validate publisher exists and is active - look up by slug or id (not API key)
+  const publisher = db.select().from(publishers).where(
+    or(eq(publishers.slug, id), eq(publishers.id, id))
+  ).get();
 
   if (!publisher) {
     return reply.code(404).type('text/plain').send('// Error: Publisher not found');
@@ -94,7 +97,7 @@ app.get('/pb.js', async (request, reply) => {
 (function() {
   'use strict';
 
-  var publisherId = '${id}';
+  var publisherId = '${publisher.slug}';
   var apiEndpoint = '${apiEndpoint}';
   var CONFIG_CACHE_KEY = 'pb_config_cache';
   var CONFIG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -268,15 +271,18 @@ app.get('/pb.js', async (request, reply) => {
 });
 
 // Public config endpoint (high performance)
-app.get('/c/:apiKey', async (request, reply) => {
-  const { apiKey } = request.params as { apiKey: string };
+// Uses publisher slug or ID (public identifier) instead of API key for security
+app.get('/c/:publisherSlug', async (request, reply) => {
+  const { publisherSlug } = request.params as { publisherSlug: string };
 
   // Import db and schema
   const { db, publishers, publisherConfig, adUnits, publisherBidders } = await import('./db');
-  const { eq } = await import('drizzle-orm');
+  const { eq, or } = await import('drizzle-orm');
 
-  // Find publisher by API key
-  const publisher = db.select().from(publishers).where(eq(publishers.apiKey, apiKey)).get();
+  // Find publisher by slug or ID (not API key - keep that secret)
+  const publisher = db.select().from(publishers).where(
+    or(eq(publishers.slug, publisherSlug), eq(publishers.id, publisherSlug))
+  ).get();
 
   if (!publisher) {
     return reply.code(404).send({ error: 'Publisher not found' });

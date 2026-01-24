@@ -672,4 +672,85 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
 
     return reply.code(204).send();
   });
+
+  // ==================== CONFIG ROUTES ====================
+
+  interface UpdateConfigBody {
+    bidderTimeout?: number;
+    priceGranularity?: string;
+    enableSendAllBids?: boolean;
+    bidderSequence?: string;
+    debugMode?: boolean;
+  }
+
+  // Get publisher config
+  fastify.get<{ Params: { id: string } }>('/:id/config', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const user = request.user as TokenPayload;
+
+    // Check if publisher exists
+    const publisher = db.select().from(publishers).where(eq(publishers.id, id)).get();
+    if (!publisher) {
+      return reply.code(404).send({ error: 'Publisher not found' });
+    }
+
+    // Check authorization
+    if (user.role === 'publisher' && user.publisherId !== id) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+
+    const config = db.select().from(publisherConfig).where(eq(publisherConfig.publisherId, id)).get();
+
+    if (!config) {
+      return reply.code(404).send({ error: 'Config not found' });
+    }
+
+    return config;
+  });
+
+  // Update publisher config
+  fastify.put<{ Params: { id: string }; Body: UpdateConfigBody }>('/:id/config', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const { bidderTimeout, priceGranularity, enableSendAllBids, bidderSequence, debugMode } = request.body;
+    const user = request.user as TokenPayload;
+
+    // Check if publisher exists
+    const publisher = db.select().from(publishers).where(eq(publishers.id, id)).get();
+    if (!publisher) {
+      return reply.code(404).send({ error: 'Publisher not found' });
+    }
+
+    // Check authorization
+    if (user.role === 'publisher' && user.publisherId !== id) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+
+    const config = db.select().from(publisherConfig).where(eq(publisherConfig.publisherId, id)).get();
+    if (!config) {
+      return reply.code(404).send({ error: 'Config not found' });
+    }
+
+    const now = new Date().toISOString();
+
+    db.update(publisherConfig)
+      .set({
+        ...(bidderTimeout !== undefined && { bidderTimeout }),
+        ...(priceGranularity !== undefined && { priceGranularity }),
+        ...(enableSendAllBids !== undefined && { enableSendAllBids }),
+        ...(bidderSequence !== undefined && { bidderSequence }),
+        ...(debugMode !== undefined && { debugMode }),
+        updatedAt: now,
+        version: (config.version || 1) + 1,
+      })
+      .where(eq(publisherConfig.publisherId, id))
+      .run();
+
+    const updated = db.select().from(publisherConfig).where(eq(publisherConfig.publisherId, id)).get();
+
+    return updated;
+  });
 }

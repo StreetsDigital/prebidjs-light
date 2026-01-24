@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import { ConfirmDialog, Pagination } from '../../components/ui';
 
@@ -29,6 +29,7 @@ interface PaginationInfo {
 export function PublishersPage() {
   const { token } = useAuthStore();
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   const [publishers, setPublishers] = useState<Publisher[]>([]);
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -443,6 +444,7 @@ export function PublishersPage() {
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <Link
                       to={`/admin/publishers/${publisher.id}`}
+                      state={{ returnUrl: location.pathname + location.search }}
                       className="text-blue-600 hover:text-blue-900 mr-4"
                     >
                       Edit

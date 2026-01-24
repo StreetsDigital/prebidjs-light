@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import { ConfirmDialog, FormModal, Tabs, Tab } from '../../components/ui';
 
@@ -200,6 +200,8 @@ const AVAILABLE_BIDDERS: AvailableBidder[] = [
 export function PublisherDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { token } = useAuthStore();
+  const location = useLocation();
+  const returnUrl = (location.state as { returnUrl?: string })?.returnUrl || '/admin/publishers';
   const [publisher, setPublisher] = useState<Publisher | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1135,7 +1137,7 @@ export function PublisherDetailPage() {
           </div>
         </div>
         <Link
-          to="/admin/publishers"
+          to={returnUrl}
           className="text-blue-600 hover:text-blue-800"
         >
           &larr; Back to Publishers
@@ -1894,7 +1896,7 @@ export function PublisherDetailPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <Link
-            to="/admin/publishers"
+            to={returnUrl}
             className="text-gray-500 hover:text-gray-700"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

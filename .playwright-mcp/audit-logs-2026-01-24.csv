@@ -1,0 +1,2 @@
+Timestamp,Action,Resource,Resource ID,User Name,User Email,IP Address,User Agent,Old Values,New Values
+"2026-01-24T03:04:35.160Z","delete","scheduled_report","e3b84a80-3dcb-4159-aa57-c18d81912108","Super Admin","admin@example.com","127.0.0.1","Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36","{""name"":""TEST_DAILY_REVENUE_REPORT"",""reportType"":""all"",""schedule"":""weekly"",""recipients"":[""test@example.com"",""admin@example.com""],""status"":""active""}",""

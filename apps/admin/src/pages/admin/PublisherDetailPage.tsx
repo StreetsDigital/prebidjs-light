@@ -1410,6 +1410,48 @@ export function PublisherDetailPage() {
     }
   };
 
+  // File upload constants
+  const MAX_FILE_SIZE = 1024 * 1024; // 1MB
+  const ALLOWED_FILE_TYPES = ['.json'];
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Reset previous state
+    setImportError(null);
+    setImportValidation(null);
+    setImportData('');
+
+    // Check file type
+    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+    if (!ALLOWED_FILE_TYPES.includes(fileExtension)) {
+      setImportError(`Invalid file type. Only JSON files are allowed. You uploaded: ${fileExtension || 'unknown'}`);
+      e.target.value = ''; // Reset file input
+      return;
+    }
+
+    // Check file size
+    if (file.size > MAX_FILE_SIZE) {
+      const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+      setImportError(`File size too large. Maximum allowed: 1MB. Your file: ${sizeMB}MB`);
+      e.target.value = ''; // Reset file input
+      return;
+    }
+
+    // Read file content
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      handleImportDataChange(content);
+    };
+    reader.onerror = () => {
+      setImportError('Failed to read file. Please try again.');
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset file input for re-selection
+  };
+
   const handleImportSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!publisher || !importValidation?.valid) return;
@@ -4616,6 +4658,32 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
         title="Import Prebid Configuration"
       >
         <form onSubmit={handleImportSubmit} className="space-y-4">
+          {/* File Upload Section */}
+          <div>
+            <label htmlFor="importFile" className="block text-sm font-medium text-gray-700">
+              Upload JSON File
+            </label>
+            <p className="text-sm text-gray-500 mb-2">
+              Upload a JSON configuration file (max 1MB).
+            </p>
+            <input
+              type="file"
+              id="importFile"
+              accept=".json,application/json"
+              onChange={handleFileUpload}
+              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+            />
+          </div>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center" aria-hidden="true">
+              <div className="w-full border-t border-gray-300" />
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="bg-white px-2 text-gray-500">Or paste JSON</span>
+            </div>
+          </div>
+
           <div>
             <label htmlFor="importConfig" className="block text-sm font-medium text-gray-700">
               Paste JSON Configuration
@@ -4636,7 +4704,6 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
               }`}
               rows={12}
               placeholder='{"bidderTimeout": 1500, "priceGranularity": "medium", ...}'
-              required
             />
           </div>
 

@@ -6,3 +6,4 @@ export { UsersPage } from './UsersPage';
 export { ModulesPage } from './ModulesPage';
 export { AnalyticsPage } from './AnalyticsPage';
 export { AuditLogsPage } from './AuditLogsPage';
+export { ProfilePage } from './ProfilePage';

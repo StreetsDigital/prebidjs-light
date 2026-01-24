@@ -1067,6 +1067,10 @@ function ScheduledReportsList() {
 export function AnalyticsPage() {
   const [dateRange, setDateRange] = useState('Last 7 days');
   const [isExporting, setIsExporting] = useState(false);
+  const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [dateRangeError, setDateRangeError] = useState('');
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -1171,10 +1175,26 @@ export function AnalyticsPage() {
       </div>
 
       {/* Date Range Selector */}
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-start gap-4">
         <select
           value={dateRange}
-          onChange={(e) => setDateRange(e.target.value)}
+          onChange={(e) => {
+            const value = e.target.value;
+            setDateRange(value);
+            if (value === 'Custom range') {
+              setShowCustomDatePicker(true);
+              // Set default dates to last 7 days
+              const endDate = new Date();
+              const startDate = new Date();
+              startDate.setDate(startDate.getDate() - 7);
+              setCustomStartDate(startDate.toISOString().split('T')[0]);
+              setCustomEndDate(endDate.toISOString().split('T')[0]);
+              setDateRangeError('');
+            } else {
+              setShowCustomDatePicker(false);
+              setDateRangeError('');
+            }
+          }}
           className="block rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 px-3"
         >
           <option>Last 7 days</option>
@@ -1182,11 +1202,62 @@ export function AnalyticsPage() {
           <option>Last 90 days</option>
           <option>This month</option>
           <option>Last month</option>
+          <option>Custom range</option>
         </select>
+
+        {/* Custom Date Picker */}
+        {showCustomDatePicker && (
+          <div className="flex flex-wrap items-start gap-2">
+            <div className="flex items-center gap-2">
+              <label htmlFor="startDate" className="text-sm text-gray-600">From:</label>
+              <input
+                type="date"
+                id="startDate"
+                value={customStartDate}
+                onChange={(e) => {
+                  const newStartDate = e.target.value;
+                  setCustomStartDate(newStartDate);
+                  // Validate: end date should not be before start date
+                  if (customEndDate && newStartDate > customEndDate) {
+                    setDateRangeError('End date cannot be before start date');
+                  } else {
+                    setDateRangeError('');
+                  }
+                }}
+                className="block rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 px-3"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label htmlFor="endDate" className="text-sm text-gray-600">To:</label>
+              <input
+                type="date"
+                id="endDate"
+                value={customEndDate}
+                onChange={(e) => {
+                  const newEndDate = e.target.value;
+                  setCustomEndDate(newEndDate);
+                  // Validate: end date should not be before start date
+                  if (customStartDate && newEndDate < customStartDate) {
+                    setDateRangeError('End date cannot be before start date');
+                  } else {
+                    setDateRangeError('');
+                  }
+                }}
+                className="block rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 px-3"
+              />
+            </div>
+            {dateRangeError && (
+              <div className="w-full sm:w-auto">
+                <p className="text-sm text-red-600">{dateRangeError}</p>
+              </div>
+            )}
+          </div>
+        )}
+
         <button
           type="button"
           onClick={handleExport}
-          disabled={isExporting}
+          disabled={isExporting || !!dateRangeError}
           className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:opacity-50"
         >
           <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">

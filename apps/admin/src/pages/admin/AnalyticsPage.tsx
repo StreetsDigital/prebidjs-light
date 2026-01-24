@@ -1,8 +1,66 @@
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, Fragment, useCallback, useRef } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { Tabs, Tab } from '../../components/ui';
 
 const API_BASE = 'http://localhost:3001';
+
+// Real-time SSE hook for analytics updates
+function useAnalyticsSSE(onStatsUpdate: (stats: AnalyticsStats) => void, onNewEvent?: (event: any) => void) {
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+
+  useEffect(() => {
+    // Create EventSource connection
+    const eventSource = new EventSource(`${API_BASE}/api/analytics/stream`);
+    eventSourceRef.current = eventSource;
+
+    eventSource.onopen = () => {
+      console.log('SSE connected to analytics stream');
+      setIsConnected(true);
+    };
+
+    eventSource.addEventListener('stats', (event) => {
+      try {
+        const stats = JSON.parse(event.data);
+        onStatsUpdate(stats);
+        setLastUpdate(new Date());
+      } catch (e) {
+        console.error('Failed to parse stats event:', e);
+      }
+    });
+
+    eventSource.addEventListener('newEvent', (event) => {
+      try {
+        const eventData = JSON.parse(event.data);
+        if (onNewEvent) {
+          onNewEvent(eventData);
+        }
+        setLastUpdate(new Date());
+      } catch (e) {
+        console.error('Failed to parse newEvent:', e);
+      }
+    });
+
+    eventSource.addEventListener('heartbeat', () => {
+      // Keep-alive heartbeat received
+    });
+
+    eventSource.onerror = (error) => {
+      console.error('SSE connection error:', error);
+      setIsConnected(false);
+      // EventSource will auto-reconnect
+    };
+
+    return () => {
+      eventSource.close();
+      eventSourceRef.current = null;
+      setIsConnected(false);
+    };
+  }, [onStatsUpdate, onNewEvent]);
+
+  return { isConnected, lastUpdate };
+}
 
 // Helper to get token from auth store in localStorage
 function getAuthToken(): string | null {
@@ -88,7 +146,22 @@ async function fetchBidderStats(): Promise<BidderStats[]> {
 function RevenueChart() {
   const [stats, setStats] = useState<AnalyticsStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [recentEvents, setRecentEvents] = useState<any[]>([]);
 
+  // SSE callback for stats updates
+  const handleStatsUpdate = useCallback((newStats: AnalyticsStats) => {
+    setStats(newStats);
+    setLoading(false);
+  }, []);
+
+  // SSE callback for new events
+  const handleNewEvent = useCallback((event: any) => {
+    setRecentEvents(prev => [event, ...prev].slice(0, 10)); // Keep last 10 events
+  }, []);
+
+  const { isConnected, lastUpdate } = useAnalyticsSSE(handleStatsUpdate, handleNewEvent);
+
+  // Initial fetch as fallback
   useEffect(() => {
     fetchAnalyticsStats().then((data) => {
       setStats(data);
@@ -120,6 +193,21 @@ function RevenueChart() {
 
   return (
     <div className="space-y-6">
+      {/* Real-time Status Indicator */}
+      <div className="flex items-center gap-2 text-sm">
+        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+          isConnected ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+        }`}>
+          <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+          {isConnected ? 'Real-time updates active' : 'Connecting...'}
+        </span>
+        {lastUpdate && (
+          <span className="text-gray-500">
+            Last update: {lastUpdate.toLocaleTimeString()}
+          </span>
+        )}
+      </div>
+
       {/* Summary Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-lg shadow p-4">
@@ -156,6 +244,45 @@ function RevenueChart() {
           ))}
         </div>
       </div>
+
+      {/* Real-time Event Feed */}
+      {recentEvents.length > 0 && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            Live Event Feed
+          </h3>
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {recentEvents.map((event, index) => (
+              <div
+                key={event.id || index}
+                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm animate-fade-in"
+              >
+                <div className="flex items-center gap-3">
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                    event.eventType === 'bidWon' ? 'bg-green-100 text-green-800' :
+                    event.eventType === 'bidResponse' ? 'bg-blue-100 text-blue-800' :
+                    event.eventType === 'bidRequested' ? 'bg-yellow-100 text-yellow-800' :
+                    event.eventType === 'impression' ? 'bg-purple-100 text-purple-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
+                    {event.eventType}
+                  </span>
+                  {event.bidderCode && (
+                    <span className="text-gray-600">{event.bidderCode}</span>
+                  )}
+                  {event.cpm && (
+                    <span className="text-green-600 font-medium">${event.cpm.toFixed(2)}</span>
+                  )}
+                </div>
+                <span className="text-gray-400 text-xs">
+                  {new Date(event.timestamp).toLocaleTimeString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

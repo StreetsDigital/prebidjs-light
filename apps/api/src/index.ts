@@ -343,6 +343,7 @@ app.post('/b', async (request, reply) => {
   try {
     const { db, analyticsEvents } = await import('./db');
     const { v4: uuidv4 } = await import('uuid');
+    const { analyticsEmitter } = await import('./routes/analytics');
 
     const body = request.body as {
       events?: Array<{
@@ -370,6 +371,7 @@ app.post('/b', async (request, reply) => {
     }
 
     const now = new Date().toISOString();
+    const insertedEvents: any[] = [];
 
     // Insert events (in a real system, this would go to Redis Streams then ClickHouse)
     for (const event of body.events) {
@@ -377,8 +379,9 @@ app.post('/b', async (request, reply) => {
         continue; // Skip invalid events
       }
 
+      const eventId = uuidv4();
       db.insert(analyticsEvents).values({
-        id: uuidv4(),
+        id: eventId,
         publisherId: event.publisherId,
         eventType: event.eventType,
         auctionId: event.auctionId || null,
@@ -397,6 +400,22 @@ app.post('/b', async (request, reply) => {
         timestamp: event.timestamp || now,
         receivedAt: now,
       }).run();
+
+      insertedEvents.push({
+        id: eventId,
+        publisherId: event.publisherId,
+        eventType: event.eventType,
+        bidderCode: event.bidderCode,
+        cpm: event.cpm,
+        timestamp: event.timestamp || now,
+      });
+    }
+
+    // Emit events for SSE subscribers
+    if (insertedEvents.length > 0) {
+      for (const event of insertedEvents) {
+        analyticsEmitter.emit('newEvent', event);
+      }
     }
 
     // Return 200 for successful beacon processing

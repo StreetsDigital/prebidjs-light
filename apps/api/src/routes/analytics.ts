@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { db, analyticsEvents } from '../db';
 import { eq, desc, sql, and, gte } from 'drizzle-orm';
+import { EventEmitter } from 'events';
 
 interface AnalyticsQuery {
   publisherId?: string;
@@ -10,7 +11,102 @@ interface AnalyticsQuery {
   limit?: number;
 }
 
+// Global event emitter for SSE broadcasts
+export const analyticsEmitter = new EventEmitter();
+analyticsEmitter.setMaxListeners(100); // Support many SSE clients
+
 export default async function analyticsRoutes(fastify: FastifyInstance) {
+  // SSE endpoint for real-time analytics updates
+  fastify.get('/stream', async (request, reply) => {
+    // Set SSE headers
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Credentials': 'true',
+    });
+
+    // Send initial connection event
+    const sendEvent = (eventName: string, data: any) => {
+      reply.raw.write(`event: ${eventName}\n`);
+      reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    // Send heartbeat every 30 seconds to keep connection alive
+    const heartbeatInterval = setInterval(() => {
+      sendEvent('heartbeat', { timestamp: new Date().toISOString() });
+    }, 30000);
+
+    // Initial stats push
+    const getStats = () => {
+      const eventsByType = db.select({
+        eventType: analyticsEvents.eventType,
+        count: sql<number>`count(*)`.as('count'),
+      })
+        .from(analyticsEvents)
+        .groupBy(analyticsEvents.eventType)
+        .all();
+
+      const totalResult = db.select({
+        count: sql<number>`count(*)`.as('count'),
+      })
+        .from(analyticsEvents)
+        .get();
+
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const recentResult = db.select({
+        count: sql<number>`count(*)`.as('count'),
+      })
+        .from(analyticsEvents)
+        .where(gte(analyticsEvents.timestamp, oneDayAgo))
+        .get();
+
+      const publishersResult = db.select({
+        count: sql<number>`count(distinct publisher_id)`.as('count'),
+      })
+        .from(analyticsEvents)
+        .get();
+
+      const revenueResult = db.select({
+        total: sql<number>`sum(case when won = 1 then cast(cpm as real) else 0 end)`.as('total'),
+      })
+        .from(analyticsEvents)
+        .get();
+
+      return {
+        totalEvents: totalResult?.count || 0,
+        eventsLast24h: recentResult?.count || 0,
+        uniquePublishers: publishersResult?.count || 0,
+        totalRevenue: revenueResult?.total || 0,
+        eventsByType: eventsByType.reduce((acc, row) => {
+          acc[row.eventType] = row.count;
+          return acc;
+        }, {} as Record<string, number>),
+      };
+    };
+
+    // Send initial stats
+    sendEvent('stats', getStats());
+
+    // Listen for new events
+    const onNewEvent = (eventData: any) => {
+      sendEvent('newEvent', eventData);
+      // Also send updated stats
+      sendEvent('stats', getStats());
+    };
+
+    analyticsEmitter.on('newEvent', onNewEvent);
+
+    // Clean up on client disconnect
+    request.raw.on('close', () => {
+      clearInterval(heartbeatInterval);
+      analyticsEmitter.off('newEvent', onNewEvent);
+    });
+
+    // Keep the connection open
+    return reply;
+  });
   // Get analytics events
   fastify.get<{ Querystring: AnalyticsQuery }>('/events', async (request, reply) => {
     const { publisherId, eventType, startDate, endDate, limit = 100 } = request.query;

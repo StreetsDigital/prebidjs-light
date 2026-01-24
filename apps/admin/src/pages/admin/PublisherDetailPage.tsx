@@ -39,6 +39,66 @@ interface AdUnitFormData {
   mediaTypes: string[];
 }
 
+interface ConfigVersion {
+  id: string;
+  version: number;
+  createdAt: string;
+  createdBy: string;
+  changes: string;
+  config: {
+    bidderTimeout: number;
+    priceGranularity: string;
+    sendAllBids: boolean;
+    bidderSequence: string;
+    debugMode: boolean;
+  };
+}
+
+const MOCK_CONFIG_VERSIONS: ConfigVersion[] = [
+  {
+    id: 'v1',
+    version: 3,
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+    createdBy: 'Super Admin',
+    changes: 'Updated bidder timeout from 1200ms to 1500ms',
+    config: {
+      bidderTimeout: 1500,
+      priceGranularity: 'medium',
+      sendAllBids: true,
+      bidderSequence: 'random',
+      debugMode: false,
+    },
+  },
+  {
+    id: 'v2',
+    version: 2,
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+    createdBy: 'Staff Admin',
+    changes: 'Enabled send all bids feature',
+    config: {
+      bidderTimeout: 1200,
+      priceGranularity: 'medium',
+      sendAllBids: true,
+      bidderSequence: 'random',
+      debugMode: false,
+    },
+  },
+  {
+    id: 'v3',
+    version: 1,
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
+    createdBy: 'Super Admin',
+    changes: 'Initial configuration',
+    config: {
+      bidderTimeout: 1000,
+      priceGranularity: 'low',
+      sendAllBids: false,
+      bidderSequence: 'fixed',
+      debugMode: true,
+    },
+  },
+];
+
 export function PublisherDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { token } = useAuthStore();
@@ -76,6 +136,16 @@ export function PublisherDetailPage() {
     mediaTypes: ['banner'],
   });
   const [activeTab, setActiveTab] = useState('overview');
+
+  // Config version history state
+  const [configVersions] = useState<ConfigVersion[]>(MOCK_CONFIG_VERSIONS);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [selectedVersion, setSelectedVersion] = useState<ConfigVersion | null>(null);
+  const [rollbackDialog, setRollbackDialog] = useState({
+    isOpen: false,
+    isLoading: false,
+    version: null as ConfigVersion | null,
+  });
 
   const fetchPublisher = async () => {
     if (!id) return;
@@ -265,6 +335,58 @@ export function PublisherDetailPage() {
     }));
   };
 
+  // Version history handlers
+  const handleVersionHistoryClick = () => {
+    setShowVersionHistory(true);
+    setSelectedVersion(null);
+  };
+
+  const handleVersionSelect = (version: ConfigVersion) => {
+    setSelectedVersion(version);
+  };
+
+  const handleVersionHistoryBack = () => {
+    if (selectedVersion) {
+      setSelectedVersion(null);
+    } else {
+      setShowVersionHistory(false);
+    }
+  };
+
+  const handleRollbackClick = (version: ConfigVersion) => {
+    setRollbackDialog({
+      isOpen: true,
+      isLoading: false,
+      version,
+    });
+  };
+
+  const handleRollbackCancel = () => {
+    setRollbackDialog({
+      isOpen: false,
+      isLoading: false,
+      version: null,
+    });
+  };
+
+  const handleRollbackConfirm = async () => {
+    setRollbackDialog((prev) => ({ ...prev, isLoading: true }));
+    // Simulate API call
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    setRollbackDialog({
+      isOpen: false,
+      isLoading: false,
+      version: null,
+    });
+    setSelectedVersion(null);
+    setShowVersionHistory(false);
+  };
+
+  const formatVersionDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleString();
+  };
+
   const getStatusBadge = (status: string) => {
     const styles = {
       active: 'bg-green-100 text-green-800',
@@ -450,33 +572,185 @@ export function PublisherDetailPage() {
       id: 'config',
       label: 'Config',
       content: (
-        <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Prebid Configuration</h2>
-          <p className="text-sm text-gray-500 mb-6">
-            Configure Prebid.js settings for this publisher.
-          </p>
-          <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Bidder Timeout</dt>
-              <dd className="mt-1 text-sm text-gray-900">1500ms</dd>
+        <div className="space-y-6">
+          {/* Main Config View */}
+          {!showVersionHistory && (
+            <div className="bg-white shadow rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-medium text-gray-900">Prebid Configuration</h2>
+                  <p className="text-sm text-gray-500">
+                    Configure Prebid.js settings for this publisher.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleVersionHistoryClick}
+                  className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                >
+                  <svg className="-ml-0.5 mr-1.5 h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Version History
+                </button>
+              </div>
+              <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Bidder Timeout</dt>
+                  <dd className="mt-1 text-sm text-gray-900">1500ms</dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Price Granularity</dt>
+                  <dd className="mt-1 text-sm text-gray-900">medium</dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Send All Bids</dt>
+                  <dd className="mt-1 text-sm text-gray-900">Enabled</dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Bidder Sequence</dt>
+                  <dd className="mt-1 text-sm text-gray-900">random</dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Debug Mode</dt>
+                  <dd className="mt-1 text-sm text-gray-900">Disabled</dd>
+                </div>
+              </dl>
             </div>
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Price Granularity</dt>
-              <dd className="mt-1 text-sm text-gray-900">medium</dd>
+          )}
+
+          {/* Version History View */}
+          {showVersionHistory && !selectedVersion && (
+            <div className="bg-white shadow rounded-lg p-6">
+              <div className="flex items-center mb-4">
+                <button
+                  type="button"
+                  onClick={handleVersionHistoryBack}
+                  className="mr-3 text-gray-500 hover:text-gray-700"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <div>
+                  <h2 className="text-lg font-medium text-gray-900">Version History</h2>
+                  <p className="text-sm text-gray-500">
+                    View and manage previous configuration versions.
+                  </p>
+                </div>
+              </div>
+              <div className="divide-y divide-gray-200">
+                {configVersions.map((version, index) => (
+                  <div
+                    key={version.id}
+                    className="py-4 hover:bg-gray-50 cursor-pointer rounded-lg px-2 -mx-2"
+                    onClick={() => handleVersionSelect(version)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                          index === 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          <span className="text-sm font-semibold">v{version.version}</span>
+                        </div>
+                        <div className="ml-4">
+                          <p className="text-sm font-medium text-gray-900">
+                            {version.changes}
+                            {index === 0 && (
+                              <span className="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                                Current
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            by {version.createdBy} • {formatVersionDate(version.createdAt)}
+                          </p>
+                        </div>
+                      </div>
+                      <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Send All Bids</dt>
-              <dd className="mt-1 text-sm text-gray-900">Enabled</dd>
+          )}
+
+          {/* Version Detail View */}
+          {showVersionHistory && selectedVersion && (
+            <div className="bg-white shadow rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center">
+                  <button
+                    type="button"
+                    onClick={handleVersionHistoryBack}
+                    className="mr-3 text-gray-500 hover:text-gray-700"
+                  >
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <div>
+                    <h2 className="text-lg font-medium text-gray-900">
+                      Version {selectedVersion.version}
+                      {selectedVersion.id === configVersions[0]?.id && (
+                        <span className="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                          Current
+                        </span>
+                      )}
+                    </h2>
+                    <p className="text-sm text-gray-500">
+                      {selectedVersion.changes}
+                    </p>
+                  </div>
+                </div>
+                {selectedVersion.id !== configVersions[0]?.id && (
+                  <button
+                    type="button"
+                    onClick={() => handleRollbackClick(selectedVersion)}
+                    className="inline-flex items-center rounded-md bg-yellow-50 px-3 py-2 text-sm font-semibold text-yellow-700 shadow-sm ring-1 ring-inset ring-yellow-600/20 hover:bg-yellow-100"
+                  >
+                    <svg className="-ml-0.5 mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                    </svg>
+                    Rollback to this version
+                  </button>
+                )}
+              </div>
+
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <p className="text-sm text-gray-500">
+                  Created by <span className="font-medium text-gray-900">{selectedVersion.createdBy}</span>
+                  {' '}on {formatVersionDate(selectedVersion.createdAt)}
+                </p>
+              </div>
+
+              <h3 className="text-sm font-medium text-gray-900 mb-3">Configuration Settings</h3>
+              <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <dt className="text-sm font-medium text-gray-500">Bidder Timeout</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{selectedVersion.config.bidderTimeout}ms</dd>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <dt className="text-sm font-medium text-gray-500">Price Granularity</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{selectedVersion.config.priceGranularity}</dd>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <dt className="text-sm font-medium text-gray-500">Send All Bids</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{selectedVersion.config.sendAllBids ? 'Enabled' : 'Disabled'}</dd>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <dt className="text-sm font-medium text-gray-500">Bidder Sequence</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{selectedVersion.config.bidderSequence}</dd>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <dt className="text-sm font-medium text-gray-500">Debug Mode</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{selectedVersion.config.debugMode ? 'Enabled' : 'Disabled'}</dd>
+                </div>
+              </dl>
             </div>
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Bidder Sequence</dt>
-              <dd className="mt-1 text-sm text-gray-900">random</dd>
-            </div>
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Debug Mode</dt>
-              <dd className="mt-1 text-sm text-gray-900">Disabled</dd>
-            </div>
-          </dl>
+          )}
         </div>
       ),
     },
@@ -877,6 +1151,19 @@ export function PublisherDetailPage() {
           </div>
         </form>
       </FormModal>
+
+      {/* Rollback Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={rollbackDialog.isOpen}
+        onClose={handleRollbackCancel}
+        onConfirm={handleRollbackConfirm}
+        title="Rollback Configuration"
+        message={`Are you sure you want to rollback to version ${rollbackDialog.version?.version}? This will replace the current configuration with the settings from "${rollbackDialog.version?.changes}".`}
+        confirmText="Rollback"
+        cancelText="Cancel"
+        variant="warning"
+        isLoading={rollbackDialog.isLoading}
+      />
     </div>
   );
 }

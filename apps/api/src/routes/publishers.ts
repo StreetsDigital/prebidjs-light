@@ -169,7 +169,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       createdAt: now,
       updatedAt: now,
       createdBy: user.userId,
-    });
+    }).run();
 
     // Create default config for the publisher
     db.insert(publisherConfig).values({
@@ -183,7 +183,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       version: 1,
       createdAt: now,
       updatedAt: now,
-    });
+    }).run();
 
     // Log audit entry
     db.insert(auditLogs).values({
@@ -197,7 +197,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    });
+    }).run();
 
     const newPublisher = db.select().from(publishers).where(eq(publishers.id, id)).get();
 

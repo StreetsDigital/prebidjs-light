@@ -55,3 +55,7 @@ features.db
 # Application specific
 *.min.js.map
 prebid-builds/
+
+# Auth helpers (contains credentials)
+.pbjs-auth
+.pbjs-token

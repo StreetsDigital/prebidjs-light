@@ -1641,7 +1641,7 @@ export function PublisherDetailPage() {
 
       handleWebsiteModalClose();
     } catch (err) {
-      addToast({ message: (err instanceof Error ? err.message : 'Failed to save website'), type: 'error') });
+      addToast({ message: (err instanceof Error ? err.message : 'Failed to save website'), type: 'error' });
       setWebsiteModal((prev) => ({ ...prev, isLoading: false }));
     }
   };
@@ -1686,7 +1686,7 @@ export function PublisherDetailPage() {
       addToast({ message: 'Website deleted successfully', type: 'success' });
       handleDeleteWebsiteCancel();
     } catch (err) {
-      addToast({ message: (err instanceof Error ? err.message : 'Failed to delete website'), type: 'error') });
+      addToast({ message: (err instanceof Error ? err.message : 'Failed to delete website'), type: 'error' });
       setDeleteWebsiteDialog((prev) => ({ ...prev, isLoading: false }));
     }
   };
@@ -1729,7 +1729,7 @@ export function PublisherDetailPage() {
       addToast({ message: 'Admin assigned successfully', type: 'success' });
       handleCloseAssignAdminModal();
     } catch (err) {
-      addToast({ message: (err instanceof Error ? err.message : 'Failed to assign admin'), type: 'error') });
+      addToast({ message: (err instanceof Error ? err.message : 'Failed to assign admin'), type: 'error' });
       setAssignAdminModal((prev) => ({ ...prev, isLoading: false }));
     }
   };
@@ -1782,7 +1782,7 @@ export function PublisherDetailPage() {
       addToast({ message: 'Admin removed successfully', type: 'success' });
       handleRemoveAdminCancel();
     } catch (err) {
-      addToast({ message: (err instanceof Error ? err.message : 'Failed to remove admin'), type: 'error') });
+      addToast({ message: (err instanceof Error ? err.message : 'Failed to remove admin'), type: 'error' });
       setRemoveAdminDialog((prev) => ({ ...prev, isLoading: false }));
     }
   };
@@ -1919,7 +1919,7 @@ export function PublisherDetailPage() {
       addToast({ message: (editingAbTest ? 'A/B test updated successfully' : 'A/B test created successfully'), type: 'success' });
       handleCloseAbTestModal();
     } catch (err) {
-      addToast({ message: (err instanceof Error ? err.message : 'Failed to save A/B test'), type: 'error') });
+      addToast({ message: (err instanceof Error ? err.message : 'Failed to save A/B test'), type: 'error' });
       setAbTestModal(prev => ({ ...prev, isLoading: false }));
     }
   };
@@ -1942,7 +1942,7 @@ export function PublisherDetailPage() {
       await fetchAbTests();
       addToast({ message: `A/B test ${status === 'running' ? 'started' : status}`, type: 'success' });
     } catch (err) {
-      addToast({ message: (err instanceof Error ? err.message : 'Failed to update A/B test'), type: 'error') });
+      addToast({ message: (err instanceof Error ? err.message : 'Failed to update A/B test'), type: 'error' });
     }
   };
 
@@ -1986,7 +1986,7 @@ export function PublisherDetailPage() {
       addToast({ message: 'A/B test deleted successfully', type: 'success' });
       handleDeleteAbTestCancel();
     } catch (err) {
-      addToast({ message: (err instanceof Error ? err.message : 'Failed to delete A/B test'), type: 'error') });
+      addToast({ message: (err instanceof Error ? err.message : 'Failed to delete A/B test'), type: 'error' });
       setDeleteAbTestDialog(prev => ({ ...prev, isLoading: false }));
     }
   };

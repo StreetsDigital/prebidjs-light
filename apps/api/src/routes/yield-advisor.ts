@@ -71,7 +71,7 @@ export default async function yieldAdvisorRoutes(fastify: FastifyInstance) {
           expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
           createdAt: now,
           updatedAt: now,
-        }).run();
+        });
 
         savedRecs.push({ ...rec, id: recId });
       }
@@ -124,7 +124,7 @@ export default async function yieldAdvisorRoutes(fastify: FastifyInstance) {
           updatedAt: now,
         })
         .where(eq(yieldRecommendations.id, recommendationId))
-        .run();
+        ;
 
       return reply.send({ success: true, message: 'Recommendation implemented' });
     } catch (error) {
@@ -152,7 +152,7 @@ export default async function yieldAdvisorRoutes(fastify: FastifyInstance) {
         eq(yieldRecommendations.id, recommendationId),
         eq(yieldRecommendations.publisherId, publisherId)
       ))
-      .run();
+      ;
 
     return reply.send({ success: true });
   });
@@ -197,7 +197,7 @@ export default async function yieldAdvisorRoutes(fastify: FastifyInstance) {
           updatedAt: new Date().toISOString(),
         })
         .where(eq(yieldRecommendations.id, recommendationId))
-        .run();
+        ;
 
       return reply.send({ actualImpact });
     } catch (error) {
@@ -463,7 +463,7 @@ async function implementRecommendation(publisherId: string, type: string, action
           eq(publisherBidders.publisherId, publisherId),
           eq(publisherBidders.bidderCode, action.bidderCode)
         ))
-        .run();
+        ;
       break;
 
     case 'enable_bidder':
@@ -473,7 +473,7 @@ async function implementRecommendation(publisherId: string, type: string, action
           eq(publisherBidders.publisherId, publisherId),
           eq(publisherBidders.bidderCode, action.bidderCode)
         ))
-        .run();
+        ;
       break;
 
     case 'adjust_timeout':
@@ -483,7 +483,7 @@ async function implementRecommendation(publisherId: string, type: string, action
           eq(publisherBidders.publisherId, publisherId),
           eq(publisherBidders.bidderCode, action.bidderCode)
         ))
-        .run();
+        ;
       break;
 
     default:

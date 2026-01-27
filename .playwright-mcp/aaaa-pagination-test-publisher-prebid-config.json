@@ -1,0 +1,58 @@
+{
+  "debug": false,
+  "bidderTimeout": 1500,
+  "priceGranularity": "medium",
+  "sendAllBids": true,
+  "bidderSequence": "random",
+  "publisherId": "64488716-77c4-448d-a7d8-072c83877837",
+  "publisherName": "AAAA Pagination Test Publisher",
+  "publisherSlug": "aaaa-pagination-test-publisher",
+  "domains": [],
+  "adUnits": [
+    {
+      "code": "responsive-banner",
+      "mediaTypes": [
+        "banner"
+      ],
+      "bids": [
+        {
+          "bidder": "appnexus",
+          "params": {
+            "placementId": "12345678"
+          }
+        },
+        {
+          "bidder": "rubicon",
+          "params": {
+            "accountId": "99999",
+            "siteId": "88888",
+            "zoneId": "77777"
+          }
+        }
+      ]
+    },
+    {
+      "code": "test-dropdown-cleanup-unit",
+      "mediaTypes": [
+        "banner"
+      ],
+      "bids": [
+        {
+          "bidder": "appnexus",
+          "params": {
+            "placementId": "12345678"
+          }
+        },
+        {
+          "bidder": "rubicon",
+          "params": {
+            "accountId": "99999",
+            "siteId": "88888",
+            "zoneId": "77777"
+          }
+        }
+      ]
+    }
+  ],
+  "exportedAt": "2026-01-24T10:57:37.060Z"
+}

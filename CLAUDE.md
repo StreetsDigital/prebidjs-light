@@ -1,0 +1,488 @@
+# Development Guidelines for pbjs_engine
+
+This document contains critical information for working with the pbjs_engine Prebid wrapper platform. Follow these guidelines precisely.
+
+## Project Overview
+
+pbjs_engine is a Prebid.js wrapper platform that provides server-managed configurations for publishers. The platform enables publishers to embed a lightweight JavaScript wrapper on their sites that automatically loads Prebid.js with centrally managed bidder configurations.
+
+### Technology Stack
+
+**Backend (API Server):**
+- Node.js 20 LTS with TypeScript
+- Fastify web framework
+- Drizzle ORM for type-safe database access
+- SQLite for data storage (PostgreSQL-compatible schema)
+- JWT authentication with bcrypt password hashing
+
+**Frontend (Admin Portal):**
+- React 18 with TypeScript
+- Vite for build tooling
+- Tailwind CSS for styling
+- Zustand for state management
+- React Router for navigation
+
+**Publisher Wrapper:**
+- TypeScript compiled to ES2015
+- Webpack with Terser for minification
+- Lightweight (<2KB gzipped) JavaScript library
+- CDN-ready with cache control headers
+
+### Architecture
+
+```
+pbjs_engine/
+├── apps/
+│   ├── api/              # Fastify backend server
+│   │   ├── src/
+│   │   │   ├── db/       # Database schema and migrations
+│   │   │   ├── routes/   # API route handlers
+│   │   │   └── index.ts  # Server entry point
+│   │   └── data/         # SQLite database files
+│   ├── admin/            # React admin portal
+│   │   ├── src/
+│   │   │   ├── components/  # UI components
+│   │   │   ├── pages/       # Page components
+│   │   │   ├── stores/      # Zustand state stores
+│   │   │   └── App.tsx
+│   │   └── dist/         # Production build output
+│   └── wrapper/          # Publisher wrapper script
+│       ├── src/
+│       │   └── pb.ts     # Wrapper source code
+│       └── dist/         # Minified production build
+└── docs/                 # Documentation
+```
+
+## Core Development Rules
+
+### 1. Language & Framework Standards
+
+**Backend:**
+- **Language**: TypeScript 5.3+ with strict mode enabled
+- **Runtime**: Node.js 20 LTS
+- **Web Framework**: Fastify for high-performance HTTP handling
+- **Code Style**: Prettier for formatting, ESLint for linting
+- **Error Handling**: Use try-catch with proper error responses
+- **Testing**: Vitest for unit and integration tests
+
+**Frontend:**
+- **Language**: TypeScript with React JSX
+- **Framework**: React 18 with functional components and hooks
+- **Styling**: Tailwind CSS utility classes
+- **State**: Zustand for global state, React hooks for local state
+- **Forms**: Controlled components with validation
+
+### 2. Database Guidelines
+
+**Technology**: SQLite with Drizzle ORM
+
+**Schema Design:**
+- Use proper foreign key constraints
+- Implement soft deletes with `deleted_at` timestamp
+- Use UUIDs for primary keys
+- Maintain audit fields: `created_at`, `updated_at`, `deleted_at`
+
+**Data Hierarchy:**
+```
+Publisher → Website → Ad Unit
+          ↓
+       Bidder Configuration
+```
+
+**Migrations:**
+```bash
+# Create migration script in apps/api/src/db/
+# Run with: npm run migrate
+```
+
+**Query Patterns:**
+```typescript
+// Use Drizzle ORM for type safety
+import { db } from '../db';
+import { publishers, websites, adUnits } from '../db/schema';
+import { eq, and, isNull } from 'drizzle-orm';
+
+// Fetch with soft delete filter
+const activePublishers = db.select()
+  .from(publishers)
+  .where(isNull(publishers.deletedAt))
+  .all();
+
+// Join query
+const websiteWithAdUnits = db.select()
+  .from(websites)
+  .leftJoin(adUnits, eq(websites.id, adUnits.websiteId))
+  .where(eq(websites.publisherId, publisherId))
+  .all();
+```
+
+### 3. API Design
+
+**RESTful Conventions:**
+- Use plural nouns for resources (`/publishers`, `/websites`)
+- Hierarchical routes for relationships (`/websites/:id/ad-units`)
+- Proper HTTP methods (GET, POST, PUT, DELETE)
+- Use HTTP status codes correctly (200, 201, 400, 401, 404, 500)
+
+**Authentication:**
+```typescript
+// JWT-based authentication
+// Token required in Authorization header: Bearer <token>
+// Role-based access: super_admin, admin, publisher
+```
+
+**Route Structure:**
+```
+/api/auth/login              # Authentication
+/api/auth/forgot-password    # Password reset
+/api/publishers              # Publisher CRUD
+/api/publishers/:id          # Single publisher
+/api/websites/:id/ad-units   # Hierarchical ad units
+/api/system/health           # System monitoring
+/pb.min.js                   # Wrapper script (no /api prefix)
+/c/:publisherId              # Public config endpoint
+```
+
+**Response Format:**
+```typescript
+// Success
+{ data: T, message?: string }
+
+// Error
+{ error: string, details?: any }
+
+// Pagination
+{ data: T[], total: number, page: number, limit: number }
+```
+
+### 4. Frontend Patterns
+
+**Component Structure:**
+```typescript
+// Functional component with TypeScript
+interface Props {
+  id: string;
+  onSave: (data: FormData) => void;
+}
+
+export function ComponentName({ id, onSave }: Props) {
+  const [state, setState] = useState<StateType>(initialState);
+
+  useEffect(() => {
+    // Side effects
+  }, [dependencies]);
+
+  return (
+    <div className="tailwind-classes">
+      {/* JSX */}
+    </div>
+  );
+}
+```
+
+**State Management:**
+```typescript
+// Zustand store (apps/admin/src/stores/)
+import { create } from 'zustand';
+
+interface AuthStore {
+  user: User | null;
+  token: string | null;
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => void;
+}
+
+export const useAuthStore = create<AuthStore>((set) => ({
+  user: null,
+  token: localStorage.getItem('token'),
+  login: async (email, password) => { /* ... */ },
+  logout: () => { /* ... */ },
+}));
+```
+
+**Data Fetching:**
+```typescript
+// Use fetch with proper error handling
+const fetchData = async () => {
+  try {
+    const response = await fetch('/api/resource', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch');
+    }
+
+    const data = await response.json();
+    setData(data);
+  } catch (err) {
+    console.error(err);
+    setError(err.message);
+  }
+};
+```
+
+### 5. Wrapper Development
+
+**Purpose**: Lightweight JavaScript library that publishers embed to load Prebid.js with server-managed configuration.
+
+**Build Process:**
+```bash
+cd apps/wrapper
+npm install
+npm run build      # Production build (minified)
+npm run build:dev  # Development build (readable)
+npm run dev        # Watch mode
+```
+
+**Integration:**
+```html
+<!-- Publisher embeds this script -->
+<script src="https://cdn.example.com/pb.min.js" async></script>
+<script>
+  window.pb = window.pb || { que: [] };
+  window.pb.que.push(function() {
+    pb.init().then(() => console.log('Prebid ready!'));
+  });
+</script>
+```
+
+**API Surface:**
+- `pb.init()` - Initialize with server config
+- `pb.refresh([codes])` - Refresh ad units
+- `pb.getConfig()` - Get current configuration
+- `pb.setConfig(config)` - Update configuration
+- `pb.on(event, callback)` - Subscribe to events
+- `pb.off(event, callback)` - Unsubscribe from events
+
+### 6. Security Standards
+
+**Authentication:**
+- JWT tokens with expiration
+- Bcrypt password hashing (salt rounds: 10)
+- Secure password reset flow with expiring tokens
+
+**CORS:**
+- Configured for cross-origin requests
+- Allows credentials for cookie-based sessions
+
+**Input Validation:**
+- Validate all user inputs on backend
+- Sanitize data before database insertion
+- Use TypeScript types for compile-time safety
+
+**Secrets Management:**
+- Store secrets in environment variables
+- Never commit `.env` files
+- Use different secrets for dev/prod
+
+**API Security:**
+- Rate limiting (100 requests per minute)
+- JWT token validation on protected routes
+- Role-based access control (RBAC)
+
+### 7. Testing
+
+**Backend Tests:**
+```bash
+cd apps/api
+npm test              # Run all tests
+npm run test:watch    # Watch mode
+npm run test:coverage # Coverage report
+```
+
+**Frontend Tests:**
+```bash
+cd apps/admin
+npm test
+```
+
+**Integration Tests:**
+- Test API endpoints with actual database
+- Use test database instance
+- Clean up test data after each run
+
+### 8. Performance Optimization
+
+**Backend:**
+- Use connection pooling for database
+- Implement caching for frequently accessed data
+- Optimize database queries with proper indexes
+- Use async/await for non-blocking operations
+
+**Frontend:**
+- Code splitting with React.lazy()
+- Optimize bundle size with Vite
+- Use React.memo for expensive components
+- Debounce user inputs for search/filter
+
+**Wrapper:**
+- Keep bundle size minimal (<2KB gzipped)
+- Use ES2015 target for modern browsers
+- Minify with Terser
+- Enable gzip compression on CDN
+
+### 9. Deployment
+
+**Development:**
+```bash
+# Run all services
+npm run dev
+
+# Backend only
+cd apps/api && npm run dev
+
+# Frontend only
+cd apps/admin && npm run dev
+```
+
+**Production Build:**
+```bash
+# Backend
+cd apps/api && npm run build
+
+# Frontend
+cd apps/admin && npm run build
+
+# Wrapper
+cd apps/wrapper && npm run build
+```
+
+**Environment Variables:**
+```bash
+# Backend (.env in apps/api/)
+NODE_ENV=production
+API_PORT=3001
+JWT_SECRET=<secure-random-secret>
+COOKIE_SECRET=<secure-random-secret>
+DATABASE_URL=file:./data/pbjs_engine.db
+
+# Frontend (.env in apps/admin/)
+VITE_API_URL=https://api.example.com
+```
+
+**Health Checks:**
+- `/health` - Basic API health
+- `/api/system/health` - Detailed system status
+
+## Common Workflows
+
+### Adding a New Feature
+
+1. **Create database migration** (if needed)
+   ```typescript
+   // apps/api/src/db/migrations/add-feature.ts
+   ```
+
+2. **Update schema**
+   ```typescript
+   // apps/api/src/db/schema.ts
+   export const newTable = sqliteTable('new_table', { ... });
+   ```
+
+3. **Create API routes**
+   ```typescript
+   // apps/api/src/routes/feature.ts
+   export default async function featureRoutes(fastify: FastifyInstance) {
+     fastify.get('/feature', handler);
+   }
+   ```
+
+4. **Register routes**
+   ```typescript
+   // apps/api/src/index.ts
+   import featureRoutes from './routes/feature';
+   app.register(featureRoutes, { prefix: '/api/feature' });
+   ```
+
+5. **Create frontend page**
+   ```typescript
+   // apps/admin/src/pages/admin/FeaturePage.tsx
+   export function FeaturePage() { ... }
+   ```
+
+6. **Add route**
+   ```typescript
+   // apps/admin/src/App.tsx
+   <Route path="feature" element={<FeaturePage />} />
+   ```
+
+### Debugging
+
+**Backend Logging:**
+```typescript
+fastify.log.info('Info message');
+fastify.log.error('Error message', err);
+```
+
+**Frontend Console:**
+```typescript
+console.log('Debug info:', data);
+console.error('Error:', err);
+```
+
+**Database Inspection:**
+```bash
+cd apps/api/data
+sqlite3 pbjs_engine.db
+.schema          # Show schema
+.tables          # List tables
+SELECT * FROM publishers;
+```
+
+### Common Issues
+
+1. **CORS errors**: Check CORS configuration in apps/api/src/index.ts
+2. **Auth failures**: Verify JWT_SECRET matches between client/server
+3. **Database locked**: SQLite allows only one writer - check for concurrent writes
+4. **Missing dependencies**: Run `npm install` in each app directory
+
+## Best Practices
+
+1. **Type Safety**: Use TypeScript strictly, avoid `any` types
+2. **Error Handling**: Always handle errors gracefully with user-friendly messages
+3. **Code Reuse**: Extract common logic into shared utilities
+4. **Documentation**: Comment complex logic, keep README files updated
+5. **Git Commits**: Use conventional commit messages (feat, fix, docs, etc.)
+6. **Code Reviews**: Review all changes before merging
+7. **Testing**: Write tests for critical business logic
+8. **Performance**: Profile and optimize hot paths
+
+## Project-Specific Notes
+
+### Data Taxonomy
+
+The system uses a three-tier hierarchy:
+- **Publisher**: Top-level account (e.g., "News Corp")
+- **Website**: Domain under publisher (e.g., "news.com")
+- **Ad Unit**: Specific ad placement on website (e.g., "header-banner")
+
+### Soft Deletes
+
+All main tables use soft deletes:
+```typescript
+deletedAt: text('deleted_at') // NULL = active, timestamp = deleted
+```
+
+Always filter by `deleted_at IS NULL` when querying active records.
+
+### UUID Generation
+
+```typescript
+import { v4 as uuidv4 } from 'uuid';
+const id = uuidv4();
+```
+
+### Wrapper Distribution
+
+The wrapper is served at:
+- `/pb.min.js` - Generic wrapper
+- `/pb/:apiKey.js` - Publisher-specific wrapper
+- `/pb/info` - Build information
+
+Configuration endpoint:
+- `/c/:publisherId` - Public config (cached 5 minutes)
+
+Remember: This is a management platform for Prebid.js configurations, not a real-time bidding exchange. Focus on configuration management, not auction performance.

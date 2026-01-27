@@ -4,7 +4,7 @@ import * as schema from './schema';
 import path from 'path';
 
 // Database file location
-const DB_PATH = process.env.DATABASE_PATH || path.join(process.cwd(), 'data', 'pbjs_engine.db');
+const DB_PATH: string = process.env.DATABASE_PATH || path.join(process.cwd(), 'data', 'pbjs_engine.db');
 
 // Ensure data directory exists
 import fs from 'fs';
@@ -14,7 +14,7 @@ if (!fs.existsSync(dataDir)) {
 }
 
 // Initialize SQLite database
-const sqlite = new Database(DB_PATH);
+const sqlite: any = new Database(DB_PATH);
 
 // Enable foreign keys
 sqlite.pragma('journal_mode = WAL');

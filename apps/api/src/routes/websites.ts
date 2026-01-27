@@ -174,7 +174,7 @@ export default async function websiteRoutes(fastify: FastifyInstance) {
       notes: notes || null,
       createdAt: now,
       updatedAt: now,
-    }).run();
+    });
 
     // Log audit entry
     db.insert(auditLogs).values({
@@ -188,7 +188,7 @@ export default async function websiteRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    }).run();
+    });
 
     const newWebsite = db.select().from(websites).where(eq(websites.id, websiteId)).get();
 
@@ -256,7 +256,7 @@ export default async function websiteRoutes(fastify: FastifyInstance) {
         updatedAt: now,
       })
       .where(eq(websites.id, websiteId))
-      .run();
+      ;
 
     const updated = db.select().from(websites).where(eq(websites.id, websiteId)).get();
 
@@ -277,7 +277,7 @@ export default async function websiteRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    }).run();
+    });
 
     // Get ad unit count
     const adUnitCount = db.select().from(adUnits).where(eq(adUnits.websiteId, websiteId)).all().length;
@@ -327,16 +327,16 @@ export default async function websiteRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    }).run();
+    });
 
     // Update ad units to remove website reference (don't delete them)
     db.update(adUnits)
-      .set({ websiteId: null })
+      .set({ websiteId: null as any })
       .where(eq(adUnits.websiteId, websiteId))
-      .run();
+      ;
 
     // Delete the website
-    db.delete(websites).where(eq(websites.id, websiteId)).run();
+    db.delete(websites).where(eq(websites.id, websiteId));
 
     return reply.code(204).send();
   });

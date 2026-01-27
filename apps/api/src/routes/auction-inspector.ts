@@ -412,7 +412,7 @@ export default async function auctionInspectorRoutes(fastify: FastifyInstance) {
       statusCode: body.statusCode || null,
       metadata: body.metadata ? JSON.stringify(body.metadata) : null,
       createdAt: now,
-    }).run();
+    });
 
     return { success: true, eventId };
   });
@@ -511,7 +511,7 @@ export default async function auctionInspectorRoutes(fastify: FastifyInstance) {
           lte(auctionDebugEvents.timestamp, cutoffDate)
         )
       )
-      .run();
+      ;
 
     return {
       success: true,

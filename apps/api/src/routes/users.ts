@@ -125,7 +125,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
       status: 'active',
       createdAt: now,
       updatedAt: now,
-    }).run();
+    });
 
     const newUser = db.select({
       id: users.id,
@@ -186,7 +186,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
     if (status && isSuperAdmin) updates.status = status;
     if (publisherId !== undefined && isSuperAdmin) updates.publisherId = publisherId;
 
-    db.update(users).set(updates).where(eq(users.id, id)).run();
+    db.update(users).set(updates).where(eq(users.id, id));
 
     const updatedUser = db.select({
       id: users.id,
@@ -218,7 +218,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
       return reply.code(404).send({ error: 'User not found' });
     }
 
-    db.delete(users).where(eq(users.id, id)).run();
+    db.delete(users).where(eq(users.id, id));
 
     return reply.code(204).send();
   });

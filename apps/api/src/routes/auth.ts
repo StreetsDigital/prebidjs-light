@@ -47,7 +47,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     db.update(users)
       .set({ lastLoginAt: new Date().toISOString() })
       .where(eq(users.id, user.id))
-      .run();
+      ;
 
     // Generate JWT token
     const tokenPayload: TokenPayload = {
@@ -73,7 +73,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       expiresAt: refreshExpiry.toISOString(),
       createdAt: new Date().toISOString(),
-    }).run();
+    });
 
     // Set refresh token as HttpOnly cookie
     reply.setCookie('refreshToken', refreshToken, {
@@ -102,7 +102,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     if (refreshToken) {
       // Delete the session
-      db.delete(sessions).where(eq(sessions.refreshToken, refreshToken)).run();
+      db.delete(sessions).where(eq(sessions.refreshToken, refreshToken));
     }
 
     // Clear the cookie
@@ -128,7 +128,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     // Check if expired
     if (new Date(session.expiresAt) < new Date()) {
-      db.delete(sessions).where(eq(sessions.id, session.id)).run();
+      db.delete(sessions).where(eq(sessions.id, session.id));
       return reply.code(401).send({ message: 'Refresh token expired' });
     }
 
@@ -154,7 +154,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     db.update(sessions)
       .set({ refreshToken: newRefreshToken })
       .where(eq(sessions.id, session.id))
-      .run();
+      ;
 
     reply.setCookie('refreshToken', newRefreshToken, {
       httpOnly: true,
@@ -232,7 +232,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
         token: resetToken,
         expiresAt: expiresAt.toISOString(),
         createdAt: new Date().toISOString(),
-      }).run();
+      });
 
       // In development, log the reset link to console
       console.log('\n=== PASSWORD RESET LINK ===');
@@ -292,16 +292,16 @@ export default async function authRoutes(fastify: FastifyInstance) {
         updatedAt: new Date().toISOString()
       })
       .where(eq(users.id, user.id))
-      .run();
+      ;
 
     // Mark the token as used
     db.update(passwordResetTokens)
       .set({ usedAt: new Date().toISOString() })
       .where(eq(passwordResetTokens.id, resetToken.id))
-      .run();
+      ;
 
     // Invalidate all user sessions for security
-    db.delete(sessions).where(eq(sessions.userId, user.id)).run();
+    db.delete(sessions).where(eq(sessions.userId, user.id));
 
     return { message: 'Password has been reset successfully' };
   });

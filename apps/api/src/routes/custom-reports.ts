@@ -103,7 +103,7 @@ export default async function customReportsRoutes(fastify: FastifyInstance) {
       runCount: 0,
       createdAt: now,
       updatedAt: now,
-    }).run();
+    });
 
     const report = db.select().from(customReports)
       .where(eq(customReports.id, reportId))
@@ -149,7 +149,7 @@ export default async function customReportsRoutes(fastify: FastifyInstance) {
         eq(customReports.id, reportId),
         eq(customReports.publisherId, publisherId)
       ))
-      .run();
+      ;
 
     const report = db.select().from(customReports)
       .where(eq(customReports.id, reportId))
@@ -177,7 +177,7 @@ export default async function customReportsRoutes(fastify: FastifyInstance) {
         eq(customReports.id, reportId),
         eq(customReports.publisherId, publisherId)
       ))
-      .run();
+      ;
 
     return reply.send({ success: true });
   });
@@ -214,7 +214,7 @@ export default async function customReportsRoutes(fastify: FastifyInstance) {
       startedAt: startTime.toISOString(),
       triggeredBy,
       parameters: parameters ? JSON.stringify(parameters) : null,
-    }).run();
+    });
 
     try {
       // Parse report configuration
@@ -240,7 +240,7 @@ export default async function customReportsRoutes(fastify: FastifyInstance) {
           outputFormat: report.exportFormat,
         })
         .where(eq(reportExecutions.id, executionId))
-        .run();
+        ;
 
       // Update report stats
       db.update(customReports)
@@ -249,7 +249,7 @@ export default async function customReportsRoutes(fastify: FastifyInstance) {
           runCount: report.runCount + 1,
         })
         .where(eq(customReports.id, reportId))
-        .run();
+        ;
 
       return reply.send({
         executionId,
@@ -267,7 +267,7 @@ export default async function customReportsRoutes(fastify: FastifyInstance) {
           errorMessage: String(error),
         })
         .where(eq(reportExecutions.id, executionId))
-        .run();
+        ;
 
       return reply.status(500).send({
         error: 'Report execution failed',
@@ -484,7 +484,7 @@ export default async function customReportsRoutes(fastify: FastifyInstance) {
       runCount: 0,
       createdAt: now,
       updatedAt: now,
-    }).run();
+    });
 
     const report = db.select().from(customReports)
       .where(eq(customReports.id, reportId))

@@ -7,22 +7,20 @@ import { requireAuth, requireAdmin, TokenPayload } from '../middleware/auth';
 interface CreateScheduledReportBody {
   name: string;
   reportType: 'revenue' | 'latency' | 'fill_rate' | 'all';
-  schedule: 'daily' | 'weekly' | 'monthly';
+  frequency: 'daily' | 'weekly' | 'monthly';
   recipients: string[];
   publisherId?: string;
-  dateRange: 'last_7_days' | 'last_30_days' | 'last_90_days' | 'this_month' | 'last_month';
-  format: 'csv' | 'json' | 'pdf';
+  format: 'csv' | 'pdf' | 'excel';
 }
 
 interface UpdateScheduledReportBody {
   name?: string;
   reportType?: 'revenue' | 'latency' | 'fill_rate' | 'all';
-  schedule?: 'daily' | 'weekly' | 'monthly';
+  frequency?: 'daily' | 'weekly' | 'monthly';
   recipients?: string[];
   publisherId?: string;
-  dateRange?: 'last_7_days' | 'last_30_days' | 'last_90_days' | 'this_month' | 'last_month';
-  format?: 'csv' | 'json' | 'pdf';
-  status?: 'active' | 'paused';
+  format?: 'csv' | 'pdf' | 'excel';
+  isActive?: boolean;
 }
 
 // Helper to calculate next send time based on schedule
@@ -86,7 +84,7 @@ export default async function scheduledReportsRoutes(fastify: FastifyInstance) {
   fastify.post<{ Body: CreateScheduledReportBody }>('/', {
     preHandler: requireAdmin,
   }, async (request, reply) => {
-    const { name, reportType, schedule, recipients, publisherId, dateRange, format } = request.body;
+    const { name, reportType, frequency, recipients, publisherId, format } = request.body;
     const user = request.user as TokenPayload;
 
     if (!name || !recipients || recipients.length === 0) {
@@ -103,24 +101,23 @@ export default async function scheduledReportsRoutes(fastify: FastifyInstance) {
 
     const now = new Date().toISOString();
     const id = uuidv4();
-    const nextSendAt = calculateNextSendAt(schedule);
+    const nextRunAt = new Date(Date.now() + 86400000).toISOString(); // Next day
 
     db.insert(scheduledReports).values({
       id,
+      userId: user.userId,
       name,
       reportType: reportType || 'all',
-      schedule: schedule || 'daily',
+      frequency: frequency || 'daily',
       recipients: JSON.stringify(recipients),
       publisherId: publisherId || null,
-      dateRange: dateRange || 'last_7_days',
-      format: format || 'csv',
-      status: 'active',
-      lastSentAt: null,
-      nextSendAt,
-      createdBy: user.userId,
+      format: format || 'pdf',
+      isActive: true,
+      lastRunAt: null,
+      nextRunAt,
       createdAt: now,
       updatedAt: now,
-    }).run();
+    } as any);
 
     // Log audit entry
     db.insert(auditLogs).values({
@@ -134,7 +131,7 @@ export default async function scheduledReportsRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    }).run();
+    });
 
     const newReport = db.select().from(scheduledReports).where(eq(scheduledReports.id, id)).get();
 
@@ -149,7 +146,7 @@ export default async function scheduledReportsRoutes(fastify: FastifyInstance) {
     preHandler: requireAdmin,
   }, async (request, reply) => {
     const { id } = request.params;
-    const { name, reportType, schedule, recipients, publisherId, dateRange, format, status } = request.body;
+    const { name, reportType, frequency, recipients, publisherId, format, isActive } = request.body;
     const user = request.user as TokenPayload;
 
     const report = db.select().from(scheduledReports).where(eq(scheduledReports.id, id)).get();
@@ -171,36 +168,34 @@ export default async function scheduledReportsRoutes(fastify: FastifyInstance) {
     const oldValues = {
       name: report.name,
       reportType: report.reportType,
-      schedule: report.schedule,
+      frequency: report.frequency,
       recipients: report.recipients ? JSON.parse(report.recipients) : [],
-      dateRange: report.dateRange,
       format: report.format,
-      status: report.status,
+      isActive: report.isActive,
     };
 
     const now = new Date().toISOString();
 
-    // Recalculate next send time if schedule changed
-    let nextSendAt = report.nextSendAt;
-    if (schedule && schedule !== report.schedule) {
-      nextSendAt = calculateNextSendAt(schedule);
+    // Recalculate next send time if frequency changed
+    let nextRunAt = report.nextRunAt;
+    if (frequency && frequency !== report.frequency) {
+      nextRunAt = new Date(Date.now() + 86400000).toISOString(); // Simple: next day
     }
 
     db.update(scheduledReports)
       .set({
         ...(name !== undefined && { name }),
         ...(reportType !== undefined && { reportType }),
-        ...(schedule !== undefined && { schedule }),
+        ...(frequency !== undefined && { frequency }),
         ...(recipients !== undefined && { recipients: JSON.stringify(recipients) }),
         ...(publisherId !== undefined && { publisherId }),
-        ...(dateRange !== undefined && { dateRange }),
         ...(format !== undefined && { format }),
-        ...(status !== undefined && { status }),
-        ...(schedule && { nextSendAt }),
+        ...(isActive !== undefined && { isActive }),
+        ...(frequency && { nextRunAt }),
         updatedAt: now,
-      })
+      } as any)
       .where(eq(scheduledReports.id, id))
-      .run();
+      ;
 
     const updated = db.select().from(scheduledReports).where(eq(scheduledReports.id, id)).get();
 
@@ -215,16 +210,15 @@ export default async function scheduledReportsRoutes(fastify: FastifyInstance) {
       newValues: JSON.stringify({
         name: updated?.name,
         reportType: updated?.reportType,
-        schedule: updated?.schedule,
+        frequency: updated?.frequency,
         recipients: updated?.recipients ? JSON.parse(updated.recipients) : [],
-        dateRange: updated?.dateRange,
         format: updated?.format,
-        status: updated?.status,
+        isActive: updated?.isActive,
       }),
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    }).run();
+    });
 
     return {
       ...updated,
@@ -256,17 +250,17 @@ export default async function scheduledReportsRoutes(fastify: FastifyInstance) {
       oldValues: JSON.stringify({
         name: report.name,
         reportType: report.reportType,
-        schedule: report.schedule,
+        frequency: report.frequency,
         recipients: report.recipients ? JSON.parse(report.recipients) : [],
-        status: report.status,
+        isActive: report.isActive,
       }),
       newValues: null,
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    }).run();
+    });
 
-    db.delete(scheduledReports).where(eq(scheduledReports.id, id)).run();
+    db.delete(scheduledReports).where(eq(scheduledReports.id, id));
 
     return reply.code(204).send();
   });

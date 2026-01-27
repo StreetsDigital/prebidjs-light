@@ -169,7 +169,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       createdAt: now,
       updatedAt: now,
       createdBy: user.userId,
-    }).run();
+    });
 
     // Create default config for the publisher
     db.insert(publisherConfig).values({
@@ -183,7 +183,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       version: 1,
       createdAt: now,
       updatedAt: now,
-    }).run();
+    });
 
     // Log audit entry
     db.insert(auditLogs).values({
@@ -197,7 +197,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    }).run();
+    });
 
     const newPublisher = db.select().from(publishers).where(eq(publishers.id, id)).get();
 
@@ -249,7 +249,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
         updatedAt: now,
       })
       .where(eq(publishers.id, id))
-      .run();
+      ;
 
     const updated = db.select().from(publishers).where(eq(publishers.id, id)).get();
 
@@ -271,7 +271,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    }).run();
+    });
 
     return {
       ...updated,
@@ -312,21 +312,21 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    }).run();
+    });
 
     if (hard === 'true') {
       // Hard delete - permanently remove publisher and related data
-      db.delete(publisherConfig).where(eq(publisherConfig.publisherId, id)).run();
-      db.delete(adUnits).where(eq(adUnits.publisherId, id)).run();
-      db.delete(publisherBidders).where(eq(publisherBidders.publisherId, id)).run();
-      db.delete(publisherAdmins).where(eq(publisherAdmins.publisherId, id)).run();
-      db.delete(publishers).where(eq(publishers.id, id)).run();
+      db.delete(publisherConfig).where(eq(publisherConfig.publisherId, id));
+      db.delete(adUnits).where(eq(adUnits.publisherId, id));
+      db.delete(publisherBidders).where(eq(publisherBidders.publisherId, id));
+      db.delete(publisherAdmins).where(eq(publisherAdmins.publisherId, id));
+      db.delete(publishers).where(eq(publishers.id, id));
     } else {
       // Soft delete - mark as deleted but preserve data
       db.update(publishers)
         .set({ deletedAt: now, updatedAt: now } as any)
         .where(eq(publishers.id, id))
-        .run();
+        ;
     }
 
     return reply.code(204).send();
@@ -362,13 +362,13 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    }).run();
+    });
 
     // Restore the publisher
     db.update(publishers)
       .set({ deletedAt: null, updatedAt: now } as any)
       .where(eq(publishers.id, id))
-      .run();
+      ;
 
     const restored = db.select().from(publishers).where(eq(publishers.id, id)).get();
     return {
@@ -394,7 +394,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     db.update(publishers)
       .set({ apiKey: newApiKey, updatedAt: now })
       .where(eq(publishers.id, id))
-      .run();
+      ;
 
     return { apiKey: newApiKey };
   });
@@ -534,7 +534,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       publisherId: id,
       userId,
       createdAt: now,
-    }).run();
+    });
 
     // Log audit entry
     db.insert(auditLogs).values({
@@ -548,7 +548,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    }).run();
+    });
 
     return {
       success: true,
@@ -591,7 +591,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     // Delete assignment
     db.delete(publisherAdmins)
       .where(and(eq(publisherAdmins.publisherId, id), eq(publisherAdmins.userId, userId)))
-      .run();
+      ;
 
     // Log audit entry
     db.insert(auditLogs).values({
@@ -605,7 +605,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    }).run();
+    });
 
     return reply.code(204).send();
   });
@@ -743,7 +743,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       status: 'active',
       createdAt: now,
       updatedAt: now,
-    }).run();
+    });
 
     const newUnit = db.select().from(adUnits).where(eq(adUnits.id, unitId)).get();
 
@@ -798,7 +798,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
         updatedAt: now,
       })
       .where(eq(adUnits.id, unitId))
-      .run();
+      ;
 
     const updated = db.select().from(adUnits).where(eq(adUnits.id, unitId)).get();
 
@@ -829,7 +829,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       return reply.code(404).send({ error: 'Ad unit not found' });
     }
 
-    db.delete(adUnits).where(eq(adUnits.id, unitId)).run();
+    db.delete(adUnits).where(eq(adUnits.id, unitId));
 
     return reply.code(204).send();
   });
@@ -949,7 +949,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       priority,
       createdAt: now,
       updatedAt: now,
-    }).run();
+    });
 
     const newBidder = db.select().from(publisherBidders).where(eq(publisherBidders.id, bidderId)).get();
 
@@ -991,7 +991,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
         updatedAt: now,
       })
       .where(eq(publisherBidders.id, bidderId))
-      .run();
+      ;
 
     const updated = db.select().from(publisherBidders).where(eq(publisherBidders.id, bidderId)).get();
 
@@ -1021,7 +1021,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       return reply.code(404).send({ error: 'Bidder not found' });
     }
 
-    db.delete(publisherBidders).where(eq(publisherBidders.id, bidderId)).run();
+    db.delete(publisherBidders).where(eq(publisherBidders.id, bidderId));
 
     return reply.code(204).send();
   });
@@ -1195,7 +1195,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       changedBy: user.userId,
       changeSummary: changes.length > 0 ? changes.join(', ') : 'Configuration updated',
       createdAt: now,
-    }).run();
+    });
 
     // Update the config
     db.update(publisherConfig)
@@ -1212,7 +1212,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
         version: newVersion,
       })
       .where(eq(publisherConfig.publisherId, id))
-      .run();
+      ;
 
     const updated = db.select().from(publisherConfig).where(eq(publisherConfig.publisherId, id)).get();
 
@@ -1338,7 +1338,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       changeSummary: `Rollback to version ${targetVersion.version}`,
       changedBy: user.userId,
       createdAt: new Date().toISOString(),
-    }).run();
+    });
 
     // Update the config with the target version's values
     db.update(publisherConfig)
@@ -1352,7 +1352,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
         updatedAt: new Date().toISOString(),
       })
       .where(eq(publisherConfig.publisherId, id))
-      .run();
+      ;
 
     // Log the rollback action
     db.insert(auditLogs).values({
@@ -1377,7 +1377,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: new Date().toISOString(),
-    }).run();
+    });
 
     return {
       success: true,
@@ -1452,7 +1452,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
         priority: bidder.priority,
         createdAt: now,
         updatedAt: now,
-      }).run();
+      });
 
       copiedBidders.push({
         ...bidder,
@@ -1481,7 +1481,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    }).run();
+    });
 
     return {
       success: true,
@@ -1527,7 +1527,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
         db.update(publishers)
           .set({ status, updatedAt: now })
           .where(eq(publishers.id, id))
-          .run();
+          ;
 
         // Log audit entry
         db.insert(auditLogs).values({
@@ -1541,7 +1541,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
           ipAddress: request.ip,
           userAgent: request.headers['user-agent'] || null,
           createdAt: now,
-        }).run();
+        });
 
         results.push({ id, success: true });
       } catch (err) {

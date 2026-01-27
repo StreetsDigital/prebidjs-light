@@ -32,7 +32,7 @@ export default async function wrapperRoutes(fastify: FastifyInstance) {
         .header('Access-Control-Allow-Origin', '*') // CORS for CDN usage
         .send(content);
     } catch (err) {
-      fastify.log.error('Failed to serve wrapper:', err);
+      fastify.log.error({ err }, 'Failed to serve wrapper');
       return reply.code(500).send({ error: 'Failed to load wrapper' });
     }
   });
@@ -55,7 +55,7 @@ export default async function wrapperRoutes(fastify: FastifyInstance) {
         .header('Access-Control-Allow-Origin', '*')
         .send(content);
     } catch (err) {
-      fastify.log.error('Failed to serve source map:', err);
+      fastify.log.error({ err }, 'Failed to serve source map');
       return reply.code(500).send({ error: 'Failed to load source map' });
     }
   });
@@ -89,7 +89,7 @@ export default async function wrapperRoutes(fastify: FastifyInstance) {
         .header('Access-Control-Allow-Origin', '*')
         .send(content);
     } catch (err) {
-      fastify.log.error('Failed to serve publisher wrapper:', err);
+      fastify.log.error({ err }, 'Failed to serve publisher wrapper');
       return reply.code(500).send({ error: 'Failed to load wrapper' });
     }
   });
@@ -128,7 +128,7 @@ export default async function wrapperRoutes(fastify: FastifyInstance) {
         },
       };
     } catch (err) {
-      fastify.log.error('Failed to get wrapper info:', err);
+      fastify.log.error({ err }, 'Failed to get wrapper info');
       return reply.code(500).send({ error: 'Failed to get wrapper info' });
     }
   });

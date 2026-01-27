@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { db, optimizationRules, ruleExecutions, publishers, bidders as publisherBidders, analyticsEvents } from '../db';
+import { db, optimizationRules, ruleExecutions, publishers, publisherBidders, analyticsEvents } from '../db';
 import { eq, and, desc, gte, lte } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -145,7 +145,7 @@ export default async function optimizationRulesRoutes(fastify: FastifyInstance) 
       executionCount: 0,
       createdAt: now,
       updatedAt: now,
-    }).run();
+    });
 
     const createdRule = db
       .select()
@@ -191,7 +191,7 @@ export default async function optimizationRulesRoutes(fastify: FastifyInstance) 
     if (body.enabled !== undefined) updates.enabled = body.enabled ? 1 : 0;
     if (body.priority !== undefined) updates.priority = body.priority;
 
-    db.update(optimizationRules).set(updates).where(eq(optimizationRules.id, ruleId)).run();
+    db.update(optimizationRules).set(updates).where(eq(optimizationRules.id, ruleId));
 
     const updatedRule = db
       .select()
@@ -224,7 +224,7 @@ export default async function optimizationRulesRoutes(fastify: FastifyInstance) 
       return reply.code(404).send({ error: 'Rule not found' });
     }
 
-    db.delete(optimizationRules).where(eq(optimizationRules.id, ruleId)).run();
+    db.delete(optimizationRules).where(eq(optimizationRules.id, ruleId));
 
     return { success: true };
   });
@@ -254,7 +254,7 @@ export default async function optimizationRulesRoutes(fastify: FastifyInstance) 
         updatedAt: new Date().toISOString(),
       })
       .where(eq(optimizationRules.id, ruleId))
-      .run();
+      ;
 
     return { enabled: !!newEnabled };
   });

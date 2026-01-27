@@ -201,7 +201,7 @@ export default async function buildsRoutes(fastify: FastifyInstance) {
       status: 'building',
       createdAt: now,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
-    }).run();
+    });
 
     // Simulate build process (in real implementation, this would be async)
     setTimeout(() => {
@@ -220,12 +220,12 @@ export default async function buildsRoutes(fastify: FastifyInstance) {
             fileSize: stats.size,
           })
           .where(eq(publisherBuilds.id, buildId))
-          .run();
+          ;
       } catch (err) {
         db.update(publisherBuilds)
           .set({ status: 'failed' })
           .where(eq(publisherBuilds.id, buildId))
-          .run();
+          ;
       }
     }, 2000); // Simulate 2 second build time
 
@@ -240,7 +240,7 @@ export default async function buildsRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    }).run();
+    });
 
     return reply.code(201).send({
       id: buildId,
@@ -321,7 +321,7 @@ export default async function buildsRoutes(fastify: FastifyInstance) {
     }
 
     // Delete database record
-    db.delete(publisherBuilds).where(eq(publisherBuilds.id, buildId)).run();
+    db.delete(publisherBuilds).where(eq(publisherBuilds.id, buildId));
 
     // Audit log
     const now = new Date().toISOString();
@@ -339,7 +339,7 @@ export default async function buildsRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    }).run();
+    });
 
     return { message: 'Build deleted successfully', fileDeleted: !!build.buildPath };
   });

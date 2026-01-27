@@ -8,6 +8,8 @@ interface CreateTestBody {
   description?: string;
   startDate?: string;
   endDate?: string;
+  parentTestId?: string; // For nested tests
+  parentVariantId?: string; // Which variant of parent this belongs to
   variants: Array<{
     name: string;
     trafficPercent: number;
@@ -18,6 +20,13 @@ interface CreateTestBody {
     bidderSequence?: string;
     floorsConfig?: any;
     bidderOverrides?: any;
+    additionalBidders?: Array<{
+      bidderCode: string;
+      enabled: boolean;
+      params: any;
+      timeoutOverride?: number;
+      priority?: number;
+    }>;
   }>;
 }
 
@@ -39,6 +48,13 @@ interface UpdateVariantBody {
   bidderSequence?: string;
   floorsConfig?: any;
   bidderOverrides?: any;
+  additionalBidders?: Array<{
+    bidderCode: string;
+    enabled: boolean;
+    params: any;
+    timeoutOverride?: number;
+    priority?: number;
+  }>;
 }
 
 async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions) {
@@ -123,7 +139,7 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
   app.post('/:publisherId/ab-tests', async (request, reply) => {
     const { publisherId } = request.params as { publisherId: string };
     const body = request.body as CreateTestBody;
-    const user = request.user as { id: string };
+    const user = request.user as any;
 
     // Verify publisher exists
     const publisher = db.select().from(publishers).where(eq(publishers.id, publisherId)).get();
@@ -151,6 +167,28 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
     const now = new Date().toISOString();
     const testId = uuidv4();
 
+    // Determine test level
+    let level = 0;
+    if (body.parentTestId) {
+      const parentTest = db.select().from(abTests).where(eq(abTests.id, body.parentTestId)).get();
+      if (!parentTest) {
+        return reply.code(404).send({ error: 'Parent test not found' });
+      }
+      level = (parentTest.level || 0) + 1;
+
+      // Verify parent variant exists
+      if (body.parentVariantId) {
+        const parentVariant = db
+          .select()
+          .from(abTestVariants)
+          .where(and(eq(abTestVariants.id, body.parentVariantId), eq(abTestVariants.testId, body.parentTestId)))
+          .get();
+        if (!parentVariant) {
+          return reply.code(404).send({ error: 'Parent variant not found' });
+        }
+      }
+    }
+
     // Create the test
     db.insert(abTests).values({
       id: testId,
@@ -160,9 +198,12 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
       status: 'draft',
       startDate: body.startDate || null,
       endDate: body.endDate || null,
+      parentTestId: body.parentTestId || null,
+      parentVariantId: body.parentVariantId || null,
+      level,
       createdAt: now,
       updatedAt: now,
-    }).run();
+    });
 
     // Create variants
     for (const variant of body.variants) {
@@ -178,9 +219,10 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
         bidderSequence: variant.bidderSequence || null,
         floorsConfig: variant.floorsConfig ? JSON.stringify(variant.floorsConfig) : null,
         bidderOverrides: variant.bidderOverrides ? JSON.stringify(variant.bidderOverrides) : null,
+        additionalBidders: variant.additionalBidders ? JSON.stringify(variant.additionalBidders) : null,
         createdAt: now,
         updatedAt: now,
-      }).run();
+      });
     }
 
     // Audit log
@@ -192,7 +234,7 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
       entityId: testId,
       newValues: JSON.stringify({ name: body.name, variants: body.variants.length }),
       createdAt: now,
-    }).run();
+    });
 
     // Return the created test with variants
     const createdTest = db.select().from(abTests).where(eq(abTests.id, testId)).get();
@@ -212,7 +254,7 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
   app.put('/:publisherId/ab-tests/:testId', async (request, reply) => {
     const { publisherId, testId } = request.params as { publisherId: string; testId: string };
     const body = request.body as UpdateTestBody;
-    const user = request.user as { id: string };
+    const user = request.user as any;
 
     const test = db
       .select()
@@ -233,7 +275,7 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
     if (body.startDate !== undefined) updates.startDate = body.startDate;
     if (body.endDate !== undefined) updates.endDate = body.endDate;
 
-    db.update(abTests).set(updates).where(eq(abTests.id, testId)).run();
+    db.update(abTests).set(updates).where(eq(abTests.id, testId));
 
     // Audit log
     db.insert(auditLogs).values({
@@ -245,7 +287,7 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
       oldValues: JSON.stringify({ name: test.name, status: test.status }),
       newValues: JSON.stringify(updates),
       createdAt: now,
-    }).run();
+    });
 
     // Return updated test
     const updatedTest = db.select().from(abTests).where(eq(abTests.id, testId)).get();
@@ -265,7 +307,7 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
   app.put('/:publisherId/ab-tests/:testId/variants/:variantId', async (request, reply) => {
     const { publisherId, testId, variantId } = request.params as { publisherId: string; testId: string; variantId: string };
     const body = request.body as UpdateVariantBody;
-    const user = request.user as { id: string };
+    const user = request.user as any;
 
     const test = db
       .select()
@@ -299,8 +341,9 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
     if (body.bidderSequence !== undefined) updates.bidderSequence = body.bidderSequence;
     if (body.floorsConfig !== undefined) updates.floorsConfig = JSON.stringify(body.floorsConfig);
     if (body.bidderOverrides !== undefined) updates.bidderOverrides = JSON.stringify(body.bidderOverrides);
+    if (body.additionalBidders !== undefined) updates.additionalBidders = JSON.stringify(body.additionalBidders);
 
-    db.update(abTestVariants).set(updates).where(eq(abTestVariants.id, variantId)).run();
+    db.update(abTestVariants).set(updates).where(eq(abTestVariants.id, variantId));
 
     // Audit log
     db.insert(auditLogs).values({
@@ -311,7 +354,7 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
       entityId: variantId,
       newValues: JSON.stringify(updates),
       createdAt: now,
-    }).run();
+    });
 
     // Return updated variant
     const updatedVariant = db.select().from(abTestVariants).where(eq(abTestVariants.id, variantId)).get();
@@ -319,13 +362,14 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
       ...updatedVariant,
       floorsConfig: updatedVariant?.floorsConfig ? JSON.parse(updatedVariant.floorsConfig) : null,
       bidderOverrides: updatedVariant?.bidderOverrides ? JSON.parse(updatedVariant.bidderOverrides) : null,
+      additionalBidders: updatedVariant?.additionalBidders ? JSON.parse(updatedVariant.additionalBidders) : null,
     };
   });
 
   // Delete an A/B test
   app.delete('/:publisherId/ab-tests/:testId', async (request, reply) => {
     const { publisherId, testId } = request.params as { publisherId: string; testId: string };
-    const user = request.user as { id: string };
+    const user = request.user as any;
 
     const test = db
       .select()
@@ -338,10 +382,10 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
     }
 
     // Delete variants first
-    db.delete(abTestVariants).where(eq(abTestVariants.testId, testId)).run();
+    db.delete(abTestVariants).where(eq(abTestVariants.testId, testId));
 
     // Delete test
-    db.delete(abTests).where(eq(abTests.id, testId)).run();
+    db.delete(abTests).where(eq(abTests.id, testId));
 
     // Audit log
     db.insert(auditLogs).values({
@@ -352,9 +396,52 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
       entityId: testId,
       oldValues: JSON.stringify({ name: test.name }),
       createdAt: new Date().toISOString(),
-    }).run();
+    });
 
     return { success: true };
+  });
+
+  // Get nested tests for a variant
+  app.get('/:publisherId/ab-tests/:testId/variants/:variantId/nested-tests', async (request, reply) => {
+    const { publisherId, testId, variantId } = request.params as { publisherId: string; testId: string; variantId: string };
+
+    const test = db
+      .select()
+      .from(abTests)
+      .where(and(eq(abTests.id, testId), eq(abTests.publisherId, publisherId)))
+      .get();
+
+    if (!test) {
+      return reply.code(404).send({ error: 'A/B test not found' });
+    }
+
+    // Get nested tests for this variant
+    const nestedTests = db
+      .select()
+      .from(abTests)
+      .where(and(eq(abTests.parentTestId, testId), eq(abTests.parentVariantId, variantId)))
+      .all();
+
+    // Get variants for each nested test
+    const testsWithVariants = nestedTests.map(nestedTest => {
+      const variants = db
+        .select()
+        .from(abTestVariants)
+        .where(eq(abTestVariants.testId, nestedTest.id))
+        .all();
+
+      return {
+        ...nestedTest,
+        variants: variants.map(v => ({
+          ...v,
+          floorsConfig: v.floorsConfig ? JSON.parse(v.floorsConfig) : null,
+          bidderOverrides: v.bidderOverrides ? JSON.parse(v.bidderOverrides) : null,
+          additionalBidders: v.additionalBidders ? JSON.parse(v.additionalBidders) : null,
+        })),
+      };
+    });
+
+    return testsWithVariants;
   });
 
   // Get active A/B test for a publisher (used by config endpoint)

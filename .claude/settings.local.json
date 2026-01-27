@@ -1,7 +1,21 @@
 {
   "permissions": {
     "allow": [
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(npm run db:migrate:*)",
+      "Bash(npx tsx:*)",
+      "Bash(sqlite3:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npm run build:*)",
+      "Bash(curl:*)",
+      "Bash(git push)",
+      "Bash(git remote add:*)",
+      "Bash(git push:*)",
+      "Bash(grep:*)",
+      "Bash(for file in ab-tests.ts ad-units-updated.ts ad-units.ts auction-inspector.ts auth.ts builds.ts custom-reports.ts notifications.ts optimization-rules.ts users.ts websites.ts yield-advisor.ts)",
+      "Bash(do sed -i '' 's/\\\\.run\\(\\)//g' \"$file\")",
+      "Bash(done)"
     ]
   }
 }

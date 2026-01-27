@@ -55,7 +55,7 @@ export default async function notificationsRoutes(fastify: FastifyInstance) {
       verified: false,
       createdAt: now,
       updatedAt: now,
-    }).run();
+    });
 
     const channel = db.select().from(notificationChannels)
       .where(eq(notificationChannels.id, channelId))
@@ -94,7 +94,7 @@ export default async function notificationsRoutes(fastify: FastifyInstance) {
         eq(notificationChannels.id, channelId),
         eq(notificationChannels.publisherId, publisherId)
       ))
-      .run();
+      ;
 
     const channel = db.select().from(notificationChannels)
       .where(eq(notificationChannels.id, channelId))
@@ -117,7 +117,7 @@ export default async function notificationsRoutes(fastify: FastifyInstance) {
         eq(notificationChannels.id, channelId),
         eq(notificationChannels.publisherId, publisherId)
       ))
-      .run();
+      ;
 
     return reply.send({ success: true });
   });
@@ -148,7 +148,7 @@ export default async function notificationsRoutes(fastify: FastifyInstance) {
         verified: testResult.success,
       })
       .where(eq(notificationChannels.id, channelId))
-      .run();
+      ;
 
     return reply.send({
       success: testResult.success,
@@ -220,7 +220,7 @@ export default async function notificationsRoutes(fastify: FastifyInstance) {
       triggerCount: 0,
       createdAt: now,
       updatedAt: now,
-    }).run();
+    });
 
     const rule = db.select().from(notificationRules)
       .where(eq(notificationRules.id, ruleId))
@@ -260,7 +260,7 @@ export default async function notificationsRoutes(fastify: FastifyInstance) {
         eq(notificationRules.id, ruleId),
         eq(notificationRules.publisherId, publisherId)
       ))
-      .run();
+      ;
 
     const rule = db.select().from(notificationRules)
       .where(eq(notificationRules.id, ruleId))
@@ -284,7 +284,7 @@ export default async function notificationsRoutes(fastify: FastifyInstance) {
         eq(notificationRules.id, ruleId),
         eq(notificationRules.publisherId, publisherId)
       ))
-      .run();
+      ;
 
     return reply.send({ success: true });
   });
@@ -310,7 +310,7 @@ export default async function notificationsRoutes(fastify: FastifyInstance) {
         updatedAt: new Date().toISOString(),
       })
       .where(eq(notificationRules.id, ruleId))
-      .run();
+      ;
 
     return reply.send({ enabled: !rule.enabled });
   });
@@ -410,7 +410,7 @@ export default async function notificationsRoutes(fastify: FastifyInstance) {
         eq(notifications.id, notificationId),
         eq(notifications.publisherId, publisherId)
       ))
-      .run();
+      ;
 
     return reply.send({ success: true });
   });
@@ -457,7 +457,7 @@ export default async function notificationsRoutes(fastify: FastifyInstance) {
       enabled: true,
       createdAt: now,
       updatedAt: now,
-    }).run();
+    });
 
     const policy = db.select().from(escalationPolicies)
       .where(eq(escalationPolicies.id, policyId))
@@ -491,7 +491,7 @@ export default async function notificationsRoutes(fastify: FastifyInstance) {
         eq(escalationPolicies.id, policyId),
         eq(escalationPolicies.publisherId, publisherId)
       ))
-      .run();
+      ;
 
     const policy = db.select().from(escalationPolicies)
       .where(eq(escalationPolicies.id, policyId))
@@ -514,7 +514,7 @@ export default async function notificationsRoutes(fastify: FastifyInstance) {
         eq(escalationPolicies.id, policyId),
         eq(escalationPolicies.publisherId, publisherId)
       ))
-      .run();
+      ;
 
     return reply.send({ success: true });
   });

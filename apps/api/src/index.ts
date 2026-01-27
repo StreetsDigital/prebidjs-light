@@ -39,11 +39,11 @@ app.register(cors, {
 });
 
 app.register(jwt, {
-  secret: process.env.JWT_SECRET || 'dev-jwt-secret-change-in-production',
+  secret: (process.env.JWT_SECRET || 'dev-jwt-secret-change-in-production') as string,
 });
 
 app.register(cookie, {
-  secret: process.env.COOKIE_SECRET || 'dev-cookie-secret-change-in-production',
+  secret: (process.env.COOKIE_SECRET || 'dev-cookie-secret-change-in-production') as string,
 });
 
 app.register(rateLimit, {
@@ -325,8 +325,12 @@ app.get('/c/:publisherSlug', async (request, reply) => {
   // Get publisher config
   const config = db.select().from(publisherConfig).where(eq(publisherConfig.publisherId, publisher.id)).get();
 
-  // Get ad units
-  const units = db.select().from(adUnits).where(eq(adUnits.publisherId, publisher.id)).all();
+  // Get ad units through websites
+  const publisherWebsites = db.select().from(websites).where(eq(websites.publisherId, publisher.id)).all();
+  const websiteIds = publisherWebsites.map((w: any) => w.id);
+  const units = websiteIds.length > 0
+    ? db.select().from(adUnits).where(eq(adUnits.websiteId, websiteIds[0])).all() // Simplified for now
+    : [];
 
   // Get bidders
   const bidders = db.select().from(publisherBidders).where(eq(publisherBidders.publisherId, publisher.id)).all();

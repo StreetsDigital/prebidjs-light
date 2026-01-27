@@ -8,6 +8,7 @@ import * as crypto from 'crypto';
 
 // Build files directory
 const BUILDS_DIR = path.join(process.cwd(), 'data', 'builds');
+const WRAPPER_DIR = path.join(process.cwd(), '..', 'wrapper');
 
 // Ensure builds directory exists
 if (!fs.existsSync(BUILDS_DIR)) {
@@ -22,6 +23,33 @@ function generateConfigHash(publisherId: string, bidders: any[], adUnitsData: an
     adUnits: adUnitsData.map(a => a.code),
   });
   return crypto.createHash('md5').update(configData).digest('hex').substring(0, 8);
+}
+
+// Helper to build wrapper for a publisher
+async function buildPublisherWrapper(publisherId: string, publisherSlug: string): Promise<{ filePath: string; fileSize: number }> {
+  const { exec } = await import('child_process');
+  const { promisify } = await import('util');
+  const execPromise = promisify(exec);
+
+  try {
+    // Build the wrapper with publisher ID injected
+    const { stdout, stderr } = await execPromise(
+      `PUBLISHER_ID=${publisherId} PUBLISHER_SLUG=${publisherSlug} npm run build`,
+      { cwd: WRAPPER_DIR }
+    );
+
+    const wrapperFileName = `pb-${publisherSlug}.min.js`;
+    const sourcePath = path.join(WRAPPER_DIR, 'dist', wrapperFileName);
+    const destPath = path.join(BUILDS_DIR, wrapperFileName);
+
+    // Copy to builds directory
+    fs.copyFileSync(sourcePath, destPath);
+    const stats = fs.statSync(destPath);
+
+    return { filePath: `/builds/${wrapperFileName}`, fileSize: stats.size };
+  } catch (err: any) {
+    throw new Error(`Wrapper build failed: ${err.message}`);
+  }
 }
 
 // Helper to generate mock Prebid bundle
@@ -377,6 +405,106 @@ export default async function buildsRoutes(fastify: FastifyInstance) {
 
     reply.header('Content-Type', 'application/javascript');
     reply.header('Content-Disposition', `attachment; filename="${fileName}"`);
+
+    return content;
+  });
+
+  // Build publisher wrapper
+  fastify.post<{
+    Params: { publisherId: string };
+  }>('/publishers/:publisherId/builds/wrapper', {
+    preHandler: verifyAuth,
+  }, async (request, reply) => {
+    const { publisherId } = request.params;
+    const user = (request as any).user;
+
+    // Verify publisher exists
+    const publisher = db.select().from(publishers).where(eq(publishers.id, publisherId)).get();
+    if (!publisher) {
+      return reply.code(404).send({ error: 'Publisher not found' });
+    }
+
+    try {
+      const buildId = uuidv4();
+      const now = new Date().toISOString();
+
+      // Create build record
+      db.insert(publisherBuilds).values({
+        id: buildId,
+        publisherId,
+        configHash: 'wrapper',
+        prebidVersion: '1.0.0',
+        modulesIncluded: JSON.stringify(['wrapper']),
+        status: 'building',
+        createdAt: now,
+        expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year
+      });
+
+      // Build wrapper asynchronously
+      buildPublisherWrapper(publisherId, publisher.slug)
+        .then(({ filePath, fileSize }) => {
+          db.update(publisherBuilds)
+            .set({
+              status: 'ready',
+              buildPath: filePath,
+              fileSize,
+            })
+            .where(eq(publisherBuilds.id, buildId))
+            ;
+        })
+        .catch((err) => {
+          console.error('Wrapper build failed:', err);
+          db.update(publisherBuilds)
+            .set({ status: 'failed' })
+            .where(eq(publisherBuilds.id, buildId))
+            ;
+        });
+
+      // Audit log
+      db.insert(auditLogs).values({
+        id: uuidv4(),
+        userId: user?.id || null,
+        action: 'BUILD_WRAPPER',
+        entityType: 'build',
+        entityId: buildId,
+        newValues: JSON.stringify({ publisherId, type: 'wrapper' }),
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'] || null,
+        createdAt: now,
+      });
+
+      return reply.code(201).send({
+        id: buildId,
+        type: 'wrapper',
+        status: 'building',
+        message: 'Wrapper build started',
+        scriptUrl: `/builds/pb-${publisher.slug}.min.js`,
+      });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Build failed', message: err.message });
+    }
+  });
+
+  // Serve publisher wrapper at /pb/{slug}.min.js
+  fastify.get<{
+    Params: { slug: string };
+  }>('/pb/:slug.min.js', async (request, reply) => {
+    const { slug } = request.params;
+    const filename = `pb-${slug}.min.js`;
+    const filePath = path.join(BUILDS_DIR, filename);
+
+    if (!fs.existsSync(filePath)) {
+      return reply.code(404).send({
+        error: 'Wrapper not found',
+        message: `No wrapper built for publisher: ${slug}. Build one at POST /api/publishers/{id}/builds/wrapper`
+      });
+    }
+
+    const content = fs.readFileSync(filePath, 'utf-8');
+
+    reply.header('Content-Type', 'application/javascript');
+    reply.header('Cache-Control', 'public, max-age=3600, s-maxage=86400'); // 1 hour client, 24 hour CDN
+    reply.header('Access-Control-Allow-Origin', '*');
 
     return content;
   });

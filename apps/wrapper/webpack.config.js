@@ -1,12 +1,13 @@
 const path = require('path');
 const TerserPlugin = require('terser-webpack-plugin');
+const webpack = require('webpack');
 
 module.exports = {
   mode: 'production',
   entry: './src/pb.ts',
   output: {
     path: path.resolve(__dirname, 'dist'),
-    filename: 'pb.min.js',
+    filename: process.env.PUBLISHER_SLUG ? `pb-${process.env.PUBLISHER_SLUG}.min.js` : 'pb.min.js',
     library: {
       name: 'pb',
       type: 'window',
@@ -26,6 +27,11 @@ module.exports = {
   resolve: {
     extensions: ['.ts', '.js'],
   },
+  plugins: [
+    new webpack.DefinePlugin({
+      __PUBLISHER_ID__: JSON.stringify(process.env.PUBLISHER_ID || undefined),
+    }),
+  ],
   optimization: {
     minimize: true,
     minimizer: [

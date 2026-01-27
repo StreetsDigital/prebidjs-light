@@ -53,8 +53,17 @@ declare global {
   }
 }
 
-// Extract publisher ID from script URL
+// Hardcoded publisher ID (replaced at build time for per-publisher builds)
+declare const __PUBLISHER_ID__: string | undefined;
+
+// Extract publisher ID from script URL or use hardcoded value
 function getPublisherIdFromScript(): string {
+  // Use hardcoded publisher ID if available (per-publisher build)
+  if (typeof __PUBLISHER_ID__ !== 'undefined' && __PUBLISHER_ID__) {
+    return __PUBLISHER_ID__;
+  }
+
+  // Fallback: extract from script URL (universal build)
   const scripts = document.getElementsByTagName('script');
   for (let i = 0; i < scripts.length; i++) {
     const src = scripts[i].src;

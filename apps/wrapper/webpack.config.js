@@ -7,7 +7,7 @@ module.exports = {
   entry: './src/pb.ts',
   output: {
     path: path.resolve(__dirname, 'dist'),
-    filename: process.env.PUBLISHER_SLUG ? `pb-${process.env.PUBLISHER_SLUG}.min.js` : 'pb.min.js',
+    filename: process.env.PUBLISHER_ID ? `pb-${process.env.PUBLISHER_ID}.min.js` : 'pb.min.js',
     library: {
       name: 'pb',
       type: 'window',

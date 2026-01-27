@@ -26,7 +26,7 @@ function generateConfigHash(publisherId: string, bidders: any[], adUnitsData: an
 }
 
 // Helper to build wrapper for a publisher
-async function buildPublisherWrapper(publisherId: string, publisherSlug: string): Promise<{ filePath: string; fileSize: number }> {
+async function buildPublisherWrapper(publisherId: string): Promise<{ filePath: string; fileSize: number }> {
   const { exec } = await import('child_process');
   const { promisify } = await import('util');
   const execPromise = promisify(exec);
@@ -34,11 +34,11 @@ async function buildPublisherWrapper(publisherId: string, publisherSlug: string)
   try {
     // Build the wrapper with publisher ID injected
     const { stdout, stderr } = await execPromise(
-      `PUBLISHER_ID=${publisherId} PUBLISHER_SLUG=${publisherSlug} npm run build`,
+      `PUBLISHER_ID=${publisherId} npm run build`,
       { cwd: WRAPPER_DIR }
     );
 
-    const wrapperFileName = `pb-${publisherSlug}.min.js`;
+    const wrapperFileName = `pb-${publisherId}.min.js`;
     const sourcePath = path.join(WRAPPER_DIR, 'dist', wrapperFileName);
     const destPath = path.join(BUILDS_DIR, wrapperFileName);
 
@@ -46,7 +46,7 @@ async function buildPublisherWrapper(publisherId: string, publisherSlug: string)
     fs.copyFileSync(sourcePath, destPath);
     const stats = fs.statSync(destPath);
 
-    return { filePath: `/builds/${wrapperFileName}`, fileSize: stats.size };
+    return { filePath: `/pb/${publisherId}.min.js`, fileSize: stats.size };
   } catch (err: any) {
     throw new Error(`Wrapper build failed: ${err.message}`);
   }
@@ -441,7 +441,7 @@ export default async function buildsRoutes(fastify: FastifyInstance) {
       });
 
       // Build wrapper asynchronously
-      buildPublisherWrapper(publisherId, publisher.slug)
+      buildPublisherWrapper(publisherId)
         .then(({ filePath, fileSize }) => {
           db.update(publisherBuilds)
             .set({
@@ -478,25 +478,25 @@ export default async function buildsRoutes(fastify: FastifyInstance) {
         type: 'wrapper',
         status: 'building',
         message: 'Wrapper build started',
-        scriptUrl: `/builds/pb-${publisher.slug}.min.js`,
+        scriptUrl: `/pb/${publisherId}.min.js`,
       });
     } catch (err: any) {
       return reply.code(500).send({ error: 'Build failed', message: err.message });
     }
   });
 
-  // Serve publisher wrapper at /pb/{slug}.min.js
+  // Serve publisher wrapper at /pb/{publisherId}.min.js
   fastify.get<{
-    Params: { slug: string };
-  }>('/pb/:slug.min.js', async (request, reply) => {
-    const { slug } = request.params;
-    const filename = `pb-${slug}.min.js`;
+    Params: { publisherId: string };
+  }>('/pb/:publisherId.min.js', async (request, reply) => {
+    const { publisherId } = request.params;
+    const filename = `pb-${publisherId}.min.js`;
     const filePath = path.join(BUILDS_DIR, filename);
 
     if (!fs.existsSync(filePath)) {
       return reply.code(404).send({
         error: 'Wrapper not found',
-        message: `No wrapper built for publisher: ${slug}. Build one at POST /api/publishers/{id}/builds/wrapper`
+        message: `No wrapper built for publisher ID: ${publisherId}. Build one at POST /api/publishers/${publisherId}/builds/wrapper`
       });
     }
 

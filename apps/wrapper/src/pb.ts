@@ -132,25 +132,78 @@ function emitEvent(event: string, data: unknown): void {
   });
 }
 
-// Analytics beacon
-function sendBeacon(events: unknown[]): void {
+// Analytics batching
+const BATCH_SIZE = 10; // Send after 10 events
+const BATCH_INTERVAL = 30000; // Or after 30 seconds
+let batchQueue: unknown[] = [];
+let batchTimer: number | null = null;
+
+function sendBatch(): void {
+  if (batchQueue.length === 0) return;
+
   const endpoint = (window.pb as PbNamespace & { _config?: PbConfig })._config?.apiEndpoint || '';
   if (!endpoint) return;
 
   try {
-    const payload = JSON.stringify(events);
+    const payload = JSON.stringify(batchQueue);
+    const url = `${endpoint}/b`;
+
     if (navigator.sendBeacon) {
-      navigator.sendBeacon(`${endpoint}/b`, payload);
+      navigator.sendBeacon(url, payload);
     } else {
-      fetch(`${endpoint}/b`, {
+      fetch(url, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: payload,
         keepalive: true,
-      });
+      }).catch(e => console.error('pb: Beacon error', e));
+    }
+
+    // Clear the batch
+    batchQueue = [];
+
+    // Clear timer
+    if (batchTimer) {
+      clearTimeout(batchTimer);
+      batchTimer = null;
     }
   } catch (e) {
-    console.error('pb: Beacon error', e);
+    console.error('pb: Batch send error', e);
   }
+}
+
+function queueAnalyticsEvent(event: unknown): void {
+  batchQueue.push(event);
+
+  // Send if batch is full
+  if (batchQueue.length >= BATCH_SIZE) {
+    sendBatch();
+    return;
+  }
+
+  // Schedule batch send if not already scheduled
+  if (!batchTimer) {
+    batchTimer = window.setTimeout(() => {
+      sendBatch();
+    }, BATCH_INTERVAL);
+  }
+}
+
+// Flush batch on page unload
+if (typeof window !== 'undefined') {
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      sendBatch();
+    }
+  });
+
+  window.addEventListener('pagehide', () => {
+    sendBatch();
+  });
+
+  window.addEventListener('beforeunload', () => {
+    sendBatch();
+  });
 }
 
 // Create pb namespace
@@ -216,13 +269,13 @@ function createPbNamespace(): PbNamespace {
           events.forEach((event) => {
             window.pbjs.onEvent(event, (data) => {
               emitEvent(event, data);
-              // Send to analytics beacon
-              sendBeacon([{
+              // Queue for batched analytics
+              queueAnalyticsEvent({
                 eventType: event,
                 publisherId,
                 timestamp: new Date().toISOString(),
                 data,
-              }]);
+              });
             });
           });
 

@@ -1633,10 +1633,10 @@ export function PublisherDetailPage() {
         setWebsites((prev) =>
           prev.map((w) => (w.id === savedWebsite.id ? savedWebsite : w))
         );
-        addToast('Website updated successfully', 'success');
+        addToast({ message: 'Website updated successfully', type: 'success' });
       } else {
         setWebsites((prev) => [...prev, savedWebsite]);
-        addToast('Website created successfully', 'success');
+        addToast({ message: 'Website created successfully', type: 'success' });
       }
 
       handleWebsiteModalClose();
@@ -1683,7 +1683,7 @@ export function PublisherDetailPage() {
       }
 
       setWebsites((prev) => prev.filter((w) => w.id !== deleteWebsiteDialog.website?.id));
-      addToast('Website deleted successfully', 'success');
+      addToast({ message: 'Website deleted successfully', type: 'success' });
       handleDeleteWebsiteCancel();
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'Failed to delete website', 'error');
@@ -1726,7 +1726,7 @@ export function PublisherDetailPage() {
       const data = await response.json();
       setAssignedAdmins((prev) => [...prev, data.admin]);
       setAvailableAdmins((prev) => prev.filter((a) => a.id !== selectedAdminId));
-      addToast('Admin assigned successfully', 'success');
+      addToast({ message: 'Admin assigned successfully', type: 'success' });
       handleCloseAssignAdminModal();
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'Failed to assign admin', 'error');
@@ -1779,7 +1779,7 @@ export function PublisherDetailPage() {
           email: removeAdminDialog.admin!.email,
         }]);
       }
-      addToast('Admin removed successfully', 'success');
+      addToast({ message: 'Admin removed successfully', type: 'success' });
       handleRemoveAdminCancel();
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'Failed to remove admin', 'error');
@@ -1873,14 +1873,14 @@ export function PublisherDetailPage() {
     // Validate traffic percentages sum to 100
     const totalPercent = abTestForm.variants.reduce((sum, v) => sum + v.trafficPercent, 0);
     if (totalPercent !== 100) {
-      addToast('Traffic percentages must sum to 100%', 'error');
+      addToast({ message: 'Traffic percentages must sum to 100%', type: 'error' });
       return;
     }
 
     // Validate exactly one control
     const controlCount = abTestForm.variants.filter(v => v.isControl).length;
     if (controlCount !== 1) {
-      addToast('Exactly one control variant is required', 'error');
+      addToast({ message: 'Exactly one control variant is required', type: 'error' });
       return;
     }
 
@@ -1983,7 +1983,7 @@ export function PublisherDetailPage() {
       }
 
       setAbTests(prev => prev.filter(t => t.id !== deleteAbTestDialog.test?.id));
-      addToast('A/B test deleted successfully', 'success');
+      addToast({ message: 'A/B test deleted successfully', type: 'success' });
       handleDeleteAbTestCancel();
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'Failed to delete A/B test', 'error');
@@ -2078,6 +2078,9 @@ export function PublisherDetailPage() {
   const handleExportConfig = () => {
     if (!publisher || !currentConfig) return;
 
+    // Flatten all ad units from all websites
+    const allAdUnits = Object.values(adUnitsByWebsite).flat();
+
     // Build Prebid.js compatible config object
     const prebidConfig = {
       debug: currentConfig.debugMode,
@@ -2089,7 +2092,7 @@ export function PublisherDetailPage() {
       publisherName: publisher.name,
       publisherSlug: publisher.slug,
       domains: publisher.domains,
-      adUnits: adUnits.map(unit => ({
+      adUnits: allAdUnits.map(unit => ({
         code: unit.code,
         mediaTypes: unit.mediaTypes,
         bids: publisherBidders
@@ -2802,11 +2805,11 @@ export function PublisherDetailPage() {
       }
 
       setPriceFloors(newFloorsConfig);
-      addToast('Price floors configuration saved successfully', 'success');
+      addToast({ message: 'Price floors configuration saved successfully', type: 'success' });
       handlePriceFloorsConfigClose();
     } catch (err) {
       console.error('Failed to save price floors config:', err);
-      addToast('Failed to save price floors configuration', 'error');
+      addToast({ message: 'Failed to save price floors configuration', type: 'error' });
       setPriceFloorsModal((prev) => ({ ...prev, isLoading: false }));
     }
   };
@@ -2882,7 +2885,7 @@ export function PublisherDetailPage() {
       setTimeout(pollBuild, 1000);
     } catch (err) {
       console.error('Failed to trigger build:', err);
-      addToast('Failed to trigger build', 'error');
+      addToast({ message: 'Failed to trigger build', type: 'error' });
       setIsBuildTriggering(false);
     }
   };
@@ -2930,13 +2933,16 @@ export function PublisherDetailPage() {
       setDeleteBuildDialog({ isOpen: false, isLoading: false, build: null });
     } catch (err) {
       console.error('Failed to delete build:', err);
-      addToast('Failed to delete build', 'error');
+      addToast({ message: 'Failed to delete build', type: 'error' });
       setDeleteBuildDialog((prev) => ({ ...prev, isLoading: false }));
     }
   };
 
   const handleDownloadBuild = () => {
     if (builds.length === 0 || builds[0].status !== 'success') return;
+
+    // Flatten all ad units from all websites
+    const allAdUnits = Object.values(adUnitsByWebsite).flat();
 
     // Generate a mock Prebid.js bundle content
     const bundleContent = `// Prebid.js Bundle for Publisher: ${publisher.id}
@@ -2957,7 +2963,7 @@ pbjs.setConfig({
 });
 
 // Ad Units
-pbjs.addAdUnits(${JSON.stringify(adUnits.map(u => ({
+pbjs.addAdUnits(${JSON.stringify(allAdUnits.map(u => ({
   code: u.code,
   mediaTypes: { banner: { sizes: u.sizes.map(s => s.split('x').map(Number)) } }
 })), null, 2)});
@@ -7170,7 +7176,7 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
                           className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
                         >
                           <option value="">Select...</option>
-                          {adUnits.map((unit) => (
+                          {Object.values(adUnitsByWebsite).flat().map((unit) => (
                             <option key={unit.code} value={unit.code}>{unit.name}</option>
                           ))}
                         </select>

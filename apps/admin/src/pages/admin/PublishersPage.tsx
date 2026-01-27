@@ -794,7 +794,7 @@ export function PublishersPage() {
         message={getBulkActionMessage()}
         confirmText={bulkActionDialog.action === 'activate' ? 'Activate' : bulkActionDialog.action === 'pause' ? 'Pause' : 'Disable'}
         cancelText="Cancel"
-        variant={bulkActionDialog.action === 'disable' ? 'danger' : bulkActionDialog.action === 'pause' ? 'warning' : 'primary'}
+        variant={bulkActionDialog.action === 'disable' ? 'danger' : bulkActionDialog.action === 'pause' ? 'warning' : 'info'}
         isLoading={bulkActionDialog.isProcessing}
       />
     </div>

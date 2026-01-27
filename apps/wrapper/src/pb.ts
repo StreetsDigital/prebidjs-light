@@ -351,4 +351,22 @@ function createPbNamespace(): PbNamespace {
 // Initialize global pb namespace
 window.pb = createPbNamespace();
 
+// Auto-initialize on load (can be disabled with data-no-auto-init attribute)
+if (typeof document !== 'undefined') {
+  const currentScript = document.currentScript as HTMLScriptElement;
+  const shouldAutoInit = !currentScript?.hasAttribute('data-no-auto-init');
+
+  if (shouldAutoInit) {
+    // Auto-init after DOM ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        window.pb.init().catch(err => console.error('pb: Auto-init failed', err));
+      });
+    } else {
+      // DOM already loaded
+      window.pb.init().catch(err => console.error('pb: Auto-init failed', err));
+    }
+  }
+}
+
 export default window.pb;

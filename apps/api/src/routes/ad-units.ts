@@ -163,7 +163,7 @@ export default async function adUnitsRoutes(fastify: FastifyInstance) {
     // Audit log
     db.insert(auditLogs).values({
       id: uuidv4(),
-      userId: user.id,
+      userId: user.userId,
       action: 'CREATE_AD_UNIT',
       entityType: 'ad_unit',
       entityId: adUnitId,
@@ -330,7 +330,7 @@ export default async function adUnitsRoutes(fastify: FastifyInstance) {
     // Audit log
     db.insert(auditLogs).values({
       id: uuidv4(),
-      userId: user.id,
+      userId: user.userId,
       action: 'UPDATE_AD_UNIT',
       entityType: 'ad_unit',
       entityId: id,
@@ -406,7 +406,7 @@ export default async function adUnitsRoutes(fastify: FastifyInstance) {
     const now = new Date().toISOString();
     db.insert(auditLogs).values({
       id: uuidv4(),
-      userId: user.id,
+      userId: user.userId,
       action: 'DELETE_AD_UNIT',
       entityType: 'ad_unit',
       entityId: id,
@@ -498,7 +498,7 @@ export default async function adUnitsRoutes(fastify: FastifyInstance) {
     // Audit log
     db.insert(auditLogs).values({
       id: uuidv4(),
-      userId: user.id,
+      userId: user.userId,
       action: 'DUPLICATE_AD_UNIT',
       entityType: 'ad_unit',
       entityId: newId,

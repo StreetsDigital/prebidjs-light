@@ -142,7 +142,8 @@ export default async function buildsRoutes(fastify: FastifyInstance) {
 
     // Get bidders and ad units for this publisher
     const bidders = db.select().from(publisherBidders).where(eq(publisherBidders.publisherId, publisherId)).all();
-    const adUnitsData = db.select().from(adUnits).where(eq(adUnits.publisherId, publisherId)).all();
+    // TODO: Fix after website migration
+    const adUnitsData: any[] = []; // db.select().from(adUnits)...
 
     // Generate config hash
     const configHash = generateConfigHash(publisherId, bidders, adUnitsData);

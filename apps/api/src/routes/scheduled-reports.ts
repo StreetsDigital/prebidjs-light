@@ -127,7 +127,7 @@ export default async function scheduledReportsRoutes(fastify: FastifyInstance) {
       entityType: 'scheduled_report',
       entityId: id,
       oldValues: null,
-      newValues: JSON.stringify({ name, reportType, schedule, recipients, dateRange, format }),
+      newValues: JSON.stringify({ name, reportType, frequency, recipients, format }),
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,

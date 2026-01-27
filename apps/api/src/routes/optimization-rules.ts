@@ -109,7 +109,7 @@ export default async function optimizationRulesRoutes(fastify: FastifyInstance) 
   fastify.post('/:publisherId/optimization-rules', async (request, reply) => {
     const { publisherId } = request.params as { publisherId: string };
     const body = request.body as CreateRuleBody;
-    const user = request.user as { id: string };
+    const user = request.user as any;
 
     // Verify publisher exists
     const publisher = db.select().from(publishers).where(eq(publishers.id, publisherId)).get();
@@ -139,13 +139,13 @@ export default async function optimizationRulesRoutes(fastify: FastifyInstance) 
       conditions: JSON.stringify(body.conditions),
       actions: JSON.stringify(body.actions),
       schedule: body.schedule ? JSON.stringify(body.schedule) : null,
-      enabled: body.enabled !== undefined ? (body.enabled ? 1 : 0) : 1,
+      enabled: body.enabled !== undefined ? body.enabled : true,
       priority: body.priority || 0,
       lastExecuted: null,
       executionCount: 0,
       createdAt: now,
       updatedAt: now,
-    });
+    } as any);
 
     const createdRule = db
       .select()
@@ -246,7 +246,7 @@ export default async function optimizationRulesRoutes(fastify: FastifyInstance) 
       return reply.code(404).send({ error: 'Rule not found' });
     }
 
-    const newEnabled = rule.enabled ? 0 : 1;
+    const newEnabled = !rule.enabled;
 
     db.update(optimizationRules)
       .set({
@@ -256,7 +256,7 @@ export default async function optimizationRulesRoutes(fastify: FastifyInstance) 
       .where(eq(optimizationRules.id, ruleId))
       ;
 
-    return { enabled: !!newEnabled };
+    return { enabled: newEnabled };
   });
 
   /**

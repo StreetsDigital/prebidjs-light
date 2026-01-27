@@ -15,7 +15,8 @@
       "Bash(grep:*)",
       "Bash(for file in ab-tests.ts ad-units-updated.ts ad-units.ts auction-inspector.ts auth.ts builds.ts custom-reports.ts notifications.ts optimization-rules.ts users.ts websites.ts yield-advisor.ts)",
       "Bash(do sed -i '' 's/\\\\.run\\(\\)//g' \"$file\")",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(ls:*)"
     ]
   }
 }

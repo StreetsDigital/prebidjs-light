@@ -201,7 +201,7 @@ export default async function systemRoutes(fastify: FastifyInstance) {
         });
       }
     } catch (err: any) {
-      fastify.log.error('Failed to rebuild wrapper:', err);
+      fastify.log.error({ err }, 'Failed to rebuild wrapper');
       return reply.code(500).send({
         error: 'Failed to rebuild wrapper',
         message: err.message,

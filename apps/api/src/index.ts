@@ -306,7 +306,7 @@ app.get('/c/:publisherSlug', async (request, reply) => {
   const { variant: variantParam } = request.query as { variant?: string };
 
   // Import db and schema
-  const { db, publishers, publisherConfig, adUnits, publisherBidders, abTests, abTestVariants } = await import('./db');
+  const { db, publishers, publisherConfig, websites, adUnits, publisherBidders, abTests, abTestVariants } = await import('./db');
   const { eq, or, and } = await import('drizzle-orm');
 
   // Find publisher by slug or ID (not API key - keep that secret)
@@ -515,7 +515,7 @@ app.post('/b', async (request, reply) => {
         country: event.country || null,
         timestamp: event.timestamp || now,
         receivedAt: now,
-      }).run();
+      } as any);
 
       insertedEvents.push({
         id: eventId,

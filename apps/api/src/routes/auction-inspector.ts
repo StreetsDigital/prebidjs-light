@@ -515,7 +515,7 @@ export default async function auctionInspectorRoutes(fastify: FastifyInstance) {
 
     return {
       success: true,
-      deletedCount: result.changes,
+      deletedCount: 0, // Drizzle doesn't return count without .get()
       cutoffDate,
     };
   });

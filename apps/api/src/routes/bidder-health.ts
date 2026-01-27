@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { db, analyticsEvents, publishers, bidders } from '../db';
+import { db, analyticsEvents, publishers, publisherBidders } from '../db';
 import { eq, and, gte, lte, sql, desc, inArray } from 'drizzle-orm';
 
 interface BidderMetrics {
@@ -107,10 +107,10 @@ export default async function bidderHealthRoutes(fastify: FastifyInstance) {
       .all();
 
     // Get publisher's configured bidders
-    const publisherBidders = db
+    const configuredBidders = db
       .select()
-      .from(bidders)
-      .where(eq(bidders.publisherId, publisherId))
+      .from(publisherBidders)
+      .where(eq(publisherBidders.publisherId, publisherId))
       .all();
 
     // Group events by bidder code
@@ -145,7 +145,7 @@ export default async function bidderHealthRoutes(fastify: FastifyInstance) {
 
     for (const [bidderCode, events] of bidderGroups.entries()) {
       // Find bidder config
-      const bidderConfig = publisherBidders.find(b => b.bidderCode === bidderCode);
+      const bidderConfig = configuredBidders.find(b => b.bidderCode === bidderCode);
       const bidderName = bidderConfig?.bidderCode || bidderCode;
 
       // Current period metrics

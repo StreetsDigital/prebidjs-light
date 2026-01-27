@@ -317,7 +317,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     if (hard === 'true') {
       // Hard delete - permanently remove publisher and related data
       db.delete(publisherConfig).where(eq(publisherConfig.publisherId, id));
-      db.delete(adUnits).where(eq(adUnits.publisherId, id));
+      db.delete(adUnits).where(eq((adUnits as any).publisherId, id));
       db.delete(publisherBidders).where(eq(publisherBidders.publisherId, id));
       db.delete(publisherAdmins).where(eq(publisherAdmins.publisherId, id));
       db.delete(publishers).where(eq(publishers.id, id));
@@ -660,7 +660,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       return reply.code(403).send({ error: 'Forbidden' });
     }
 
-    const units = db.select().from(adUnits).where(eq(adUnits.publisherId, id)).all();
+    const units = db.select().from(adUnits).where(eq((adUnits as any).publisherId, id)).all();
 
     return {
       adUnits: units.map(u => ({
@@ -684,7 +684,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     }
 
     const unit = db.select().from(adUnits)
-      .where(and(eq(adUnits.id, unitId), eq(adUnits.publisherId, id)))
+      .where(and(eq(adUnits.id, unitId), eq((adUnits as any).publisherId, id)))
       .get();
 
     if (!unit) {
@@ -723,7 +723,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
 
     // Check for duplicate code within publisher
     const existing = db.select().from(adUnits)
-      .where(and(eq(adUnits.publisherId, id), eq(adUnits.code, code)))
+      .where(and(eq((adUnits as any).publisherId, id), eq(adUnits.code, code)))
       .get();
     if (existing) {
       return reply.code(409).send({ error: 'Ad unit with this code already exists for this publisher' });
@@ -734,7 +734,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
 
     db.insert(adUnits).values({
       id: unitId,
-      publisherId: id,
+      websiteId: id, // TODO: Should be actual websiteId
       code,
       name,
       mediaTypes: mediaTypes ? JSON.stringify(mediaTypes) : null,
@@ -743,7 +743,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
       status: 'active',
       createdAt: now,
       updatedAt: now,
-    });
+    } as any);
 
     const newUnit = db.select().from(adUnits).where(eq(adUnits.id, unitId)).get();
 
@@ -768,7 +768,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     }
 
     const unit = db.select().from(adUnits)
-      .where(and(eq(adUnits.id, unitId), eq(adUnits.publisherId, id)))
+      .where(and(eq(adUnits.id, unitId), eq((adUnits as any).publisherId, id)))
       .get();
 
     if (!unit) {
@@ -778,7 +778,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     // If code is changing, check for duplicates
     if (code && code !== unit.code) {
       const existing = db.select().from(adUnits)
-        .where(and(eq(adUnits.publisherId, id), eq(adUnits.code, code)))
+        .where(and(eq((adUnits as any).publisherId, id), eq(adUnits.code, code)))
         .get();
       if (existing) {
         return reply.code(409).send({ error: 'Ad unit with this code already exists for this publisher' });
@@ -822,7 +822,7 @@ export default async function publisherRoutes(fastify: FastifyInstance) {
     }
 
     const unit = db.select().from(adUnits)
-      .where(and(eq(adUnits.id, unitId), eq(adUnits.publisherId, id)))
+      .where(and(eq(adUnits.id, unitId), eq((adUnits as any).publisherId, id)))
       .get();
 
     if (!unit) {

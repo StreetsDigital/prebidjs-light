@@ -3,6 +3,7 @@ import '@fastify/jwt';
 
 export interface TokenPayload {
   userId: string;
+  id?: string; // Alias for userId (some routes use .id)
   email: string;
   role: 'super_admin' | 'admin' | 'publisher';
   publisherId?: string;

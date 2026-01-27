@@ -14,6 +14,27 @@ export const users = sqliteTable('users', {
   lastLoginAt: text('last_login_at'),
 });
 
+// Sessions table for refresh tokens
+export const sessions = sqliteTable('sessions', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  refreshToken: text('refresh_token').notNull().unique(),
+  userAgent: text('user_agent'),
+  ipAddress: text('ip_address'),
+  expiresAt: text('expires_at').notNull(),
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+// Password reset tokens table
+export const passwordResetTokens = sqliteTable('password_reset_tokens', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  token: text('token').notNull().unique(),
+  expiresAt: text('expires_at').notNull(),
+  usedAt: text('used_at'),
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+});
+
 // Publishers table - TOP LEVEL
 export const publishers = sqliteTable('publishers', {
   id: text('id').primaryKey(),

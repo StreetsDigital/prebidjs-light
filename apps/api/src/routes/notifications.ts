@@ -220,7 +220,7 @@ export default async function notificationsRoutes(fastify: FastifyInstance) {
       triggerCount: 0,
       createdAt: now,
       updatedAt: now,
-    });
+    } as any);
 
     const rule = db.select().from(notificationRules)
       .where(eq(notificationRules.id, ruleId))

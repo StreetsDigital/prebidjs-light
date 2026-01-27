@@ -222,7 +222,7 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
         additionalBidders: variant.additionalBidders ? JSON.stringify(variant.additionalBidders) : null,
         createdAt: now,
         updatedAt: now,
-      });
+      } as any);
     }
 
     // Audit log

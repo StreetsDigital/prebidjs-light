@@ -14,6 +14,17 @@ import scheduledReportsRoutes from './routes/scheduled-reports';
 import analyticsRoutes from './routes/analytics';
 import buildsRoutes from './routes/builds';
 import abTestRoutes from './routes/ab-tests';
+import abTestAnalyticsRoutes from './routes/ab-test-analytics';
+import bidderHealthRoutes from './routes/bidder-health';
+import optimizationRulesRoutes from './routes/optimization-rules';
+import auctionInspectorRoutes from './routes/auction-inspector';
+import revenueForecastingRoutes from './routes/revenue-forecasting';
+import notificationsRoutes from './routes/notifications';
+import customReportsRoutes from './routes/custom-reports';
+import yieldAdvisorRoutes from './routes/yield-advisor';
+import adUnitsRoutes from './routes/ad-units';
+import wrapperRoutes from './routes/wrapper';
+import systemRoutes from './routes/system';
 
 const app = Fastify({
   logger: {
@@ -57,6 +68,17 @@ app.register(scheduledReportsRoutes, { prefix: '/api/scheduled-reports' });
 app.register(analyticsRoutes, { prefix: '/api/analytics' });
 app.register(buildsRoutes, { prefix: '/api' });
 app.register(abTestRoutes, { prefix: '/api/publishers' });
+app.register(abTestAnalyticsRoutes, { prefix: '/api/publishers' });
+app.register(bidderHealthRoutes, { prefix: '/api/publishers' });
+app.register(optimizationRulesRoutes, { prefix: '/api/publishers' });
+app.register(auctionInspectorRoutes, { prefix: '/api/publishers' });
+app.register(revenueForecastingRoutes, { prefix: '/api/publishers' });
+app.register(notificationsRoutes, { prefix: '/api/publishers' });
+app.register(customReportsRoutes, { prefix: '/api/publishers' });
+app.register(yieldAdvisorRoutes, { prefix: '/api/publishers' });
+app.register(adUnitsRoutes, { prefix: '/api' });
+app.register(systemRoutes, { prefix: '/api/system' });
+app.register(wrapperRoutes); // No prefix - serves at root level
 
 // Placeholder for other routes
 // app.register(configRoutes, { prefix: '/api/config' });

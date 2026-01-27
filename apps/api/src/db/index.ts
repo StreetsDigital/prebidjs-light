@@ -239,6 +239,9 @@ export function initializeDatabase() {
       status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'running', 'paused', 'completed')),
       start_date TEXT,
       end_date TEXT,
+      parent_test_id TEXT,
+      parent_variant_id TEXT,
+      level INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -347,6 +350,9 @@ function runMigrations() {
           status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'running', 'paused', 'completed')),
           start_date TEXT,
           end_date TEXT,
+          parent_test_id TEXT,
+          parent_variant_id TEXT,
+          level INTEGER NOT NULL DEFAULT 0,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
         );
@@ -371,6 +377,292 @@ function runMigrations() {
         CREATE INDEX IF NOT EXISTS idx_ab_tests_publisher ON ab_tests(publisher_id);
         CREATE INDEX IF NOT EXISTS idx_ab_tests_status ON ab_tests(status);
         CREATE INDEX IF NOT EXISTS idx_ab_test_variants_test ON ab_test_variants(test_id);
+      `
+    },
+    {
+      name: 'add_additional_bidders_to_variants',
+      sql: `-- Add additional_bidders column for A/B testing new bidders`,
+      columnCheck: {
+        table: 'ab_test_variants',
+        column: 'additional_bidders',
+        addSql: 'ALTER TABLE ab_test_variants ADD COLUMN additional_bidders TEXT;'
+      }
+    },
+    {
+      name: 'add_nested_ab_test_support',
+      sql: `-- Add nested A/B test support`,
+      columnCheck: {
+        table: 'ab_tests',
+        column: 'parent_test_id',
+        addSql: `
+          ALTER TABLE ab_tests ADD COLUMN parent_test_id TEXT;
+          ALTER TABLE ab_tests ADD COLUMN parent_variant_id TEXT;
+          ALTER TABLE ab_tests ADD COLUMN level INTEGER NOT NULL DEFAULT 0;
+        `
+      },
+      postSql: `
+        CREATE INDEX IF NOT EXISTS idx_ab_tests_parent ON ab_tests(parent_test_id);
+        CREATE INDEX IF NOT EXISTS idx_ab_tests_level ON ab_tests(level);
+      `
+    },
+    {
+      name: 'add_optimization_rules',
+      sql: `
+        -- Optimization Rules table
+        CREATE TABLE IF NOT EXISTS optimization_rules (
+          id TEXT PRIMARY KEY,
+          publisher_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          rule_type TEXT NOT NULL CHECK(rule_type IN ('auto_disable_bidder', 'auto_adjust_timeout', 'auto_adjust_floor', 'auto_enable_bidder', 'alert_notification', 'traffic_allocation')),
+          conditions TEXT NOT NULL,
+          actions TEXT NOT NULL,
+          schedule TEXT,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          priority INTEGER NOT NULL DEFAULT 0,
+          last_executed TEXT,
+          execution_count INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (publisher_id) REFERENCES publishers(id) ON DELETE CASCADE
+        );
+
+        -- Rule Executions history table
+        CREATE TABLE IF NOT EXISTS rule_executions (
+          id TEXT PRIMARY KEY,
+          rule_id TEXT NOT NULL,
+          publisher_id TEXT NOT NULL,
+          conditions_met TEXT NOT NULL,
+          actions_performed TEXT NOT NULL,
+          result TEXT NOT NULL CHECK(result IN ('success', 'failure', 'skipped')),
+          error_message TEXT,
+          metrics_snapshot TEXT,
+          executed_at TEXT NOT NULL,
+          FOREIGN KEY (rule_id) REFERENCES optimization_rules(id) ON DELETE CASCADE,
+          FOREIGN KEY (publisher_id) REFERENCES publishers(id) ON DELETE CASCADE
+        );
+
+        -- Create indexes for performance
+        CREATE INDEX IF NOT EXISTS idx_optimization_rules_publisher ON optimization_rules(publisher_id);
+        CREATE INDEX IF NOT EXISTS idx_optimization_rules_enabled ON optimization_rules(enabled);
+        CREATE INDEX IF NOT EXISTS idx_rule_executions_rule ON rule_executions(rule_id);
+        CREATE INDEX IF NOT EXISTS idx_rule_executions_publisher ON rule_executions(publisher_id);
+        CREATE INDEX IF NOT EXISTS idx_rule_executions_executed_at ON rule_executions(executed_at);
+      `
+    },
+    {
+      name: 'add_auction_debug_events',
+      sql: `
+        -- Auction Debug Events table for live inspector
+        CREATE TABLE IF NOT EXISTS auction_debug_events (
+          id TEXT PRIMARY KEY,
+          publisher_id TEXT NOT NULL,
+          auction_id TEXT NOT NULL,
+          timestamp TEXT NOT NULL,
+          event_type TEXT NOT NULL CHECK(event_type IN ('auction_init', 'bid_requested', 'bid_response', 'bid_timeout', 'bid_won', 'bid_error', 'auction_end')),
+          ad_unit_code TEXT,
+          bidder_code TEXT,
+          bid_request TEXT,
+          bid_response TEXT,
+          latency_ms INTEGER,
+          cpm TEXT,
+          currency TEXT,
+          page_url TEXT,
+          domain TEXT,
+          device_type TEXT,
+          user_agent TEXT,
+          error_message TEXT,
+          status_code INTEGER,
+          metadata TEXT,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (publisher_id) REFERENCES publishers(id) ON DELETE CASCADE
+        );
+
+        -- Create indexes for performance
+        CREATE INDEX IF NOT EXISTS idx_auction_debug_publisher ON auction_debug_events(publisher_id);
+        CREATE INDEX IF NOT EXISTS idx_auction_debug_auction_id ON auction_debug_events(auction_id);
+        CREATE INDEX IF NOT EXISTS idx_auction_debug_timestamp ON auction_debug_events(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_auction_debug_event_type ON auction_debug_events(event_type);
+        CREATE INDEX IF NOT EXISTS idx_auction_debug_bidder ON auction_debug_events(bidder_code);
+      `
+    },
+    {
+      name: 'add_notification_system',
+      sql: `
+        -- Notification Channels table
+        CREATE TABLE IF NOT EXISTS notification_channels (
+          id TEXT PRIMARY KEY,
+          publisher_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          type TEXT NOT NULL CHECK(type IN ('email', 'slack', 'discord', 'teams', 'sms', 'webhook', 'pagerduty')),
+          config TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          verified INTEGER NOT NULL DEFAULT 0,
+          last_test_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (publisher_id) REFERENCES publishers(id) ON DELETE CASCADE
+        );
+
+        -- Notification Rules table
+        CREATE TABLE IF NOT EXISTS notification_rules (
+          id TEXT PRIMARY KEY,
+          publisher_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          event_type TEXT NOT NULL CHECK(event_type IN ('revenue_drop', 'revenue_spike', 'fill_rate_drop', 'timeout_spike', 'error_spike', 'bidder_failure', 'cpm_drop', 'impression_drop', 'custom_metric')),
+          conditions TEXT NOT NULL,
+          channels TEXT NOT NULL,
+          severity TEXT NOT NULL DEFAULT 'warning' CHECK(severity IN ('info', 'warning', 'critical')),
+          cooldown_minutes INTEGER NOT NULL DEFAULT 60,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          escalation_policy_id TEXT,
+          last_triggered TEXT,
+          trigger_count INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (publisher_id) REFERENCES publishers(id) ON DELETE CASCADE,
+          FOREIGN KEY (escalation_policy_id) REFERENCES escalation_policies(id) ON DELETE SET NULL
+        );
+
+        -- Notifications table (history)
+        CREATE TABLE IF NOT EXISTS notifications (
+          id TEXT PRIMARY KEY,
+          publisher_id TEXT NOT NULL,
+          rule_id TEXT,
+          channel_id TEXT NOT NULL,
+          event_type TEXT NOT NULL,
+          severity TEXT NOT NULL CHECK(severity IN ('info', 'warning', 'critical')),
+          title TEXT NOT NULL,
+          message TEXT NOT NULL,
+          data TEXT,
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'sent', 'failed', 'acknowledged')),
+          error_message TEXT,
+          acknowledged_by TEXT,
+          acknowledged_at TEXT,
+          sent_at TEXT,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (publisher_id) REFERENCES publishers(id) ON DELETE CASCADE,
+          FOREIGN KEY (rule_id) REFERENCES notification_rules(id) ON DELETE SET NULL,
+          FOREIGN KEY (channel_id) REFERENCES notification_channels(id) ON DELETE CASCADE
+        );
+
+        -- Escalation Policies table
+        CREATE TABLE IF NOT EXISTS escalation_policies (
+          id TEXT PRIMARY KEY,
+          publisher_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          levels TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (publisher_id) REFERENCES publishers(id) ON DELETE CASCADE
+        );
+
+        -- Create indexes for performance
+        CREATE INDEX IF NOT EXISTS idx_notification_channels_publisher ON notification_channels(publisher_id);
+        CREATE INDEX IF NOT EXISTS idx_notification_channels_type ON notification_channels(type);
+        CREATE INDEX IF NOT EXISTS idx_notification_rules_publisher ON notification_rules(publisher_id);
+        CREATE INDEX IF NOT EXISTS idx_notification_rules_enabled ON notification_rules(enabled);
+        CREATE INDEX IF NOT EXISTS idx_notification_rules_event_type ON notification_rules(event_type);
+        CREATE INDEX IF NOT EXISTS idx_notifications_publisher ON notifications(publisher_id);
+        CREATE INDEX IF NOT EXISTS idx_notifications_rule ON notifications(rule_id);
+        CREATE INDEX IF NOT EXISTS idx_notifications_status ON notifications(status);
+        CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);
+        CREATE INDEX IF NOT EXISTS idx_escalation_policies_publisher ON escalation_policies(publisher_id);
+      `
+    },
+    {
+      name: 'add_custom_reports',
+      sql: `
+        -- Custom Reports table
+        CREATE TABLE IF NOT EXISTS custom_reports (
+          id TEXT PRIMARY KEY,
+          publisher_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          metrics TEXT NOT NULL,
+          dimensions TEXT NOT NULL,
+          filters TEXT,
+          date_range TEXT NOT NULL,
+          visualization TEXT,
+          schedule TEXT,
+          export_format TEXT DEFAULT 'csv',
+          is_template INTEGER NOT NULL DEFAULT 0,
+          is_public INTEGER NOT NULL DEFAULT 0,
+          created_by TEXT,
+          last_run_at TEXT,
+          run_count INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (publisher_id) REFERENCES publishers(id) ON DELETE CASCADE
+        );
+
+        -- Report Executions table
+        CREATE TABLE IF NOT EXISTS report_executions (
+          id TEXT PRIMARY KEY,
+          report_id TEXT NOT NULL,
+          publisher_id TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'running' CHECK(status IN ('running', 'completed', 'failed')),
+          started_at TEXT NOT NULL,
+          completed_at TEXT,
+          duration INTEGER,
+          row_count INTEGER,
+          output_path TEXT,
+          output_format TEXT,
+          error_message TEXT,
+          triggered_by TEXT,
+          parameters TEXT,
+          FOREIGN KEY (report_id) REFERENCES custom_reports(id) ON DELETE CASCADE,
+          FOREIGN KEY (publisher_id) REFERENCES publishers(id) ON DELETE CASCADE
+        );
+
+        -- Create indexes for performance
+        CREATE INDEX IF NOT EXISTS idx_custom_reports_publisher ON custom_reports(publisher_id);
+        CREATE INDEX IF NOT EXISTS idx_custom_reports_template ON custom_reports(is_template);
+        CREATE INDEX IF NOT EXISTS idx_report_executions_report ON report_executions(report_id);
+        CREATE INDEX IF NOT EXISTS idx_report_executions_publisher ON report_executions(publisher_id);
+        CREATE INDEX IF NOT EXISTS idx_report_executions_status ON report_executions(status);
+        CREATE INDEX IF NOT EXISTS idx_report_executions_started_at ON report_executions(started_at);
+      `
+    },
+    {
+      name: 'add_yield_recommendations',
+      sql: `
+        -- Yield Recommendations table
+        CREATE TABLE IF NOT EXISTS yield_recommendations (
+          id TEXT PRIMARY KEY,
+          publisher_id TEXT NOT NULL,
+          type TEXT NOT NULL CHECK(type IN ('disable_bidder', 'adjust_timeout', 'adjust_floor_price', 'add_bidder', 'enable_bidder', 'run_ab_test', 'optimize_ad_unit', 'adjust_traffic_allocation')),
+          priority TEXT NOT NULL DEFAULT 'medium' CHECK(priority IN ('low', 'medium', 'high', 'critical')),
+          title TEXT NOT NULL,
+          description TEXT NOT NULL,
+          data_snapshot TEXT NOT NULL,
+          estimated_impact TEXT,
+          target_entity TEXT,
+          recommended_action TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'implemented', 'dismissed', 'expired')),
+          implemented_at TEXT,
+          implemented_by TEXT,
+          dismissed_at TEXT,
+          dismissed_by TEXT,
+          dismiss_reason TEXT,
+          actual_impact TEXT,
+          measurement_period TEXT,
+          confidence TEXT NOT NULL DEFAULT 'medium',
+          expires_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (publisher_id) REFERENCES publishers(id) ON DELETE CASCADE
+        );
+
+        -- Create indexes for performance
+        CREATE INDEX IF NOT EXISTS idx_yield_recommendations_publisher ON yield_recommendations(publisher_id);
+        CREATE INDEX IF NOT EXISTS idx_yield_recommendations_status ON yield_recommendations(status);
+        CREATE INDEX IF NOT EXISTS idx_yield_recommendations_priority ON yield_recommendations(priority);
+        CREATE INDEX IF NOT EXISTS idx_yield_recommendations_type ON yield_recommendations(type);
+        CREATE INDEX IF NOT EXISTS idx_yield_recommendations_created_at ON yield_recommendations(created_at);
       `
     }
   ];

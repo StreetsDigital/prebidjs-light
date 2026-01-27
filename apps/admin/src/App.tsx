@@ -4,7 +4,7 @@ import { AdminLayout, PublisherLayout } from './components/layout';
 import { Login } from './pages/Login';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { ResetPassword } from './pages/ResetPassword';
-import { DashboardPage, PublishersPage, PublisherDetailPage, PublisherCreatePage, UsersPage, ModulesPage, AnalyticsPage, AuditLogsPage, ProfilePage } from './pages/admin';
+import { DashboardPage, PublishersPage, PublisherDetailPage, PublisherCreatePage, UsersPage, ModulesPage, AnalyticsPage, AuditLogsPage, ProfilePage, SystemSettingsPage, ABTestsPage, ABTestAnalyticsPage, BidderHealthPage, OptimizationRulesPage, AuctionInspectorPage, RevenueForecastingPage, NotificationsPage, CustomReportsPage, YieldAdvisorPage } from './pages/admin';
 import { PublisherDashboard, AdUnitsPage, BiddersPage, GetCodePage } from './pages/publisher';
 import { NotFound } from './pages/NotFound';
 
@@ -59,6 +59,15 @@ function App() {
         <Route path="publishers" element={<PublishersPage />} />
         <Route path="publishers/new" element={<PublisherCreatePage />} />
         <Route path="publishers/:id" element={<PublisherDetailPage />} />
+        <Route path="publishers/:publisherId/ab-tests" element={<ABTestsPage />} />
+        <Route path="publishers/:publisherId/ab-tests/:testId/analytics" element={<ABTestAnalyticsPage />} />
+        <Route path="publishers/:publisherId/bidder-health" element={<BidderHealthPage />} />
+        <Route path="publishers/:publisherId/optimization-rules" element={<OptimizationRulesPage />} />
+        <Route path="publishers/:publisherId/auction-inspector" element={<AuctionInspectorPage />} />
+        <Route path="publishers/:publisherId/revenue-forecasting" element={<RevenueForecastingPage />} />
+        <Route path="publishers/:publisherId/notifications" element={<NotificationsPage />} />
+        <Route path="publishers/:publisherId/custom-reports" element={<CustomReportsPage />} />
+        <Route path="publishers/:publisherId/yield-advisor" element={<YieldAdvisorPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="audit-logs" element={<AuditLogsPage />} />
@@ -78,7 +87,7 @@ function App() {
         }
       >
         <Route index element={<Navigate to="settings" replace />} />
-        <Route path="settings" element={<PlaceholderPage title="System Settings" />} />
+        <Route path="settings" element={<SystemSettingsPage />} />
         <Route path="*" element={<PlaceholderPage title="Page Not Found" />} />
       </Route>
 

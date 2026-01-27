@@ -26,6 +26,7 @@ interface EditFormData {
 
 interface AdUnit {
   id: string;
+  websiteId: string; // REQUIRED - ad unit must belong to a website
   code: string;
   name: string;
   sizes: string[];
@@ -68,6 +69,7 @@ interface NativeConfig {
 }
 
 interface AdUnitFormData {
+  websiteId: string; // REQUIRED - must select website when creating ad unit
   code: string;
   name: string;
   sizes: string;
@@ -454,13 +456,14 @@ export function PublisherDetailPage() {
     return undefined;
   };
 
-  // Ad Units state
-  const [adUnits, setAdUnits] = useState<AdUnit[]>([]);
+  // Ad Units state - grouped by website
+  const [adUnitsByWebsite, setAdUnitsByWebsite] = useState<Record<string, AdUnit[]>>({});
   const [adUnitModal, setAdUnitModal] = useState({
     isOpen: false,
     isLoading: false,
   });
   const [adUnitForm, setAdUnitForm] = useState<AdUnitFormData>({
+    websiteId: '', // Required - must select website
     code: '',
     name: '',
     sizes: '',
@@ -691,57 +694,69 @@ export function PublisherDetailPage() {
     }
   };
 
+  // Fetch ad units for each website - NEW HIERARCHY
   const fetchAdUnits = async () => {
-    if (!id) return;
+    if (!id || websites.length === 0) return;
 
     try {
-      const response = await fetch(`/api/publishers/${id}/ad-units`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const adUnitsByWebsiteTemp: Record<string, AdUnit[]> = {};
 
-      if (response.ok) {
-        const data = await response.json();
-        setAdUnits(data.adUnits.map((u: {
-          id: string;
-          code: string;
-          name: string;
-          mediaTypes?: {
-            banner?: { sizes: number[][] };
-            video?: {
-              playerSize?: number[];
-              context?: string;
-              mimes?: string[];
-              protocols?: number[];
-              playbackmethod?: number[];
-              minduration?: number;
-              maxduration?: number;
+      // Fetch ad units for each website
+      for (const website of websites) {
+        const response = await fetch(`/api/websites/${website.id}/ad-units`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          adUnitsByWebsiteTemp[website.id] = data.adUnits.map((u: {
+            id: string;
+            websiteId: string;
+            code: string;
+            name: string;
+            mediaTypes?: {
+              banner?: { sizes: number[][] };
+              video?: {
+                playerSize?: number[];
+                context?: string;
+                mimes?: string[];
+                protocols?: number[];
+                playbackmethod?: number[];
+                minduration?: number;
+                maxduration?: number;
+              };
             };
-          };
-          status: string;
-          floorPrice?: string | null;
-          sizeMapping?: SizeMappingRule[] | null
-        }) => ({
-          id: u.id,
-          code: u.code,
-          name: u.name,
-          sizes: u.mediaTypes?.banner?.sizes?.map((s: number[]) => s.join('x')) || [],
-          mediaTypes: u.mediaTypes ? Object.keys(u.mediaTypes) : ['banner'],
-          status: u.status,
-          floorPrice: u.floorPrice || null,
-          sizeMapping: u.sizeMapping || null,
-          videoConfig: u.mediaTypes?.video ? {
-            playerSize: u.mediaTypes.video.playerSize ? `${u.mediaTypes.video.playerSize[0]}x${u.mediaTypes.video.playerSize[1]}` : '640x480',
-            context: (u.mediaTypes.video.context as 'instream' | 'outstream' | 'adpod') || 'instream',
-            mimes: u.mediaTypes.video.mimes || ['video/mp4', 'video/webm'],
-            protocols: u.mediaTypes.video.protocols || [2, 3, 5, 6],
-            playbackMethods: u.mediaTypes.video.playbackmethod || [1, 2],
-            minDuration: u.mediaTypes.video.minduration,
-            maxDuration: u.mediaTypes.video.maxduration,
-          } : undefined,
-        })));
+            status: string;
+            floorPrice?: string | null;
+            sizeMapping?: SizeMappingRule[] | null
+          }) => ({
+            id: u.id,
+            websiteId: u.websiteId,
+            code: u.code,
+            name: u.name,
+            sizes: u.mediaTypes?.banner?.sizes?.map((s: number[]) => s.join('x')) || [],
+            mediaTypes: u.mediaTypes ? Object.keys(u.mediaTypes) : ['banner'],
+            status: u.status,
+            floorPrice: u.floorPrice || null,
+            sizeMapping: u.sizeMapping || null,
+            videoConfig: u.mediaTypes?.video ? {
+              playerSize: u.mediaTypes.video.playerSize ? `${u.mediaTypes.video.playerSize[0]}x${u.mediaTypes.video.playerSize[1]}` : '640x480',
+              context: (u.mediaTypes.video.context as 'instream' | 'outstream' | 'adpod') || 'instream',
+              mimes: u.mediaTypes.video.mimes || ['video/mp4', 'video/webm'],
+              protocols: u.mediaTypes.video.protocols || [2, 3, 5, 6],
+              playbackMethods: u.mediaTypes.video.playbackmethod || [1, 2],
+              minDuration: u.mediaTypes.video.minduration,
+              maxDuration: u.mediaTypes.video.maxduration,
+            } : undefined,
+          }));
+        } else {
+          adUnitsByWebsiteTemp[website.id] = [];
+        }
       }
+
+      setAdUnitsByWebsite(adUnitsByWebsiteTemp);
     } catch (err) {
       console.error('Failed to fetch ad units:', err);
     }
@@ -1014,8 +1029,7 @@ export function PublisherDetailPage() {
 
   useEffect(() => {
     fetchPublisher();
-    fetchAdUnits();
-    fetchWebsites();
+    fetchWebsites(); // Fetch websites first
     fetchAssignedAdmins();
     fetchConfig();
     fetchPublisherBidders();
@@ -1024,6 +1038,13 @@ export function PublisherDetailPage() {
     fetchBuilds();
     fetchAbTests();
   }, [id, token]);
+
+  // Fetch ad units after websites are loaded (depends on websites)
+  useEffect(() => {
+    if (websites.length > 0) {
+      fetchAdUnits();
+    }
+  }, [websites]);
 
   // Hash navigation - handle URL hash to switch tabs and scroll to sections
   useEffect(() => {
@@ -1254,9 +1275,10 @@ export function PublisherDetailPage() {
   };
 
   // Ad Unit handlers
-  const handleAddAdUnitClick = () => {
+  const handleAddAdUnitClick = (websiteId: string) => {
     setEditingAdUnit(null);
     setAdUnitForm({
+      websiteId, // Set the websiteId for the selected website
       code: '',
       name: '',
       sizes: '',
@@ -1272,6 +1294,7 @@ export function PublisherDetailPage() {
   const handleEditAdUnitClick = (adUnit: AdUnit) => {
     setEditingAdUnit(adUnit);
     setAdUnitForm({
+      websiteId: adUnit.websiteId, // Include websiteId from ad unit
       code: adUnit.code,
       name: adUnit.name,
       sizes: adUnit.sizes.join(', '),
@@ -1287,6 +1310,7 @@ export function PublisherDetailPage() {
   const handleDuplicateAdUnitClick = (adUnit: AdUnit) => {
     setEditingAdUnit(null); // This is a new ad unit, not editing
     setAdUnitForm({
+      websiteId: adUnit.websiteId, // Keep same website when duplicating
       code: `${adUnit.code}-copy`,
       name: `${adUnit.name} (Copy)`,
       sizes: adUnit.sizes.join(', '),
@@ -1320,8 +1344,8 @@ export function PublisherDetailPage() {
 
       const isEditing = !!editingAdUnit;
       const url = isEditing
-        ? `/api/publishers/${publisher.id}/ad-units/${editingAdUnit.id}`
-        : `/api/publishers/${publisher.id}/ad-units`;
+        ? `/api/ad-units/${editingAdUnit.id}`  // NEW: Ad unit-level endpoint for updates
+        : `/api/websites/${adUnitForm.websiteId}/ad-units`;  // NEW: Website-level endpoint for creation
       const method = isEditing ? 'PUT' : 'POST';
 
       // Build mediaTypes object based on selected types
@@ -1438,34 +1462,39 @@ export function PublisherDetailPage() {
       }
 
       const updatedAdUnit = await response.json();
+      const newAdUnitData = {
+        id: updatedAdUnit.id,
+        websiteId: updatedAdUnit.websiteId || adUnitForm.websiteId,
+        code: updatedAdUnit.code,
+        name: updatedAdUnit.name,
+        sizes: sizesArray.map(s => s.join('x')),
+        mediaTypes: adUnitForm.mediaTypes,
+        status: updatedAdUnit.status,
+        floorPrice: updatedAdUnit.floorPrice || null,
+        sizeMapping: updatedAdUnit.sizeMapping || null,
+      };
 
-      if (isEditing) {
-        setAdUnits((prev) => prev.map((u) =>
-          u.id === editingAdUnit.id
-            ? {
-                id: updatedAdUnit.id,
-                code: updatedAdUnit.code,
-                name: updatedAdUnit.name,
-                sizes: sizesArray.map(s => s.join('x')),
-                mediaTypes: adUnitForm.mediaTypes,
-                status: updatedAdUnit.status,
-                floorPrice: updatedAdUnit.floorPrice || null,
-                sizeMapping: updatedAdUnit.sizeMapping || null,
-              }
-            : u
-        ));
-      } else {
-        setAdUnits((prev) => [...prev, {
-          id: updatedAdUnit.id,
-          code: updatedAdUnit.code,
-          name: updatedAdUnit.name,
-          sizes: sizesArray.map(s => s.join('x')),
-          mediaTypes: adUnitForm.mediaTypes,
-          status: updatedAdUnit.status,
-          floorPrice: updatedAdUnit.floorPrice || null,
-          sizeMapping: updatedAdUnit.sizeMapping || null,
-        }]);
-      }
+      // Update state grouped by website
+      setAdUnitsByWebsite((prev) => {
+        const websiteId = newAdUnitData.websiteId;
+        const websiteUnits = prev[websiteId] || [];
+
+        if (isEditing) {
+          // Update existing ad unit
+          return {
+            ...prev,
+            [websiteId]: websiteUnits.map((u) =>
+              u.id === editingAdUnit.id ? newAdUnitData : u
+            ),
+          };
+        } else {
+          // Add new ad unit
+          return {
+            ...prev,
+            [websiteId]: [...websiteUnits, newAdUnitData],
+          };
+        }
+      });
       handleAdUnitClose();
       setEditingAdUnit(null);
       // Switch to ad-units tab to show the new ad unit
@@ -1503,13 +1532,13 @@ export function PublisherDetailPage() {
   };
 
   const handleDeleteAdUnitConfirm = async () => {
-    if (!publisher || !deleteAdUnitDialog.adUnit) return;
+    if (!deleteAdUnitDialog.adUnit) return;
 
     setDeleteAdUnitDialog((prev) => ({ ...prev, isLoading: true }));
 
     try {
       const response = await fetch(
-        `/api/publishers/${publisher.id}/ad-units/${deleteAdUnitDialog.adUnit.id}`,
+        `/api/ad-units/${deleteAdUnitDialog.adUnit.id}`,  // NEW: Ad unit-level endpoint
         {
           method: 'DELETE',
           headers: {
@@ -1522,8 +1551,12 @@ export function PublisherDetailPage() {
         throw new Error('Failed to delete ad unit');
       }
 
-      // Remove the ad unit from state
-      setAdUnits((prev) => prev.filter((u) => u.id !== deleteAdUnitDialog.adUnit?.id));
+      // Remove the ad unit from state (grouped by website)
+      const websiteId = deleteAdUnitDialog.adUnit.websiteId;
+      setAdUnitsByWebsite((prev) => ({
+        ...prev,
+        [websiteId]: prev[websiteId]?.filter((u) => u.id !== deleteAdUnitDialog.adUnit?.id) || [],
+      }));
       handleDeleteAdUnitCancel();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete ad unit');
@@ -3850,49 +3883,100 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
       label: 'Ad Units',
       content: (
         <div className="bg-white shadow rounded-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-lg font-medium text-gray-900">Ad Units</h2>
-              <p className="text-sm text-gray-500">
-                Manage ad unit placements for this publisher.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={handleAddAdUnitClick}
-              className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
-            >
-              <svg className="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" />
-              </svg>
-              Add Ad Unit
-            </button>
+          <div className="mb-6">
+            <h2 className="text-lg font-medium text-gray-900">Ad Units by Website</h2>
+            <p className="text-sm text-gray-500">
+              Ad units are organized by website. Each ad unit belongs to a specific website.
+            </p>
           </div>
 
-          {adUnits.length === 0 ? (
-            <div className="text-center py-12">
+          {websites.length === 0 ? (
+            <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-lg">
               <svg
                 className="mx-auto h-12 w-12 text-gray-400"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
-                aria-hidden="true"
               >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={1}
-                  d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"
+                  d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
                 />
               </svg>
-              <h3 className="mt-2 text-sm font-semibold text-gray-900">No ad units</h3>
+              <h3 className="mt-2 text-sm font-semibold text-gray-900">No websites yet</h3>
               <p className="mt-1 text-sm text-gray-500">
-                Get started by creating a new ad unit for this publisher.
+                Create a website first, then you can add ad units to it.
               </p>
+              <div className="mt-4">
+                <button
+                  onClick={() => setActiveTab('websites')}
+                  className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
+                >
+                  Go to Websites Tab
+                </button>
+              </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {adUnits.map((unit) => (
+            <div className="space-y-6">
+              {websites.map((website) => {
+                const websiteAdUnits = adUnitsByWebsite[website.id] || [];
+                return (
+                  <div key={website.id} className="border border-gray-200 rounded-lg overflow-hidden">
+                    {/* Website Header */}
+                    <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-sm font-semibold text-gray-900">{website.name}</h3>
+                          <p className="text-sm text-gray-500 flex items-center mt-1">
+                            <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                            </svg>
+                            {website.domain}
+                            <span className="ml-3 inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                              {websiteAdUnits.length} {websiteAdUnits.length === 1 ? 'unit' : 'units'}
+                            </span>
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleAddAdUnitClick(website.id)}
+                          className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
+                        >
+                          <svg className="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" />
+                          </svg>
+                          Add Ad Unit
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Ad Units List */}
+                    <div className="p-4">
+                      {websiteAdUnits.length === 0 ? (
+                        <div className="text-center py-8">
+                          <svg
+                            className="mx-auto h-10 w-10 text-gray-400"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={1}
+                              d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"
+                            />
+                          </svg>
+                          <h4 className="mt-2 text-sm font-medium text-gray-900">No ad units yet</h4>
+                          <p className="mt-1 text-xs text-gray-500">
+                            Create your first ad unit for {website.name}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {websiteAdUnits.map((unit) => (
                 <div
                   key={unit.id}
                   className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
@@ -3987,6 +4071,12 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
                   </div>
                 </div>
               ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -4622,6 +4712,769 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
         </div>
       ),
     },
+    {
+      id: 'ab-tests',
+      label: 'A/B Testing',
+      content: (
+        <div className="space-y-6">
+          <div className="bg-white shadow rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-medium text-gray-900">A/B Testing & Experiments</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Run experiments to optimize your configuration and maximize revenue
+                </p>
+              </div>
+              <Link
+                to={`/admin/publishers/${publisher.id}/ab-tests`}
+                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                Manage A/B Tests
+              </Link>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path
+                      fillRule="evenodd"
+                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-blue-800">Nested A/B Testing Supported</h3>
+                  <div className="mt-1 text-sm text-blue-700">
+                    <p>Create multi-level experiments to test different configurations in stages.</p>
+                    <p className="mt-1">
+                      Example: Test timeout settings, then within the winner, test adding new bidders.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Revenue Optimization</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Test different price granularities, floor prices, and bidder configurations to maximize eCPM.
+                </p>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Performance Testing</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Experiment with bidder timeouts, sequence ordering, and wrapper settings to reduce latency.
+                </p>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-purple-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Bidder Testing</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Add new bidders to specific variants to measure their impact before full rollout.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-8">
+              <h3 className="font-medium text-gray-900 mb-4">Key Metrics Tracked</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-600">eCPM</div>
+                  <div className="text-xs text-gray-600 mt-1">Revenue per 1k impressions</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-600">Latency</div>
+                  <div className="text-xs text-gray-600 mt-1">Wrapper render speed</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-purple-600">Fill Rate</div>
+                  <div className="text-xs text-gray-600 mt-1">Auction success rate</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-orange-600">Bid Density</div>
+                  <div className="text-xs text-gray-600 mt-1">Bids per auction</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'bidder-health',
+      label: 'Bidder Health',
+      content: (
+        <div className="space-y-6">
+          <div className="bg-white shadow rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-medium text-gray-900">Bidder Performance Dashboard</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Monitor real-time health metrics for all your bidders
+                </p>
+              </div>
+              <Link
+                to={`/admin/publishers/${publisher.id}/bidder-health`}
+                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                View Full Dashboard
+              </Link>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path
+                      fillRule="evenodd"
+                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-blue-800">Real-time Monitoring</h3>
+                  <div className="mt-1 text-sm text-blue-700">
+                    <p>Get instant alerts when bidders underperform, timeout frequently, or show performance degradation.</p>
+                    <p className="mt-1">
+                      Track response rates, latency, win rates, and revenue contribution across all bidders.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Health Scores</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Each bidder gets a 0-100 health score based on response rate, timeout rate, win rate, and revenue contribution.
+                </p>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Automatic Alerts</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Get notified when bidders have high timeout rates, slow response times, or declining revenue trends.
+                </p>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Performance Trends</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Track bidder performance over time with trend indicators showing revenue improvements or declines.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-8">
+              <h3 className="font-medium text-gray-900 mb-4">Tracked Metrics</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-600">Response Rate</div>
+                  <div className="text-xs text-gray-600 mt-1">% of requests answered</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-600">Win Rate</div>
+                  <div className="text-xs text-gray-600 mt-1">% of bids that win</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-yellow-600">Timeout Rate</div>
+                  <div className="text-xs text-gray-600 mt-1">% of slow responses</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-purple-600">Avg Latency</div>
+                  <div className="text-xs text-gray-600 mt-1">Response speed (ms)</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'optimization-rules',
+      label: 'Automation',
+      content: (
+        <div className="space-y-6">
+          <div className="bg-white shadow rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-medium text-gray-900">Optimization Rules Engine</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Set up intelligent automation rules that optimize your configuration 24/7
+                </p>
+              </div>
+              <Link
+                to={`/admin/publishers/${publisher.id}/optimization-rules`}
+                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Manage Rules
+              </Link>
+            </div>
+
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-purple-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path
+                      fillRule="evenodd"
+                      d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-purple-800">Set It and Forget It</h3>
+                  <div className="mt-1 text-sm text-purple-700">
+                    <p>Create rules that monitor your metrics and automatically take action when conditions are met.</p>
+                    <p className="mt-1">
+                      Your configuration optimizes itself 24/7, even while you sleep.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-red-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Auto-Disable Bidders</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Automatically disable bidders when timeout rate exceeds threshold or performance degrades.
+                </p>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Dynamic Timeouts</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Adjust bidder timeouts automatically based on response speed and performance patterns.
+                </p>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Smart Alerts</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Get notified when revenue drops, fill rate declines, or other critical metrics change.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-8">
+              <h3 className="font-medium text-gray-900 mb-4">Rule Types</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="text-center p-4 bg-red-50 rounded-lg">
+                  <div className="text-lg font-bold text-red-600">Auto-Disable</div>
+                  <div className="text-xs text-gray-600 mt-1">Remove bad performers</div>
+                </div>
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <div className="text-lg font-bold text-green-600">Auto-Enable</div>
+                  <div className="text-xs text-gray-600 mt-1">Activate on schedule</div>
+                </div>
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <div className="text-lg font-bold text-blue-600">Adjust Timeout</div>
+                  <div className="text-xs text-gray-600 mt-1">Dynamic optimization</div>
+                </div>
+                <div className="text-center p-4 bg-purple-50 rounded-lg">
+                  <div className="text-lg font-bold text-purple-600">Floor Prices</div>
+                  <div className="text-xs text-gray-600 mt-1">Revenue optimization</div>
+                </div>
+                <div className="text-center p-4 bg-yellow-50 rounded-lg">
+                  <div className="text-lg font-bold text-yellow-600">Alerts</div>
+                  <div className="text-xs text-gray-600 mt-1">Get notified</div>
+                </div>
+                <div className="text-center p-4 bg-indigo-50 rounded-lg">
+                  <div className="text-lg font-bold text-indigo-600">Traffic</div>
+                  <div className="text-xs text-gray-600 mt-1">Allocation rules</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'auction-inspector',
+      label: 'Live Inspector',
+      content: (
+        <div className="space-y-6">
+          <div className="bg-white shadow rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-medium text-gray-900">Live Auction Inspector</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Watch auctions happen in real-time and debug header bidding issues
+                </p>
+              </div>
+              <Link
+                to={`/admin/publishers/${publisher.id}/auction-inspector`}
+                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                Open Inspector
+              </Link>
+            </div>
+
+            <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-6">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-indigo-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-indigo-800">Chrome DevTools for Ads</h3>
+                  <div className="mt-1 text-sm text-indigo-700">
+                    <p>See every auction as it happens - bid requests, responses, timeouts, errors, and winners.</p>
+                    <p className="mt-1">
+                      Perfect for debugging integration issues and understanding auction behavior in real-time.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-indigo-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Real-Time Stream</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Watch auctions as they occur with auto-refresh. See new auctions appear instantly.
+                </p>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-purple-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Waterfall View</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Visualize the complete auction timeline - which bidders responded, timed out, or won.
+                </p>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Request/Response</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Inspect full bid request and response payloads. Debug exactly what's being sent and received.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-8">
+              <h3 className="font-medium text-gray-900 mb-4">What You Can Debug</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-indigo-600">Timeouts</div>
+                  <div className="text-xs text-gray-600 mt-1">Why bidders are slow</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-red-600">Errors</div>
+                  <div className="text-xs text-gray-600 mt-1">Integration issues</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-600">Winners</div>
+                  <div className="text-xs text-gray-600 mt-1">Who wins and why</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-purple-600">Latency</div>
+                  <div className="text-xs text-gray-600 mt-1">Performance issues</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'revenue-forecasting',
+      label: 'Revenue Insights',
+      content: (
+        <div className="space-y-6">
+          <div className="bg-white shadow rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-medium text-gray-900">Revenue Forecasting & Analytics</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Predict future revenue, detect anomalies, and optimize with data-driven insights
+                </p>
+              </div>
+              <Link
+                to={`/admin/publishers/${publisher.id}/revenue-forecasting`}
+                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2-2v6a2 2 0 002 2h2a2 2 0 002 2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                View Dashboard
+              </Link>
+            </div>
+
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-green-800">Predictive Analytics Powered by ML</h3>
+                  <div className="mt-1 text-sm text-green-700">
+                    <p>Use machine learning to forecast revenue, understand seasonality patterns, and detect anomalies automatically.</p>
+                    <p className="mt-1">
+                      Make data-driven decisions with confidence intervals, what-if scenarios, and goal tracking.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Revenue Forecast</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Predict future revenue with confidence intervals using linear regression and trend analysis.
+                </p>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Seasonality Patterns</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Understand hourly and daily revenue patterns. See which times and days perform best.
+                </p>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-red-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Anomaly Detection</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Automatically detect revenue spikes and drops using statistical analysis.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-8">
+              <h3 className="font-medium text-gray-900 mb-4">Key Features</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-600">Forecasting</div>
+                  <div className="text-xs text-gray-600 mt-1">30/60/90 day predictions</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-600">Scenarios</div>
+                  <div className="text-xs text-gray-600 mt-1">What-if modeling</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-purple-600">Goal Tracking</div>
+                  <div className="text-xs text-gray-600 mt-1">Budget pacing</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-indigo-600">Confidence</div>
+                  <div className="text-xs text-gray-600 mt-1">Statistical intervals</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'notifications',
+      label: 'Alerts & Notifications',
+      content: (
+        <div className="space-y-6">
+          <div className="bg-white shadow rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-medium text-gray-900">Notification System</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Get alerts for revenue drops, errors, timeouts, and custom events via email, Slack, SMS, and more
+                </p>
+              </div>
+              <Link
+                to={`/admin/publishers/${publisher.id}/notifications`}
+                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+                Manage Notifications
+              </Link>
+            </div>
+
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-purple-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-purple-800">Stay Informed, Stay in Control</h3>
+                  <div className="mt-1 text-sm text-purple-700">
+                    <p>Set up automated alerts to catch problems before they impact revenue. Get notified instantly via your preferred channels.</p>
+                    <p className="mt-1">
+                      Support for email, Slack, Discord, Microsoft Teams, SMS, webhooks, and PagerDuty integration.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-purple-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Smart Alerts</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Set up intelligent alerts based on revenue, fill rate, timeout rate, errors, and more.
+                </p>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Multiple Channels</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Email, Slack, Discord, Teams, SMS, webhooks, and PagerDuty - choose how you want to be notified.
+                </p>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-red-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Escalation Policies</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Define escalation paths for critical alerts - ensure the right people are notified at the right time.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-8">
+              <h3 className="font-medium text-gray-900 mb-4">Alert Types</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-red-600">Revenue Drop</div>
+                  <div className="text-xs text-gray-600 mt-1">When revenue drops</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-yellow-600">Fill Rate</div>
+                  <div className="text-xs text-gray-600 mt-1">Low fill rate alerts</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-orange-600">Timeouts</div>
+                  <div className="text-xs text-gray-600 mt-1">Bidder timeout spikes</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-red-600">Errors</div>
+                  <div className="text-xs text-gray-600 mt-1">Error rate increases</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'custom-reports',
+      label: 'Custom Reports',
+      content: (
+        <div className="space-y-6">
+          <div className="bg-white shadow rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-medium text-gray-900">Custom Report Builder</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Create flexible reports with custom metrics, dimensions, and export options
+                </p>
+              </div>
+              <Link
+                to={`/admin/publishers/${publisher.id}/custom-reports`}
+                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Open Report Builder
+              </Link>
+            </div>
+
+            <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-6">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-indigo-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-indigo-800">Build Reports Your Way</h3>
+                  <div className="mt-1 text-sm text-indigo-700">
+                    <p>Design custom reports with exactly the metrics and dimensions you need. Choose from revenue, CPM, fill rate, timeout rate, and more.</p>
+                    <p className="mt-1">
+                      Export to CSV, Excel, or PDF. Schedule automated delivery. Share with your team.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-indigo-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2-2v6a2 2 0 002 2h2a2 2 0 002 2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Flexible Metrics</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Select from 7+ metrics including revenue, impressions, CPM, fill rate, timeout rate, and more.
+                </p>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 010 2H6v10h2a1 1 0 010 2H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 110 2h-2v10h2a1 1 0 110 2h-4a1 1 0 01-1-1V5z" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Group & Filter</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Group by date, bidder, ad unit, device type, and more. Apply filters for precise analysis.
+                </p>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <svg className="w-6 h-6 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Export Options</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Export to CSV, Excel, or PDF. Schedule automated delivery to your inbox.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-8">
+              <h3 className="font-medium text-gray-900 mb-4">Report Templates</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-indigo-600">Daily Revenue</div>
+                  <div className="text-xs text-gray-600 mt-1">Revenue by day & bidder</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-600">Bidder Performance</div>
+                  <div className="text-xs text-gray-600 mt-1">Comprehensive metrics</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-600">Ad Unit Breakdown</div>
+                  <div className="text-xs text-gray-600 mt-1">Performance by unit</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-purple-600">Hourly Analysis</div>
+                  <div className="text-xs text-gray-600 mt-1">Revenue patterns</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ),
+    },
   ];
 
   // Build breadcrumb items based on current tab
@@ -4835,6 +5688,33 @@ console.log("[pbjs_engine] Prebid.js bundle loaded for ${publisher.slug}");
         title={editingAdUnit ? 'Edit Ad Unit' : 'Add Ad Unit'}
       >
         <form onSubmit={handleAdUnitSubmit} className="space-y-4">
+          {/* Website Selector - NEW */}
+          <div>
+            <label htmlFor="adUnitWebsite" className="block text-sm font-medium text-gray-700">
+              Website *
+            </label>
+            <select
+              id="adUnitWebsite"
+              value={adUnitForm.websiteId}
+              onChange={(e) => setAdUnitForm((prev) => ({ ...prev, websiteId: e.target.value }))}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+              required
+              disabled={!!editingAdUnit} // Can't change website when editing
+            >
+              <option value="">Select Website...</option>
+              {websites.map((website) => (
+                <option key={website.id} value={website.id}>
+                  {website.name} ({website.domain})
+                </option>
+              ))}
+            </select>
+            {editingAdUnit && (
+              <p className="mt-1 text-sm text-gray-500">
+                Website cannot be changed after creation
+              </p>
+            )}
+          </div>
+
           <div>
             <label htmlFor="adUnitCode" className="block text-sm font-medium text-gray-700">
               Code *

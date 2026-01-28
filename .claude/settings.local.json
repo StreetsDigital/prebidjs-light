@@ -24,7 +24,8 @@
       "Bash(perl -pi -e:*)",
       "Bash(dig:*)",
       "WebFetch(domain:app.thenexusengine.com)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(timeout 5 npm run dev:*)"
     ]
   }
 }

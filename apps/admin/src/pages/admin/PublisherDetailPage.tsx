@@ -242,6 +242,7 @@ interface ABTestFormData {
   }>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const MOCK_BUILDS: Build[] = [
   {
     id: 'build_1',
@@ -2939,7 +2940,7 @@ export function PublisherDetailPage() {
   };
 
   const handleDownloadBuild = () => {
-    if (builds.length === 0 || builds[0].status !== 'success') return;
+    if (!publisher || builds.length === 0 || builds[0].status !== 'success') return;
 
     // Flatten all ad units from all websites
     const allAdUnits = Object.values(adUnitsByWebsite).flat();

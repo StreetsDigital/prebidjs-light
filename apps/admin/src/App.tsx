@@ -102,6 +102,7 @@ function App() {
         }
       >
         <Route index element={<Navigate to="dashboard" replace />} />
+        <Route path="chat" element={<ChatPage />} />
         <Route path="dashboard" element={<PublisherDashboard />} />
         <Route path="ad-units" element={<AdUnitsPage />} />
         <Route path="bidders" element={<BiddersPage />} />

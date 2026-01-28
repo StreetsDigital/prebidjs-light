@@ -1,3 +1,4 @@
+export { ChatPage } from './ChatPage';
 export { DashboardPage } from './DashboardPage';
 export { PublishersPage } from './PublishersPage';
 export { PublisherDetailPage } from './PublisherDetailPage';

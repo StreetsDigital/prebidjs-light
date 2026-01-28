@@ -486,3 +486,115 @@ Configuration endpoint:
 - `/c/:publisherId` - Public config (cached 5 minutes)
 
 Remember: This is a management platform for Prebid.js configurations, not a real-time bidding exchange. Focus on configuration management, not auction performance.
+
+## Working with AI Assistants (Claude)
+
+### Documentation First
+
+When working with Claude or other AI assistants:
+
+1. **Always Update Documentation**: After implementing features or fixing bugs, update relevant documentation files immediately
+2. **Learn from Mistakes**: Document incorrect assumptions or architecture mismatches to prevent future confusion
+3. **Create Clarity**: If specs from other projects get mixed in, add clear warnings at the top of files
+4. **Architecture Notes**: Maintain ARCHITECTURE_NOTES.md for project-specific decisions and clarifications
+
+### Using Agents Effectively
+
+**When to Use Task Agents:**
+- Complex multi-step implementations requiring >5 tool calls
+- Research tasks that need exploration across multiple files
+- Specialized tasks (testing, security audits, optimization)
+
+**Agent Types Available:**
+- `Explore` - For codebase exploration and research
+- `Plan` - For implementation strategy design
+- `general-purpose` - For complex multi-step tasks
+
+**Example:**
+```
+Instead of manually searching 20+ files, use:
+Task tool with subagent_type=Explore to find all error handling patterns
+```
+
+### Continuous Improvement
+
+**After Every Feature:**
+1. ✅ Update CLAUDE.md with new patterns/conventions
+2. ✅ Document any architecture decisions
+3. ✅ Add examples to help future development
+4. ✅ Update README.md if user-facing changes
+5. ✅ Create/update migration guides if needed
+
+**After Every Bug Fix:**
+1. ✅ Document root cause in commit message
+2. ✅ Update relevant documentation to prevent recurrence
+3. ✅ Add test cases to catch similar issues
+4. ✅ Share learnings in team docs
+
+**Learning from Mistakes:**
+- If incorrect specs are used → Add warnings to prevent confusion
+- If architecture mismatch occurs → Document the correct stack
+- If dependencies break → Document version requirements
+- If deployment fails → Update deployment documentation
+
+### Documentation Standards
+
+**Keep These Files Updated:**
+- `CLAUDE.md` - Development guidelines (this file)
+- `README.md` - Project overview and setup
+- `ARCHITECTURE_NOTES.md` - Architecture decisions and clarifications
+- Feature-specific `.md` files - Implementation details
+
+**When Adding Features:**
+Create documentation that includes:
+- Purpose and use cases
+- Technical implementation details
+- API endpoints (if applicable)
+- Frontend components (if applicable)
+- Example usage
+- Testing approach
+- Known limitations
+
+**Template for Feature Documentation:**
+```markdown
+# Feature Name
+
+## Purpose
+What problem does this solve?
+
+## Architecture
+How is it built? (Backend + Frontend)
+
+## Implementation
+Key files and their roles
+
+## Usage
+How do users interact with it?
+
+## API Endpoints
+List all relevant endpoints
+
+## Testing
+How to test this feature
+
+## Future Enhancements
+What could be added later?
+```
+
+### Proactive Improvements
+
+Encourage Claude to:
+- ✅ Suggest better patterns when seeing repetitive code
+- ✅ Identify missing error handling
+- ✅ Recommend performance optimizations
+- ✅ Point out security concerns
+- ✅ Suggest documentation improvements
+- ✅ Create specialized agents for complex tasks
+- ✅ Update documentation without being asked
+
+**Claude Should:**
+- Ask clarifying questions before implementing ambiguous requirements
+- Verify architecture assumptions before major changes
+- Suggest creating agents for exploration or complex tasks
+- Update documentation as part of every implementation
+- Learn from past mistakes documented in the codebase

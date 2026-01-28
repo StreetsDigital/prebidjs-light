@@ -25,6 +25,7 @@ import yieldAdvisorRoutes from './routes/yield-advisor';
 import adUnitsRoutes from './routes/ad-units';
 import wrapperRoutes from './routes/wrapper';
 import systemRoutes from './routes/system';
+import chatRoutes from './routes/chat';
 
 const app = Fastify({
   logger: {
@@ -78,6 +79,7 @@ app.register(customReportsRoutes, { prefix: '/api/publishers' });
 app.register(yieldAdvisorRoutes, { prefix: '/api/publishers' });
 app.register(adUnitsRoutes, { prefix: '/api' });
 app.register(systemRoutes, { prefix: '/api/system' });
+app.register(chatRoutes, { prefix: '/api' });
 app.register(wrapperRoutes); // No prefix - serves at root level
 
 // Placeholder for other routes

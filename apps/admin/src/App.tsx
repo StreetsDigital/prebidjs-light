@@ -4,7 +4,7 @@ import { AdminLayout, PublisherLayout } from './components/layout';
 import { Login } from './pages/Login';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { ResetPassword } from './pages/ResetPassword';
-import { DashboardPage, PublishersPage, PublisherDetailPage, PublisherCreatePage, UsersPage, ModulesPage, AnalyticsPage, AuditLogsPage, ProfilePage, SystemSettingsPage, ABTestsPage, ABTestAnalyticsPage, BidderHealthPage, OptimizationRulesPage, AuctionInspectorPage, RevenueForecastingPage, NotificationsPage, CustomReportsPage, YieldAdvisorPage } from './pages/admin';
+import { ChatPage, DashboardPage, PublishersPage, PublisherDetailPage, PublisherCreatePage, UsersPage, ModulesPage, AnalyticsPage, AuditLogsPage, ProfilePage, SystemSettingsPage, ABTestsPage, ABTestAnalyticsPage, BidderHealthPage, OptimizationRulesPage, AuctionInspectorPage, RevenueForecastingPage, NotificationsPage, CustomReportsPage, YieldAdvisorPage } from './pages/admin';
 import { PublisherDashboard, AdUnitsPage, BiddersPage, GetCodePage } from './pages/publisher';
 import { NotFound } from './pages/NotFound';
 
@@ -55,6 +55,7 @@ function App() {
         }
       >
         <Route index element={<Navigate to="dashboard" replace />} />
+        <Route path="chat" element={<ChatPage />} />
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="publishers" element={<PublishersPage />} />
         <Route path="publishers/new" element={<PublisherCreatePage />} />

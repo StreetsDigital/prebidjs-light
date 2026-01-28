@@ -18,7 +18,12 @@
       "Bash(done)",
       "Bash(ls:*)",
       "Bash(chmod:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(ssh -i /Users/andrewstreets/Downloads/tne_key.pem ubuntu@63.32.100.39 \"pkill -f claude; npm uninstall -g @anthropic-ai/claude-code 2>&1; echo ''Claude Code cleaned up''\")",
+      "Bash(ssh:*)",
+      "Bash(perl -pi -e:*)",
+      "Bash(dig:*)",
+      "WebFetch(domain:app.thenexusengine.com)"
     ]
   }
 }

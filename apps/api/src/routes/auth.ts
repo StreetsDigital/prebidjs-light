@@ -1,5 +1,5 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { db, users, sessions, passwordResetTokens } from '../db';
+import { db, users, sessions, passwordResetTokens, publisherAdmins } from '../db';
 import { eq, and, isNull } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
@@ -14,6 +14,7 @@ interface TokenPayload {
   email: string;
   role: string;
   publisherId?: string;
+  publisherIds?: string[];
 }
 
 export default async function authRoutes(fastify: FastifyInstance) {
@@ -49,12 +50,24 @@ export default async function authRoutes(fastify: FastifyInstance) {
       .where(eq(users.id, user.id))
       ;
 
+    // For admin users, fetch all accessible publishers from publisherAdmins table
+    let publisherIds: string[] | undefined;
+    if (user.role === 'admin') {
+      const adminPublishers = db
+        .select()
+        .from(publisherAdmins)
+        .where(eq(publisherAdmins.userId, user.id))
+        .all();
+      publisherIds = adminPublishers.map(pa => pa.publisherId);
+    }
+
     // Generate JWT token
     const tokenPayload: TokenPayload = {
       userId: user.id,
       email: user.email,
       role: user.role,
       publisherId: user.publisherId ?? undefined,
+      publisherIds: publisherIds,
     };
 
     const token = fastify.jwt.sign(tokenPayload, { expiresIn: '24h' });
@@ -139,12 +152,24 @@ export default async function authRoutes(fastify: FastifyInstance) {
       return reply.code(401).send({ message: 'User not found or disabled' });
     }
 
+    // For admin users, fetch all accessible publishers from publisherAdmins table
+    let publisherIds: string[] | undefined;
+    if (user.role === 'admin') {
+      const adminPublishers = db
+        .select()
+        .from(publisherAdmins)
+        .where(eq(publisherAdmins.userId, user.id))
+        .all();
+      publisherIds = adminPublishers.map(pa => pa.publisherId);
+    }
+
     // Generate new JWT token
     const tokenPayload: TokenPayload = {
       userId: user.id,
       email: user.email,
       role: user.role,
       publisherId: user.publisherId ?? undefined,
+      publisherIds: publisherIds,
     };
 
     const token = fastify.jwt.sign(tokenPayload, { expiresIn: '24h' });

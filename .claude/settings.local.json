@@ -23,7 +23,8 @@
       "Bash(ssh:*)",
       "Bash(perl -pi -e:*)",
       "Bash(dig:*)",
-      "WebFetch(domain:app.thenexusengine.com)"
+      "WebFetch(domain:app.thenexusengine.com)",
+      "Bash(pkill:*)"
     ]
   }
 }

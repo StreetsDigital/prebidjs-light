@@ -664,6 +664,28 @@ function runMigrations() {
         CREATE INDEX IF NOT EXISTS idx_yield_recommendations_type ON yield_recommendations(type);
         CREATE INDEX IF NOT EXISTS idx_yield_recommendations_created_at ON yield_recommendations(created_at);
       `
+    },
+    {
+      name: 'add_impersonation_sessions',
+      sql: `
+        -- Impersonation Sessions table for tracking super admin impersonation
+        CREATE TABLE IF NOT EXISTS impersonation_sessions (
+          id TEXT PRIMARY KEY,
+          super_admin_id TEXT NOT NULL,
+          impersonated_user_id TEXT NOT NULL,
+          started_at TEXT NOT NULL,
+          ended_at TEXT,
+          ip_address TEXT,
+          user_agent TEXT,
+          FOREIGN KEY (super_admin_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (impersonated_user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        -- Create indexes for performance
+        CREATE INDEX IF NOT EXISTS idx_impersonation_sessions_super_admin ON impersonation_sessions(super_admin_id);
+        CREATE INDEX IF NOT EXISTS idx_impersonation_sessions_impersonated_user ON impersonation_sessions(impersonated_user_id);
+        CREATE INDEX IF NOT EXISTS idx_impersonation_sessions_started_at ON impersonation_sessions(started_at);
+      `
     }
   ];
 

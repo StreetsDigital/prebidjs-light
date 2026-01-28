@@ -28,11 +28,12 @@ interface Publisher {
 }
 
 export function UsersPage() {
-  const { token } = useAuthStore();
+  const { token, user: currentUser, impersonateUser } = useAuthStore();
   const [users, setUsers] = useState<User[]>([]);
   const [publishers, setPublishers] = useState<Publisher[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [impersonating, setImpersonating] = useState<string | null>(null);
   const [createDialog, setCreateDialog] = useState({
     isOpen: false,
     isLoading: false,
@@ -286,6 +287,28 @@ export function UsersPage() {
     }
   };
 
+  const handleImpersonate = async (user: User) => {
+    setImpersonating(user.id);
+    setError(null);
+    try {
+      const success = await impersonateUser(user.id);
+      if (success) {
+        // Redirect based on user role
+        if (user.role === 'publisher') {
+          window.location.href = '/publisher/dashboard';
+        } else {
+          window.location.href = '/admin/dashboard';
+        }
+      } else {
+        setError('Failed to start impersonation');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start impersonation');
+    } finally {
+      setImpersonating(null);
+    }
+  };
+
   const getRoleBadge = (role: string) => {
     const styles = {
       super_admin: 'bg-purple-100 text-purple-800',
@@ -430,11 +453,31 @@ export function UsersPage() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {new Date(user.createdAt).toLocaleDateString()}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-4">
+                    {currentUser?.role === 'super_admin' && user.role !== 'super_admin' && (
+                      <button
+                        type="button"
+                        onClick={() => handleImpersonate(user)}
+                        disabled={impersonating === user.id}
+                        className="text-purple-600 hover:text-purple-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {impersonating === user.id ? (
+                          <span className="inline-flex items-center">
+                            <svg className="animate-spin h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Impersonating...
+                          </span>
+                        ) : (
+                          'Impersonate'
+                        )}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleEditClick(user)}
-                      className="text-blue-600 hover:text-blue-900 mr-4"
+                      className="text-blue-600 hover:text-blue-900"
                     >
                       Edit
                     </button>

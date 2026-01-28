@@ -6,7 +6,12 @@ export interface TokenPayload {
   id?: string; // Alias for userId (some routes use .id)
   email: string;
   role: 'super_admin' | 'admin' | 'publisher';
-  publisherId?: string;
+  publisherId?: string;           // Single publisher (for publisher-role users)
+  publisherIds?: string[];        // All accessible publishers (for admin users)
+  // Impersonation fields
+  impersonatedBy?: string;        // Super admin's ID who is impersonating
+  originalUserId?: string;         // Original super admin's ID
+  impersonationSessionId?: string; // Track session
 }
 
 // Extend FastifyRequest to include user

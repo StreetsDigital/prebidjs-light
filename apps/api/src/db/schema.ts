@@ -504,6 +504,17 @@ export const yieldRecommendations = sqliteTable('yield_recommendations', {
   updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
 });
 
+// Impersonation Sessions table - Track super admin impersonation sessions
+export const impersonationSessions = sqliteTable('impersonation_sessions', {
+  id: text('id').primaryKey(),
+  superAdminId: text('super_admin_id').notNull(),
+  impersonatedUserId: text('impersonated_user_id').notNull(),
+  startedAt: text('started_at').notNull().$defaultFn(() => new Date().toISOString()),
+  endedAt: text('ended_at'),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+});
+
 // Export all tables for use in other files
 export const schema = {
   users,
@@ -531,4 +542,5 @@ export const schema = {
   customReports,
   reportExecutions,
   yieldRecommendations,
+  impersonationSessions,
 };

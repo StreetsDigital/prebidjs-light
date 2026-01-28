@@ -82,144 +82,169 @@ export default async function userRoutes(fastify: FastifyInstance) {
   fastify.post<{ Body: CreateUserBody }>('/', {
     preHandler: requireSuperAdmin,
   }, async (request, reply) => {
-    const { email, password, name, role, publisherId } = request.body;
+    try {
+      const { email, password, name, role, publisherId } = request.body;
 
-    if (!email || !password || !name || !role) {
-      return reply.code(400).send({ error: 'Email, password, name, and role are required' });
+      if (!email || !password || !name || !role) {
+        return reply.code(400).send({ error: 'Email, password, name, and role are required' });
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return reply.code(400).send({ error: 'Invalid email format' });
+      }
+
+      // Validate password requirements
+      if (password.length < 8) {
+        return reply.code(400).send({ error: 'Password must be at least 8 characters' });
+      }
+      if (!/[0-9]/.test(password)) {
+        return reply.code(400).send({ error: 'Password must contain at least one number' });
+      }
+      if (!/[a-z]/.test(password) || !/[A-Z]/.test(password)) {
+        return reply.code(400).send({ error: 'Password must contain both uppercase and lowercase letters' });
+      }
+
+      // Check for existing user with same email
+      const existing = db.select().from(users).where(eq(users.email, email.toLowerCase())).get();
+      if (existing) {
+        return reply.code(409).send({ error: 'User with this email already exists' });
+      }
+
+      const now = new Date().toISOString();
+      const id = uuidv4();
+      const passwordHash = await bcrypt.hash(password, 10);
+
+      // Insert the new user
+      db.insert(users).values({
+        id,
+        email: email.toLowerCase(),
+        passwordHash,
+        name,
+        role,
+        publisherId: publisherId || null,
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+      }).run();
+
+      // Fetch the created user
+      const newUser = db.select({
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        role: users.role,
+        publisherId: users.publisherId,
+        status: users.status,
+        createdAt: users.createdAt,
+      }).from(users).where(eq(users.id, id)).get();
+
+      if (!newUser) {
+        return reply.code(500).send({ error: 'Failed to create user' });
+      }
+
+      return reply.code(201).send(newUser);
+    } catch (error) {
+      request.log.error(error);
+      return reply.code(500).send({ error: 'Failed to create user' });
     }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return reply.code(400).send({ error: 'Invalid email format' });
-    }
-
-    // Validate password requirements
-    if (password.length < 8) {
-      return reply.code(400).send({ error: 'Password must be at least 8 characters' });
-    }
-    if (!/[0-9]/.test(password)) {
-      return reply.code(400).send({ error: 'Password must contain at least one number' });
-    }
-    if (!/[a-z]/.test(password) || !/[A-Z]/.test(password)) {
-      return reply.code(400).send({ error: 'Password must contain both uppercase and lowercase letters' });
-    }
-
-    // Check for existing user with same email
-    const existing = db.select().from(users).where(eq(users.email, email.toLowerCase())).get();
-    if (existing) {
-      return reply.code(409).send({ error: 'User with this email already exists' });
-    }
-
-    const now = new Date().toISOString();
-    const id = uuidv4();
-    const passwordHash = await bcrypt.hash(password, 10);
-
-    db.insert(users).values({
-      id,
-      email: email.toLowerCase(),
-      passwordHash,
-      name,
-      role,
-      publisherId: publisherId || null,
-      status: 'active',
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const newUser = db.select({
-      id: users.id,
-      email: users.email,
-      name: users.name,
-      role: users.role,
-      publisherId: users.publisherId,
-      status: users.status,
-      createdAt: users.createdAt,
-    }).from(users).where(eq(users.id, id)).get();
-
-    return reply.code(201).send(newUser);
   });
 
   // Update user - super_admin only (or self for basic info)
   fastify.put<{ Params: { id: string }; Body: UpdateUserBody }>('/:id', {
     preHandler: requireAuth,
   }, async (request, reply) => {
-    const { id } = request.params;
-    const { email, password, name, role, publisherId, status } = request.body;
-    const currentUser = request.user as TokenPayload;
+    try {
+      const { id } = request.params;
+      const { email, password, name, role, publisherId, status } = request.body;
+      const currentUser = request.user as TokenPayload;
 
-    // Check permissions
-    const isSelf = currentUser.userId === id;
-    const isSuperAdmin = currentUser.role === 'super_admin';
+      // Check permissions
+      const isSelf = currentUser.userId === id;
+      const isSuperAdmin = currentUser.role === 'super_admin';
 
-    // Only super_admin can change role, status, or other users' data
-    if (!isSelf && !isSuperAdmin) {
-      return reply.code(403).send({ error: 'Forbidden' });
-    }
-
-    if ((role || status || publisherId !== undefined) && !isSuperAdmin) {
-      return reply.code(403).send({ error: 'Only super_admin can change role, status, or publisher assignment' });
-    }
-
-    const user = db.select().from(users).where(eq(users.id, id)).get();
-    if (!user) {
-      return reply.code(404).send({ error: 'User not found' });
-    }
-
-    // If email is being changed, check for duplicates
-    if (email && email !== user.email) {
-      const existing = db.select().from(users).where(
-        and(eq(users.email, email.toLowerCase()), ne(users.id, id))
-      ).get();
-      if (existing) {
-        return reply.code(409).send({ error: 'Email already in use' });
+      // Only super_admin can change role, status, or other users' data
+      if (!isSelf && !isSuperAdmin) {
+        return reply.code(403).send({ error: 'Forbidden' });
       }
+
+      if ((role || status || publisherId !== undefined) && !isSuperAdmin) {
+        return reply.code(403).send({ error: 'Only super_admin can change role, status, or publisher assignment' });
+      }
+
+      const user = db.select().from(users).where(eq(users.id, id)).get();
+      if (!user) {
+        return reply.code(404).send({ error: 'User not found' });
+      }
+
+      // If email is being changed, check for duplicates
+      if (email && email !== user.email) {
+        const existing = db.select().from(users).where(
+          and(eq(users.email, email.toLowerCase()), ne(users.id, id))
+        ).get();
+        if (existing) {
+          return reply.code(409).send({ error: 'Email already in use' });
+        }
+      }
+
+      const now = new Date().toISOString();
+      const updates: Record<string, any> = { updatedAt: now };
+
+      if (email) updates.email = email.toLowerCase();
+      if (name) updates.name = name;
+      if (password) updates.passwordHash = await bcrypt.hash(password, 10);
+      if (role && isSuperAdmin) updates.role = role;
+      if (status && isSuperAdmin) updates.status = status;
+      if (publisherId !== undefined && isSuperAdmin) updates.publisherId = publisherId;
+
+      db.update(users).set(updates).where(eq(users.id, id)).run();
+
+      const updatedUser = db.select({
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        role: users.role,
+        publisherId: users.publisherId,
+        status: users.status,
+        createdAt: users.createdAt,
+      }).from(users).where(eq(users.id, id)).get();
+
+      if (!updatedUser) {
+        return reply.code(500).send({ error: 'Failed to update user' });
+      }
+
+      return updatedUser;
+    } catch (error) {
+      request.log.error(error);
+      return reply.code(500).send({ error: 'Failed to update user' });
     }
-
-    const now = new Date().toISOString();
-    const updates: Record<string, any> = { updatedAt: now };
-
-    if (email) updates.email = email.toLowerCase();
-    if (name) updates.name = name;
-    if (password) updates.passwordHash = await bcrypt.hash(password, 10);
-    if (role && isSuperAdmin) updates.role = role;
-    if (status && isSuperAdmin) updates.status = status;
-    if (publisherId !== undefined && isSuperAdmin) updates.publisherId = publisherId;
-
-    db.update(users).set(updates).where(eq(users.id, id));
-
-    const updatedUser = db.select({
-      id: users.id,
-      email: users.email,
-      name: users.name,
-      role: users.role,
-      publisherId: users.publisherId,
-      status: users.status,
-      createdAt: users.createdAt,
-    }).from(users).where(eq(users.id, id)).get();
-
-    return updatedUser;
   });
 
   // Delete user - super_admin only
   fastify.delete<{ Params: { id: string } }>('/:id', {
     preHandler: requireSuperAdmin,
   }, async (request, reply) => {
-    const { id } = request.params;
-    const currentUser = request.user as TokenPayload;
+    try {
+      const { id } = request.params;
+      const currentUser = request.user as TokenPayload;
 
-    // Cannot delete yourself
-    if (currentUser.userId === id) {
-      return reply.code(400).send({ error: 'Cannot delete your own account' });
+      // Cannot delete yourself
+      if (currentUser.userId === id) {
+        return reply.code(400).send({ error: 'Cannot delete your own account' });
+      }
+
+      const user = db.select().from(users).where(eq(users.id, id)).get();
+      if (!user) {
+        return reply.code(404).send({ error: 'User not found' });
+      }
+
+      db.delete(users).where(eq(users.id, id)).run();
+
+      return reply.code(200).send({ message: 'User deleted successfully' });
+    } catch (error) {
+      request.log.error(error);
+      return reply.code(500).send({ error: 'Failed to delete user' });
     }
-
-    const user = db.select().from(users).where(eq(users.id, id)).get();
-    if (!user) {
-      return reply.code(404).send({ error: 'User not found' });
-    }
-
-    db.delete(users).where(eq(users.id, id));
-
-    return reply.code(204).send();
   });
 }

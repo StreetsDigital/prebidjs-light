@@ -53,7 +53,7 @@ export default async function impersonationRoutes(fastify: FastifyInstance) {
         startedAt: new Date().toISOString(),
         ipAddress: request.ip,
         userAgent: request.headers['user-agent'] || '',
-      });
+      }).run();
 
       // Log audit event
       db.insert(auditLogs).values({
@@ -71,7 +71,7 @@ export default async function impersonationRoutes(fastify: FastifyInstance) {
         ipAddress: request.ip,
         userAgent: request.headers['user-agent'] || '',
         createdAt: new Date().toISOString(),
-      });
+      }).run();
 
       // For admin users, fetch all accessible publishers from publisherAdmins table
       let publisherIds: string[] | undefined;
@@ -153,7 +153,7 @@ export default async function impersonationRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || '',
       createdAt: new Date().toISOString(),
-    });
+    }).run();
 
     // Get the original super admin user
     const originalUser = db.select().from(users).where(eq(users.id, currentUser.originalUserId)).get();

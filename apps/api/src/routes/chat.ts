@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
+import { requireAuth } from '../middleware/auth';
 
 // Mock chat store - In production, this would be a database
 const chatSessions = new Map<string, {
@@ -24,7 +25,7 @@ const chatSessions = new Map<string, {
 export default async function chatRoutes(fastify: FastifyInstance) {
   // Send a message and get AI response
   fastify.post('/chat/messages', {
-    preHandler: [fastify.authenticate],
+    preHandler: [requireAuth],
     handler: async (request, reply) => {
       const { session_id, message, context } = request.body as {
         session_id?: string;
@@ -95,7 +96,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
   // Get list of chat sessions
   fastify.get('/chat/sessions', {
-    preHandler: [fastify.authenticate],
+    preHandler: [requireAuth],
     handler: async (request, reply) => {
       const { limit = 20 } = request.query as { limit?: number };
       const userId = (request.user as any).id;
@@ -122,7 +123,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
   // Get specific session with messages
   fastify.get('/chat/sessions/:sessionId', {
-    preHandler: [fastify.authenticate],
+    preHandler: [requireAuth],
     handler: async (request, reply) => {
       const { sessionId } = request.params as { sessionId: string };
       const userId = (request.user as any).id;
@@ -152,7 +153,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
   // Delete a session
   fastify.delete('/chat/sessions/:sessionId', {
-    preHandler: [fastify.authenticate],
+    preHandler: [requireAuth],
     handler: async (request, reply) => {
       const { sessionId } = request.params as { sessionId: string };
       const userId = (request.user as any).id;

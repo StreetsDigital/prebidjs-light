@@ -118,34 +118,30 @@ The React app already has a complete AB testing implementation:
 
 The chat interface currently uses mock responses for demonstration. To integrate with a real AI:
 
-**Option 1: Claude API (Recommended)**
-```typescript
-import Anthropic from '@anthropic-ai/sdk';
+**Configured Model: Claude 3.5 Haiku (Recommended)** ✅
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+The chat is pre-configured to use **Claude 3.5 Haiku** - Anthropic's fastest and most cost-effective model:
 
-const message = await anthropic.messages.create({
-  model: 'claude-3-5-sonnet-20241022',
-  max_tokens: 1024,
-  messages: [{ role: 'user', content: userMessage }],
-});
+- **Cost:** $0.80/1M input tokens, $4.00/1M output tokens (~$0.01 per chat session)
+- **Speed:** ~4x faster than Sonnet
+- **Perfect for:** Conversational chat, quick responses
+
+**Setup Instructions:**
+```bash
+# 1. Install SDK
+cd apps/api && npm install @anthropic-ai/sdk
+
+# 2. Add API key to .env
+echo "ANTHROPIC_API_KEY=sk-ant-..." >> apps/api/.env
+
+# 3. Uncomment Claude integration in apps/api/src/routes/chat.ts
+# (Lines ~138-162)
+
+# 4. Restart server
+npm run dev
 ```
 
-**Option 2: OpenAI API**
-```typescript
-import OpenAI from 'openai';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-const completion = await openai.chat.completions.create({
-  model: 'gpt-4',
-  messages: [{ role: 'user', content: userMessage }],
-});
-```
+**See CHAT_SETUP.md for detailed instructions.**
 
 ---
 

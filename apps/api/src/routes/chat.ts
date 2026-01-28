@@ -177,7 +177,8 @@ export default async function chatRoutes(fastify: FastifyInstance) {
   });
 }
 
-// Mock AI response generator - Replace with actual AI integration (Claude API, OpenAI, etc.)
+// AI response generator - Using Claude Haiku for cost-effective responses
+// To enable real AI, install @anthropic-ai/sdk and set ANTHROPIC_API_KEY
 async function generateAIResponse(
   message: string,
   history: Array<any>,
@@ -186,7 +187,42 @@ async function generateAIResponse(
   content: string;
   actions?: Array<{ tool: string; status: 'success' | 'error'; details?: string }>;
 }> {
-  // Simple mock responses based on keywords
+  // TODO: Uncomment this block to enable Claude Haiku
+  /*
+  const Anthropic = require('@anthropic-ai/sdk');
+  const anthropic = new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY,
+  });
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-haiku-20241022', // Haiku - fast and cost-effective
+      max_tokens: 1024,
+      system: `You are an AdOps Assistant for a Prebid.js platform. Help users manage publishers, ad units, bidders, and revenue optimization. Keep responses concise and actionable.`,
+      messages: [
+        // Include conversation history for context
+        ...history.slice(-5).map(msg => ({
+          role: msg.role === 'assistant' ? 'assistant' : 'user',
+          content: msg.content
+        })),
+        {
+          role: 'user',
+          content: message
+        }
+      ],
+    });
+
+    return {
+      content: response.content[0].text,
+      actions: [] // Parse actions from response if needed
+    };
+  } catch (error) {
+    console.error('Claude API error:', error);
+    // Fall back to mock response on error
+  }
+  */
+
+  // MOCK RESPONSES - Remove this section when Claude Haiku is enabled
   const lowerMessage = message.toLowerCase();
 
   if (lowerMessage.includes('publisher')) {

@@ -8,7 +8,6 @@ export function ChatPage() {
     currentSessionId,
     messages,
     sessions,
-    isLoading,
     isSending,
     error,
     sendMessage,

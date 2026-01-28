@@ -188,8 +188,7 @@ async function generateAIResponse(
   content: string;
   actions?: Array<{ tool: string; status: 'success' | 'error'; details?: string }>;
 }> {
-  // TODO: Uncomment this block to enable Claude Haiku
-  /*
+  // Claude Haiku integration ENABLED ✅
   const Anthropic = require('@anthropic-ai/sdk');
   const anthropic = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
@@ -221,7 +220,6 @@ async function generateAIResponse(
     console.error('Claude API error:', error);
     // Fall back to mock response on error
   }
-  */
 
   // MOCK RESPONSES - Remove this section when Claude Haiku is enabled
   const lowerMessage = message.toLowerCase();

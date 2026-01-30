@@ -288,7 +288,7 @@ export function initializeDatabase() {
   runMigrations();
 
   // Check if this is first run (no users exist)
-  const userCount = db.select().from(users).all().length;
+  const userCount = db.select().from(schema.users).all().length;
 
   if (userCount === 0 && process.env.AUTO_SEED_ADMIN === 'true') {
     console.log('No users found, auto-seeding super admin...');

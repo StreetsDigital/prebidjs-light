@@ -28,6 +28,8 @@ export * from './schema';
 
 // Initialize database tables
 export function initializeDatabase() {
+  console.log('Initializing database...');
+
   // Create tables if they don't exist
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -284,6 +286,18 @@ export function initializeDatabase() {
 
   // Run migrations for existing databases
   runMigrations();
+
+  // Check if this is first run (no users exist)
+  const userCount = db.select().from(users).all().length;
+
+  if (userCount === 0 && process.env.AUTO_SEED_ADMIN === 'true') {
+    console.log('No users found, auto-seeding super admin...');
+    import('./seed-admin').then(({ seedSuperAdmin }) => {
+      seedSuperAdmin().catch(console.error);
+    });
+  }
+
+  console.log('Database initialized');
 }
 
 // Migration system for schema updates

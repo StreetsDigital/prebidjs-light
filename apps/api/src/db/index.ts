@@ -700,6 +700,124 @@ function runMigrations() {
         CREATE INDEX IF NOT EXISTS idx_impersonation_sessions_impersonated_user ON impersonation_sessions(impersonated_user_id);
         CREATE INDEX IF NOT EXISTS idx_impersonation_sessions_started_at ON impersonation_sessions(started_at);
       `
+    },
+    {
+      name: 'add_wrapper_configs_and_targeting',
+      sql: `
+        -- Wrapper Configs table - Named wrapper configurations for traffic targeting
+        CREATE TABLE IF NOT EXISTS wrapper_configs (
+          id TEXT PRIMARY KEY,
+          publisher_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'active', 'paused', 'archived')),
+
+          -- Complete wrapper config
+          bidder_timeout INTEGER DEFAULT 1500,
+          price_granularity TEXT DEFAULT 'medium',
+          custom_price_bucket TEXT,
+          enable_send_all_bids INTEGER DEFAULT 1,
+          bidder_sequence TEXT DEFAULT 'random',
+          user_sync TEXT,
+          targeting_controls TEXT,
+          currency_config TEXT,
+          consent_management TEXT,
+          floors_config TEXT,
+          user_id_modules TEXT,
+          video_config TEXT,
+          s2s_config TEXT,
+          debug_mode INTEGER DEFAULT 0,
+          custom_config TEXT,
+
+          -- Config-specific bidders and ad units
+          bidders TEXT,
+          ad_units TEXT,
+
+          -- Versioning and analytics
+          version INTEGER DEFAULT 1,
+          is_default INTEGER DEFAULT 0,
+          impressions_served INTEGER DEFAULT 0,
+          last_served_at TEXT,
+
+          -- Audit
+          created_by TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+
+          FOREIGN KEY (publisher_id) REFERENCES publishers(id) ON DELETE CASCADE,
+          FOREIGN KEY (created_by) REFERENCES users(id)
+        );
+
+        -- Config Targeting Rules table
+        CREATE TABLE IF NOT EXISTS config_targeting_rules (
+          id TEXT PRIMARY KEY,
+          config_id TEXT NOT NULL,
+          publisher_id TEXT NOT NULL,
+          conditions TEXT NOT NULL,
+          match_type TEXT NOT NULL DEFAULT 'all' CHECK(match_type IN ('all', 'any')),
+          priority INTEGER NOT NULL DEFAULT 0,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+
+          FOREIGN KEY (config_id) REFERENCES wrapper_configs(id) ON DELETE CASCADE,
+          FOREIGN KEY (publisher_id) REFERENCES publishers(id) ON DELETE CASCADE
+        );
+
+        -- Config Serve Log table - Analytics tracking
+        CREATE TABLE IF NOT EXISTS config_serve_log (
+          id TEXT PRIMARY KEY,
+          publisher_id TEXT NOT NULL,
+          config_id TEXT,
+          geo TEXT,
+          device TEXT,
+          browser TEXT,
+          os TEXT,
+          domain TEXT,
+          matched_rule_id TEXT,
+          all_matching_rule_ids TEXT,
+          session_id TEXT,
+          timestamp TEXT NOT NULL,
+
+          FOREIGN KEY (publisher_id) REFERENCES publishers(id) ON DELETE CASCADE,
+          FOREIGN KEY (config_id) REFERENCES wrapper_configs(id) ON DELETE SET NULL,
+          FOREIGN KEY (matched_rule_id) REFERENCES config_targeting_rules(id) ON DELETE SET NULL
+        );
+
+        -- Create indexes for performance
+        CREATE INDEX IF NOT EXISTS idx_wrapper_configs_publisher ON wrapper_configs(publisher_id, status);
+        CREATE INDEX IF NOT EXISTS idx_wrapper_configs_default ON wrapper_configs(publisher_id, is_default);
+        CREATE INDEX IF NOT EXISTS idx_targeting_rules_config ON config_targeting_rules(config_id, enabled);
+        CREATE INDEX IF NOT EXISTS idx_targeting_rules_priority ON config_targeting_rules(priority DESC);
+        CREATE INDEX IF NOT EXISTS idx_serve_log_publisher ON config_serve_log(publisher_id, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_serve_log_config ON config_serve_log(config_id, timestamp);
+      `
+    },
+    {
+      name: 'add_publisher_custom_bidders',
+      sql: `
+        -- Publisher Custom Bidders table - Per-publisher custom bidder management
+        CREATE TABLE IF NOT EXISTS publisher_custom_bidders (
+          id TEXT PRIMARY KEY,
+          publisher_id TEXT NOT NULL,
+          bidder_code TEXT NOT NULL,
+          bidder_name TEXT NOT NULL,
+          is_client_side INTEGER NOT NULL DEFAULT 1,
+          is_server_side INTEGER NOT NULL DEFAULT 0,
+          description TEXT,
+          documentation_url TEXT,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+
+          FOREIGN KEY (publisher_id) REFERENCES publishers(id) ON DELETE CASCADE,
+          UNIQUE (publisher_id, bidder_code)
+        );
+
+        -- Create indexes for performance
+        CREATE INDEX IF NOT EXISTS idx_custom_bidders_publisher ON publisher_custom_bidders(publisher_id);
+        CREATE INDEX IF NOT EXISTS idx_custom_bidders_enabled ON publisher_custom_bidders(enabled);
+      `
     }
   ];
 

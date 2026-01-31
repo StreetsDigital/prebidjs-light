@@ -25,8 +25,12 @@ import customReportsRoutes from './routes/custom-reports';
 import yieldAdvisorRoutes from './routes/yield-advisor';
 import adUnitsRoutes from './routes/ad-units';
 import wrapperRoutes from './routes/wrapper';
+import wrapperConfigsRoutes from './routes/wrapper-configs';
+import monitoringRoutes from './routes/monitoring';
 import systemRoutes from './routes/system';
 import chatRoutes from './routes/chat';
+import customBiddersRoutes from './routes/custom-bidders';
+import biddersRoutes from './routes/bidders';
 
 const app = Fastify({
   logger: {
@@ -81,8 +85,12 @@ app.register(customReportsRoutes, { prefix: '/api/publishers' });
 app.register(yieldAdvisorRoutes, { prefix: '/api/publishers' });
 app.register(adUnitsRoutes, { prefix: '/api' });
 app.register(systemRoutes, { prefix: '/api/system' });
+app.register(monitoringRoutes, { prefix: '/api/system' });
 app.register(chatRoutes, { prefix: '/api' });
 app.register(wrapperRoutes); // No prefix - serves at root level
+app.register(wrapperConfigsRoutes, { prefix: '/api/publishers/:publisherId/configs' });
+app.register(customBiddersRoutes, { prefix: '/api/publishers/:publisherId/bidders' });
+app.register(biddersRoutes, { prefix: '/api/bidders' });
 
 // Placeholder for other routes
 // app.register(configRoutes, { prefix: '/api/config' });

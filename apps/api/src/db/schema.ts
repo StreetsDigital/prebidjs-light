@@ -515,6 +515,113 @@ export const impersonationSessions = sqliteTable('impersonation_sessions', {
   userAgent: text('user_agent'),
 });
 
+// Wrapper Configs table - Named wrapper configurations for traffic targeting
+export const wrapperConfigs = sqliteTable('wrapper_configs', {
+  id: text('id').primaryKey(),
+  publisherId: text('publisher_id').notNull(),
+
+  // Config metadata
+  name: text('name').notNull(),
+  description: text('description'),
+  status: text('status', {
+    enum: ['draft', 'active', 'paused', 'archived']
+  }).notNull().default('draft'),
+
+  // Complete wrapper config (same structure as publisher_config)
+  bidderTimeout: integer('bidder_timeout').default(1500),
+  priceGranularity: text('price_granularity').default('medium'),
+  customPriceBucket: text('custom_price_bucket'),
+  enableSendAllBids: integer('enable_send_all_bids', { mode: 'boolean' }).default(true),
+  bidderSequence: text('bidder_sequence').default('random'),
+  userSync: text('user_sync'),
+  targetingControls: text('targeting_controls'),
+  currencyConfig: text('currency_config'),
+  consentManagement: text('consent_management'),
+  floorsConfig: text('floors_config'),
+  userIdModules: text('user_id_modules'),
+  videoConfig: text('video_config'),
+  s2sConfig: text('s2s_config'),
+  debugMode: integer('debug_mode', { mode: 'boolean' }).default(false),
+  customConfig: text('custom_config'),
+
+  // Config-specific bidders (JSON array of bidder configs)
+  bidders: text('bidders'),
+
+  // Config-specific ad units (optional override)
+  adUnits: text('ad_units'),
+
+  // Versioning
+  version: integer('version').default(1),
+  isDefault: integer('is_default', { mode: 'boolean' }).default(false),
+
+  // Analytics
+  impressionsServed: integer('impressions_served').default(0),
+  lastServedAt: text('last_served_at'),
+
+  // Audit
+  createdBy: text('created_by'),
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+// Config Targeting Rules table - Traffic targeting rules
+export const configTargetingRules = sqliteTable('config_targeting_rules', {
+  id: text('id').primaryKey(),
+  configId: text('config_id').notNull(),
+  publisherId: text('publisher_id').notNull(),
+
+  // Targeting conditions (JSON)
+  conditions: text('conditions').notNull(),
+  matchType: text('match_type', { enum: ['all', 'any'] }).notNull().default('all'),
+
+  // Priority for overlap resolution
+  priority: integer('priority').notNull().default(0),
+
+  // Status
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+
+  // Audit
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+// Config Serve Log table - Analytics tracking
+export const configServeLog = sqliteTable('config_serve_log', {
+  id: text('id').primaryKey(),
+  publisherId: text('publisher_id').notNull(),
+  configId: text('config_id'),
+
+  // Request attributes
+  geo: text('geo'),
+  device: text('device'),
+  browser: text('browser'),
+  os: text('os'),
+  domain: text('domain'),
+
+  // Matching results
+  matchedRuleId: text('matched_rule_id'),
+  allMatchingRuleIds: text('all_matching_rule_ids'),
+
+  // Session tracking
+  sessionId: text('session_id'),
+  timestamp: text('timestamp').notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+// Publisher Custom Bidders table - Per-publisher custom bidder management
+export const publisherCustomBidders = sqliteTable('publisher_custom_bidders', {
+  id: text('id').primaryKey(),
+  publisherId: text('publisher_id').notNull(),
+  bidderCode: text('bidder_code').notNull(),
+  bidderName: text('bidder_name').notNull(),
+  isClientSide: integer('is_client_side', { mode: 'boolean' }).notNull().default(true),
+  isServerSide: integer('is_server_side', { mode: 'boolean' }).notNull().default(false),
+  description: text('description'),
+  documentationUrl: text('documentation_url'),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
+});
+
 // Export all tables for use in other files
 export const schema = {
   users,
@@ -543,4 +650,8 @@ export const schema = {
   reportExecutions,
   yieldRecommendations,
   impersonationSessions,
+  wrapperConfigs,
+  configTargetingRules,
+  configServeLog,
+  publisherCustomBidders,
 };

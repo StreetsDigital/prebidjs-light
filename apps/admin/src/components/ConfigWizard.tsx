@@ -74,7 +74,7 @@ export default function ConfigWizard({ publisherId, config, onClose, onSave }: C
   const fetchAvailableBidders = async () => {
     setIsLoadingBidders(true);
     try {
-      const response = await fetch(`/api/publishers/${publisherId}/bidders`);
+      const response = await fetch(`/api/publishers/${publisherId}/available-bidders`);
       if (!response.ok) throw new Error('Failed to fetch bidders');
       const result = await response.json();
       setAvailableBidders(result.data || []);
@@ -97,7 +97,7 @@ export default function ConfigWizard({ publisherId, config, onClose, onSave }: C
     setAddBidderError('');
 
     try {
-      const response = await fetch(`/api/publishers/${publisherId}/bidders`, {
+      const response = await fetch(`/api/publishers/${publisherId}/available-bidders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bidderCode: newBidderCode.trim() }),
@@ -127,7 +127,7 @@ export default function ConfigWizard({ publisherId, config, onClose, onSave }: C
     }
 
     try {
-      const response = await fetch(`/api/publishers/${publisherId}/bidders/${bidderId}`, {
+      const response = await fetch(`/api/publishers/${publisherId}/available-bidders/${bidderId}`, {
         method: 'DELETE',
       });
 

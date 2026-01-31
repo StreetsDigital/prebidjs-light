@@ -25,7 +25,17 @@
       "Bash(dig:*)",
       "WebFetch(domain:app.thenexusengine.com)",
       "Bash(pkill:*)",
-      "Bash(timeout 5 npm run dev:*)"
+      "Bash(timeout 5 npm run dev:*)",
+      "Bash(npm run db:seed-admin:*)",
+      "Bash(find:*)",
+      "Bash(npm install:*)",
+      "Bash(tsx:*)",
+      "Bash(npm run dev:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill -9)",
+      "Bash(PUBLISHER_ID=\"5913a20f-c5aa-4251-99f1-8b69973d431b\" curl:*)",
+      "Bash(PUBLISHER_ID=\"5913a20f-c5aa-4251-99f1-8b69973d431b\" curl -s -X POST \"http://localhost:3001/api/publishers/$PUBLISHER_ID/available-bidders\" -H \"Content-Type: application/json\" -d '{\"\"\"\"bidderCode\"\"\"\":\"\"\"\"ix\"\"\"\"}')",
+      "Bash(BIDDER_ID=\"1513bad6-1211-4f38-9a97-b8c814a2e34a\" curl -s -X DELETE http://localhost:3001/api/publishers/5913a20f-c5aa-4251-99f1-8b69973d431b/available-bidders/$BIDDER_ID)"
     ]
   }
 }

@@ -89,7 +89,7 @@ app.register(monitoringRoutes, { prefix: '/api/system' });
 app.register(chatRoutes, { prefix: '/api' });
 app.register(wrapperRoutes); // No prefix - serves at root level
 app.register(wrapperConfigsRoutes, { prefix: '/api/publishers/:publisherId/configs' });
-app.register(customBiddersRoutes, { prefix: '/api/publishers/:publisherId/bidders' });
+app.register(customBiddersRoutes, { prefix: '/api/publishers' });
 app.register(biddersRoutes, { prefix: '/api/bidders' });
 
 // Placeholder for other routes

@@ -15,9 +15,10 @@ const WRAPPER_PATH = path.join(process.cwd(), '../wrapper/dist/pb.min.js');
 export default async function systemRoutes(fastify: FastifyInstance) {
   /**
    * Get system health status
-   * GET /api/system/health
+   * GET /api/system/status
+   * Note: Renamed from /health to avoid conflict with monitoring.ts
    */
-  fastify.get('/health', async (request, reply) => {
+  fastify.get('/status', async (request, reply) => {
     try {
       // Database health check
       const dbStart = Date.now();

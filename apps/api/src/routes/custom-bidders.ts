@@ -23,19 +23,21 @@ interface AddBidderRequest {
   bidderName?: string;
 }
 
+interface DeleteBidderParams {
+  publisherId: string;
+  bidderId: string;
+}
+
 interface DeleteBidderRequest {
-  Params: {
-    publisherId: string;
-    bidderId: string;
-  };
+  Params: DeleteBidderParams;
 }
 
 export default async function customBiddersRoutes(fastify: FastifyInstance) {
   /**
-   * GET /api/publishers/:publisherId/bidders
+   * GET /api/publishers/:publisherId/available-bidders
    * List all available bidders (built-in + custom)
    */
-  fastify.get('/', async (request: FastifyRequest<{ Params: { publisherId: string } }>, reply: FastifyReply) => {
+  fastify.get('/:publisherId/available-bidders', async (request: FastifyRequest<{ Params: { publisherId: string } }>, reply: FastifyReply) => {
     const { publisherId } = request.params;
 
     try {
@@ -87,10 +89,10 @@ export default async function customBiddersRoutes(fastify: FastifyInstance) {
   });
 
   /**
-   * POST /api/publishers/:publisherId/bidders
+   * POST /api/publishers/:publisherId/available-bidders
    * Add a custom bidder
    */
-  fastify.post('/', async (request: FastifyRequest<{ Params: { publisherId: string }; Body: AddBidderRequest }>, reply: FastifyReply) => {
+  fastify.post('/:publisherId/available-bidders', async (request: FastifyRequest<{ Params: { publisherId: string }; Body: AddBidderRequest }>, reply: FastifyReply) => {
     const { publisherId } = request.params;
     const { bidderCode, bidderName } = request.body;
 
@@ -170,10 +172,10 @@ export default async function customBiddersRoutes(fastify: FastifyInstance) {
   });
 
   /**
-   * DELETE /api/publishers/:publisherId/bidders/:bidderId
+   * DELETE /api/publishers/:publisherId/available-bidders/:bidderId
    * Remove a custom bidder
    */
-  fastify.delete('/:bidderId', async (request: FastifyRequest<DeleteBidderRequest>, reply: FastifyReply) => {
+  fastify.delete('/:publisherId/available-bidders/:bidderId', async (request: FastifyRequest<DeleteBidderRequest>, reply: FastifyReply) => {
     const { publisherId, bidderId } = request.params;
 
     try {

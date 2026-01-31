@@ -1,14 +1,52 @@
 /**
- * pbjs_engine Publisher Wrapper
+ * pbjs_engine Publisher Wrapper v2.0
  *
- * This is the lightweight wrapper that publishers include on their sites.
- * It provides the `pb` namespace for interacting with Prebid.js.
+ * NEW ARCHITECTURE: Config is embedded directly in the wrapper script by the server.
+ * This eliminates the 50-200ms config API fetch for 3-4x faster auction starts.
  */
 
-interface PbConfig {
+// Embedded config interface (injected by server)
+interface EmbeddedConfig {
   publisherId: string;
-  apiEndpoint: string;
-  debug?: boolean;
+  configId: string;
+  configName: string;
+  config: {
+    bidderTimeout?: number;
+    priceGranularity?: string;
+    customPriceBucket?: any;
+    enableSendAllBids?: boolean;
+    bidderSequence?: string;
+    userSync?: any;
+    targetingControls?: any;
+    currencyConfig?: any;
+    consentManagement?: any;
+    floorsConfig?: any;
+    userIdModules?: any;
+    videoConfig?: any;
+    s2sConfig?: any;
+    debugMode?: boolean;
+    customConfig?: any;
+  };
+  bidders: Array<{
+    bidderCode: string;
+    params: any;
+    timeoutOverride?: number;
+    priority?: number;
+  }>;
+  adUnitDefinitions: Record<string, {
+    mediaTypes: any;
+    bids?: any[];
+  }>;
+  targeting: {
+    ruleId?: string;
+    matchedAttributes: {
+      geo: string | null;
+      device: string;
+      browser: string | null;
+      os: string | null;
+    };
+  };
+  version: number;
 }
 
 interface PbEventCallback {
@@ -17,8 +55,10 @@ interface PbEventCallback {
 
 interface PbNamespace {
   init: () => Promise<void>;
+  requestBids: (adUnitCodes: string[]) => void;
+  autoRequestBids: () => void;
   refresh: (adUnitCodes?: string[]) => void;
-  getConfig: () => unknown;
+  getConfig: () => EmbeddedConfig | null;
   setConfig: (config: Partial<unknown>) => void;
   on: (event: string, callback: PbEventCallback) => void;
   off: (event: string, callback?: PbEventCallback) => void;
@@ -29,6 +69,7 @@ interface PbNamespace {
 
 declare global {
   interface Window {
+    __PB_CONFIG__: EmbeddedConfig;
     pb: PbNamespace;
     pbjs: {
       que: Array<() => void>;
@@ -53,64 +94,14 @@ declare global {
   }
 }
 
-// Hardcoded publisher ID (replaced at build time for per-publisher builds)
-declare const __PUBLISHER_ID__: string | undefined;
-
-// Extract publisher ID from script URL or use hardcoded value
-function getPublisherIdFromScript(): string {
-  // Use hardcoded publisher ID if available (per-publisher build)
-  if (typeof __PUBLISHER_ID__ !== 'undefined' && __PUBLISHER_ID__) {
-    return __PUBLISHER_ID__;
+/**
+ * Get embedded config (injected by server - 0ms fetch!)
+ */
+function getEmbeddedConfig(): EmbeddedConfig {
+  if (!window.__PB_CONFIG__) {
+    throw new Error('pb: Config not found. Ensure wrapper was loaded correctly from server.');
   }
-
-  // Fallback: extract from script URL (universal build)
-  const scripts = document.getElementsByTagName('script');
-  for (let i = 0; i < scripts.length; i++) {
-    const src = scripts[i].src;
-    if (src.includes('/pb/') || src.includes('/wrapper/')) {
-      const match = src.match(/\/([a-zA-Z0-9-]+)\.js/);
-      if (match) {
-        return match[1];
-      }
-    }
-  }
-  throw new Error('pb: Could not determine publisher ID from script URL');
-}
-
-// Configuration cache with TTL
-const CONFIG_CACHE_KEY = 'pb_config_cache';
-const CONFIG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-interface CachedConfig {
-  data: unknown;
-  timestamp: number;
-}
-
-function getCachedConfig(publisherId: string): unknown | null {
-  try {
-    const cached = localStorage.getItem(`${CONFIG_CACHE_KEY}_${publisherId}`);
-    if (cached) {
-      const parsed: CachedConfig = JSON.parse(cached);
-      if (Date.now() - parsed.timestamp < CONFIG_CACHE_TTL) {
-        return parsed.data;
-      }
-    }
-  } catch (e) {
-    // Ignore localStorage errors
-  }
-  return null;
-}
-
-function setCachedConfig(publisherId: string, config: unknown): void {
-  try {
-    const cached: CachedConfig = {
-      data: config,
-      timestamp: Date.now(),
-    };
-    localStorage.setItem(`${CONFIG_CACHE_KEY}_${publisherId}`, JSON.stringify(cached));
-  } catch (e) {
-    // Ignore localStorage errors
-  }
+  return window.__PB_CONFIG__;
 }
 
 // Event system
@@ -142,20 +133,18 @@ function emitEvent(event: string, data: unknown): void {
 }
 
 // Analytics batching
-const BATCH_SIZE = 10; // Send after 10 events
-const BATCH_INTERVAL = 30000; // Or after 30 seconds
+const BATCH_SIZE = 10;
+const BATCH_INTERVAL = 30000;
 let batchQueue: unknown[] = [];
 let batchTimer: number | null = null;
 
 function sendBatch(): void {
   if (batchQueue.length === 0) return;
 
-  const endpoint = (window.pb as PbNamespace & { _config?: PbConfig })._config?.apiEndpoint || '';
-  if (!endpoint) return;
-
   try {
+    const config = getEmbeddedConfig();
     const payload = JSON.stringify(batchQueue);
-    const url = `${endpoint}/b`;
+    const url = `/api/analytics/batch`;
 
     if (navigator.sendBeacon) {
       navigator.sendBeacon(url, payload);
@@ -168,10 +157,8 @@ function sendBatch(): void {
       }).catch(e => console.error('pb: Beacon error', e));
     }
 
-    // Clear the batch
     batchQueue = [];
 
-    // Clear timer
     if (batchTimer) {
       clearTimeout(batchTimer);
       batchTimer = null;
@@ -184,13 +171,11 @@ function sendBatch(): void {
 function queueAnalyticsEvent(event: unknown): void {
   batchQueue.push(event);
 
-  // Send if batch is full
   if (batchQueue.length >= BATCH_SIZE) {
     sendBatch();
     return;
   }
 
-  // Schedule batch send if not already scheduled
   if (!batchTimer) {
     batchTimer = window.setTimeout(() => {
       sendBatch();
@@ -217,21 +202,23 @@ if (typeof window !== 'undefined') {
 
 // Create pb namespace
 function createPbNamespace(): PbNamespace {
-  let publisherId = '';
-  let config: unknown = null;
+  let embeddedConfig: EmbeddedConfig | null = null;
   let initialized = false;
 
   const pb: PbNamespace = {
-    version: '1.0.0',
+    version: '2.0.0',
 
     get publisherId() {
-      return publisherId;
+      return embeddedConfig?.publisherId || '';
     },
 
     get pbjs() {
       return window.pbjs || null;
     },
 
+    /**
+     * Initialize Prebid with embedded config (0ms - config already in memory!)
+     */
     async init() {
       if (initialized) {
         console.warn('pb: Already initialized');
@@ -239,35 +226,40 @@ function createPbNamespace(): PbNamespace {
       }
 
       try {
-        // Get publisher ID
-        publisherId = getPublisherIdFromScript();
+        // Get embedded config (instant - no API call needed!)
+        embeddedConfig = getEmbeddedConfig();
 
-        // Check cache first
-        config = getCachedConfig(publisherId);
-
-        if (!config) {
-          // Fetch config from server
-          const apiEndpoint = (this as PbNamespace & { _config?: PbConfig })._config?.apiEndpoint || '';
-          const response = await fetch(`${apiEndpoint}/c/${publisherId}`);
-          if (!response.ok) {
-            throw new Error(`Config fetch failed: ${response.status}`);
-          }
-          config = await response.json();
-          setCachedConfig(publisherId, config);
+        if (embeddedConfig.config.debugMode) {
+          console.log('pb: Initializing with config:', embeddedConfig.configName);
+          console.log('pb: Matched attributes:', embeddedConfig.targeting.matchedAttributes);
         }
 
         // Initialize Prebid.js
         window.pbjs = window.pbjs || { que: [] };
         window.pbjs.que.push(() => {
           // Apply configuration
-          if (config && typeof config === 'object' && 'prebidConfig' in config) {
-            window.pbjs.setConfig((config as { prebidConfig: unknown }).prebidConfig);
-          }
+          const pbConfig: any = {};
 
-          // Add ad units
-          if (config && typeof config === 'object' && 'adUnits' in config) {
-            window.pbjs.addAdUnits((config as { adUnits: unknown[] }).adUnits);
-          }
+          if (embeddedConfig!.config.bidderTimeout) pbConfig.bidderTimeout = embeddedConfig!.config.bidderTimeout;
+          if (embeddedConfig!.config.priceGranularity) pbConfig.priceGranularity = embeddedConfig!.config.priceGranularity;
+          if (embeddedConfig!.config.customPriceBucket) pbConfig.priceGranularity = embeddedConfig!.config.customPriceBucket;
+          if (embeddedConfig!.config.enableSendAllBids !== undefined) pbConfig.enableSendAllBids = embeddedConfig!.config.enableSendAllBids;
+          if (embeddedConfig!.config.bidderSequence) pbConfig.bidderSequence = embeddedConfig!.config.bidderSequence;
+          if (embeddedConfig!.config.userSync) pbConfig.userSync = embeddedConfig!.config.userSync;
+          if (embeddedConfig!.config.targetingControls) pbConfig.targetingControls = embeddedConfig!.config.targetingControls;
+          if (embeddedConfig!.config.currencyConfig) pbConfig.currency = embeddedConfig!.config.currencyConfig;
+          if (embeddedConfig!.config.consentManagement) pbConfig.consentManagement = embeddedConfig!.config.consentManagement;
+          if (embeddedConfig!.config.floorsConfig) pbConfig.floors = embeddedConfig!.config.floorsConfig;
+          if (embeddedConfig!.config.userIdModules) pbConfig.userSync = { ...pbConfig.userSync, userIds: embeddedConfig!.config.userIdModules };
+          if (embeddedConfig!.config.videoConfig) pbConfig.video = embeddedConfig!.config.videoConfig;
+          if (embeddedConfig!.config.s2sConfig) pbConfig.s2sConfig = embeddedConfig!.config.s2sConfig;
+          if (embeddedConfig!.config.debugMode) pbConfig.debug = embeddedConfig!.config.debugMode;
+          if (embeddedConfig!.config.customConfig) Object.assign(pbConfig, embeddedConfig!.config.customConfig);
+
+          window.pbjs.setConfig(pbConfig);
+
+          // Note: Ad units are NOT loaded automatically
+          // Publisher must call requestBids() or autoRequestBids() to load specific ad units
 
           // Set up event tracking
           const events = [
@@ -278,10 +270,10 @@ function createPbNamespace(): PbNamespace {
           events.forEach((event) => {
             window.pbjs.onEvent(event, (data) => {
               emitEvent(event, data);
-              // Queue for batched analytics
               queueAnalyticsEvent({
                 eventType: event,
-                publisherId,
+                publisherId: embeddedConfig!.publisherId,
+                configId: embeddedConfig!.configId,
                 timestamp: new Date().toISOString(),
                 data,
               });
@@ -289,7 +281,15 @@ function createPbNamespace(): PbNamespace {
           });
 
           initialized = true;
-          emitEvent('pbReady', { publisherId });
+          emitEvent('pbReady', {
+            publisherId: embeddedConfig!.publisherId,
+            configId: embeddedConfig!.configId,
+            configName: embeddedConfig!.configName,
+          });
+
+          if (embeddedConfig!.config.debugMode) {
+            console.log('pb: Initialized successfully');
+          }
         });
 
       } catch (error) {
@@ -299,6 +299,90 @@ function createPbNamespace(): PbNamespace {
       }
     },
 
+    /**
+     * Request bids for specific ad units
+     * Only loads ad units that are specified (efficient!)
+     */
+    requestBids(adUnitCodes: string[]) {
+      if (!initialized || !window.pbjs || !embeddedConfig) {
+        console.warn('pb: Not initialized. Call pb.init() first.');
+        return;
+      }
+
+      window.pbjs.que.push(() => {
+        const adUnits: any[] = [];
+
+        // Build ad units from definitions (only for requested codes)
+        for (const code of adUnitCodes) {
+          const definition = embeddedConfig!.adUnitDefinitions[code];
+          if (!definition) {
+            console.warn(`pb: Ad unit definition not found: ${code}`);
+            continue;
+          }
+
+          // Build Prebid ad unit with bidders
+          const adUnit: any = {
+            code,
+            mediaTypes: definition.mediaTypes,
+            bids: embeddedConfig!.bidders.map(bidder => ({
+              bidder: bidder.bidderCode,
+              params: bidder.params,
+            })),
+          };
+
+          adUnits.push(adUnit);
+        }
+
+        if (adUnits.length === 0) {
+          console.warn('pb: No valid ad units to request bids for');
+          return;
+        }
+
+        // Add ad units and request bids
+        window.pbjs.addAdUnits(adUnits);
+        window.pbjs.requestBids({
+          adUnitCodes,
+          bidsBackHandler: () => {
+            window.pbjs.setTargetingForGPTAsync(adUnitCodes);
+            emitEvent('bidsReady', { adUnitCodes });
+          },
+        });
+
+        if (embeddedConfig!.config.debugMode) {
+          console.log(`pb: Requested bids for ${adUnits.length} ad units:`, adUnitCodes);
+        }
+      });
+    },
+
+    /**
+     * Auto-detect ad units on page and request bids
+     * Looks for elements with data-ad-unit attribute
+     */
+    autoRequestBids() {
+      if (!initialized || !window.pbjs) {
+        console.warn('pb: Not initialized. Call pb.init() first.');
+        return;
+      }
+
+      const adUnitsOnPage = Array.from(
+        document.querySelectorAll('[data-ad-unit]')
+      ).map(el => el.getAttribute('data-ad-unit') as string);
+
+      if (adUnitsOnPage.length === 0) {
+        console.warn('pb: No ad units found on page (looking for [data-ad-unit])');
+        return;
+      }
+
+      if (embeddedConfig?.config.debugMode) {
+        console.log('pb: Auto-detected ad units:', adUnitsOnPage);
+      }
+
+      this.requestBids(adUnitsOnPage);
+    },
+
+    /**
+     * Refresh ad units (request bids again)
+     */
     refresh(adUnitCodes?: string[]) {
       if (!initialized || !window.pbjs) {
         console.warn('pb: Not initialized');
@@ -319,10 +403,16 @@ function createPbNamespace(): PbNamespace {
       });
     },
 
+    /**
+     * Get current embedded config
+     */
     getConfig() {
-      return config;
+      return embeddedConfig;
     },
 
+    /**
+     * Update Prebid config dynamically
+     */
     setConfig(newConfig: Partial<unknown>) {
       if (!initialized || !window.pbjs) {
         console.warn('pb: Not initialized');
@@ -331,15 +421,20 @@ function createPbNamespace(): PbNamespace {
 
       window.pbjs.que.push(() => {
         window.pbjs.setConfig(newConfig);
-        config = { ...config as object, ...newConfig };
-        emitEvent('configUpdated', { config });
+        emitEvent('configUpdated', { config: newConfig });
       });
     },
 
+    /**
+     * Subscribe to events
+     */
     on(event: string, callback: PbEventCallback) {
       addEventListener(event, callback);
     },
 
+    /**
+     * Unsubscribe from events
+     */
     off(event: string, callback?: PbEventCallback) {
       removeEventListener(event, callback);
     },

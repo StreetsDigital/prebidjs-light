@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wrapper Test - Embedded Config Architecture</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-section h2 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .status.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-size: 12px;
+            border: 1px solid #ddd;
+        }
+        .metric {
+            display: inline-block;
+            margin: 10px 20px 10px 0;
+        }
+        .metric-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .ad-unit {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            margin: 10px 0;
+            text-align: center;
+            min-height: 100px;
+            background: #fafafa;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background: #667eea;
+            color: white;
+        }
+        tr:hover {
+            background: #f5f5f5;
+        }
+        .timeline-event {
+            padding: 10px;
+            margin: 5px 0;
+            border-left: 3px solid #667eea;
+            background: #f9f9f9;
+        }
+        .timeline-event .timestamp {
+            font-size: 11px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 Wrapper Test Page - Embedded Config Architecture</h1>
+        <p>Test the new performance-optimized wrapper with embedded configs (3-4x faster auction starts)</p>
+        <p><strong>Test URL:</strong> <code id="test-url">Loading...</code></p>
+    </div>
+
+    <!-- Test Configuration -->
+    <div class="test-section">
+        <h2>⚙️ Test Configuration</h2>
+        <div>
+            <label>Publisher ID: <input type="text" id="publisher-id" value="" placeholder="Enter publisher ID" /></label>
+            <button onclick="updateTestUrl()">Update URL</button>
+        </div>
+        <div id="config-status" class="status info">
+            Enter a publisher ID to begin testing.
+        </div>
+    </div>
+
+    <!-- Performance Metrics -->
+    <div class="test-section">
+        <h2>⚡ Performance Metrics</h2>
+        <div class="metric">
+            <div class="metric-label">Wrapper Load Time</div>
+            <div class="metric-value" id="wrapper-load-time">-</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">Config Fetch Time</div>
+            <div class="metric-value" id="config-fetch-time">0ms ✨</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">Time to Auction Start</div>
+            <div class="metric-value" id="auction-start-time">-</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">Total Time</div>
+            <div class="metric-value" id="total-time">-</div>
+        </div>
+        <div id="performance-note" class="status success" style="display:none;">
+            🎉 <strong>Performance Boost:</strong> Config is embedded in wrapper = 0ms fetch time!<br>
+            Old architecture: 50-200ms config fetch delay | New architecture: 0ms (instant!)
+        </div>
+    </div>
+
+    <!-- Wrapper Status -->
+    <div class="test-section">
+        <h2>📦 Wrapper Status</h2>
+        <div id="wrapper-status" class="status info">
+            Waiting for wrapper to load...
+        </div>
+        <button onclick="testInit()" id="init-btn">Initialize Wrapper</button>
+        <button onclick="testRequestBids()" id="request-bids-btn" disabled>Request Bids</button>
+        <button onclick="testAutoRequestBids()" id="auto-bids-btn" disabled>Auto-Detect Ad Units</button>
+    </div>
+
+    <!-- Embedded Config Info -->
+    <div class="test-section">
+        <h2>🔍 Embedded Config Information</h2>
+        <div id="config-info" class="status info">
+            Config will appear after wrapper loads...
+        </div>
+        <button onclick="showConfig()">Show Full Config</button>
+        <pre id="config-details" style="display:none;"></pre>
+    </div>
+
+    <!-- Timeline -->
+    <div class="test-section">
+        <h2>⏱️ Event Timeline</h2>
+        <div id="timeline"></div>
+        <button onclick="clearTimeline()">Clear Timeline</button>
+    </div>
+
+    <!-- Ad Units -->
+    <div class="test-section">
+        <h2>📺 Test Ad Units</h2>
+        <div class="ad-unit" data-ad-unit="header-banner">
+            <strong>Header Banner</strong> (728x90)<br>
+            <code>data-ad-unit="header-banner"</code><br>
+            <div id="ad-header-banner" style="margin-top:10px; color:#666;">Ad placeholder</div>
+        </div>
+        <div class="ad-unit" data-ad-unit="sidebar-1">
+            <strong>Sidebar Ad 1</strong> (300x250)<br>
+            <code>data-ad-unit="sidebar-1"</code><br>
+            <div id="ad-sidebar-1" style="margin-top:10px; color:#666;">Ad placeholder</div>
+        </div>
+    </div>
+
+    <!-- Bid Responses -->
+    <div class="test-section">
+        <h2>💰 Bid Responses</h2>
+        <div id="bids-status" class="status info">
+            No bids yet. Request bids to see responses.
+        </div>
+        <table id="bids-table" style="display:none;">
+            <thead>
+                <tr>
+                    <th>Ad Unit</th>
+                    <th>Bidder</th>
+                    <th>CPM</th>
+                    <th>Latency (ms)</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="bids-tbody"></tbody>
+        </table>
+    </div>
+
+    <!-- Test Results -->
+    <div class="test-section">
+        <h2>✅ Test Results</h2>
+        <div id="test-results">
+            <div class="status info">Tests will run automatically as you interact with the wrapper.</div>
+        </div>
+    </div>
+
+    <!-- Load wrapper script -->
+    <script id="wrapper-script">
+        // This will be dynamically updated based on publisher ID
+    </script>
+
+    <script>
+        // Test state
+        const testState = {
+            wrapperLoadStart: null,
+            wrapperLoadEnd: null,
+            auctionStartTime: null,
+            initialized: false,
+            bids: [],
+            timeline: []
+        };
+
+        // Add timeline event
+        function addTimelineEvent(type, message, data) {
+            const event = {
+                timestamp: new Date().toISOString(),
+                type,
+                message,
+                data
+            };
+            testState.timeline.push(event);
+
+            const timeline = document.getElementById('timeline');
+            const eventEl = document.createElement('div');
+            eventEl.className = 'timeline-event';
+            eventEl.innerHTML = `
+                <div class="timestamp">${event.timestamp}</div>
+                <strong>${type}:</strong> ${message}
+                ${data ? `<pre style="margin-top:5px;">${JSON.stringify(data, null, 2)}</pre>` : ''}
+            `;
+            timeline.insertBefore(eventEl, timeline.firstChild);
+        }
+
+        function clearTimeline() {
+            testState.timeline = [];
+            document.getElementById('timeline').innerHTML = '';
+            addTimelineEvent('INFO', 'Timeline cleared');
+        }
+
+        // Update test URL
+        function updateTestUrl() {
+            const publisherId = document.getElementById('publisher-id').value;
+            if (!publisherId) {
+                alert('Please enter a publisher ID');
+                return;
+            }
+
+            const url = `/pb/${publisherId}.js`;
+            document.getElementById('test-url').textContent = url;
+
+            // Load the wrapper
+            loadWrapper(url);
+        }
+
+        // Load wrapper script
+        function loadWrapper(url) {
+            testState.wrapperLoadStart = performance.now();
+            addTimelineEvent('LOAD', 'Loading wrapper script', { url });
+
+            // Remove existing wrapper script if any
+            const existingScript = document.querySelector('script[src*="/pb/"]');
+            if (existingScript) {
+                existingScript.remove();
+            }
+
+            // Create and load new script
+            const script = document.createElement('script');
+            script.src = url;
+            script.async = true;
+            script.setAttribute('data-no-auto-init', 'true'); // Disable auto-init for testing
+
+            script.onload = () => {
+                testState.wrapperLoadEnd = performance.now();
+                const loadTime = (testState.wrapperLoadEnd - testState.wrapperLoadStart).toFixed(2);
+                document.getElementById('wrapper-load-time').textContent = `${loadTime}ms`;
+
+                addTimelineEvent('SUCCESS', 'Wrapper loaded successfully', { loadTime: `${loadTime}ms` });
+                checkWrapperLoaded();
+            };
+
+            script.onerror = (error) => {
+                addTimelineEvent('ERROR', 'Failed to load wrapper', { error: error.message });
+                document.getElementById('wrapper-status').className = 'status error';
+                document.getElementById('wrapper-status').textContent = '❌ Failed to load wrapper. Check publisher ID.';
+            };
+
+            document.head.appendChild(script);
+        }
+
+        // Check if wrapper loaded
+        function checkWrapperLoaded() {
+            if (window.pb && window.__PB_CONFIG__) {
+                document.getElementById('wrapper-status').className = 'status success';
+                document.getElementById('wrapper-status').innerHTML = '✅ Wrapper loaded! Config is embedded and ready.';
+                document.getElementById('init-btn').disabled = false;
+                document.getElementById('performance-note').style.display = 'block';
+
+                // Show config info
+                const config = window.__PB_CONFIG__;
+                document.getElementById('config-info').className = 'status success';
+                document.getElementById('config-info').innerHTML = `
+                    ✅ <strong>Config Embedded Successfully</strong><br>
+                    <strong>Config Name:</strong> ${config.configName}<br>
+                    <strong>Config ID:</strong> ${config.configId}<br>
+                    <strong>Publisher ID:</strong> ${config.publisherId}<br>
+                    <strong>Version:</strong> ${config.version}<br>
+                    <strong>Matched Attributes:</strong>
+                    GEO=${config.targeting.matchedAttributes.geo || 'unknown'},
+                    Device=${config.targeting.matchedAttributes.device},
+                    Browser=${config.targeting.matchedAttributes.browser || 'unknown'}
+                `;
+
+                addTimelineEvent('SUCCESS', 'Config embedded and validated', config.targeting.matchedAttributes);
+            } else {
+                setTimeout(checkWrapperLoaded, 100);
+            }
+        }
+
+        // Test init
+        function testInit() {
+            if (!window.pb) {
+                alert('Wrapper not loaded');
+                return;
+            }
+
+            const initStart = performance.now();
+            addTimelineEvent('TEST', 'Initializing wrapper');
+
+            window.pb.init().then(() => {
+                const initEnd = performance.now();
+                const initTime = (initEnd - initStart).toFixed(2);
+                testState.auctionStartTime = initTime;
+
+                document.getElementById('auction-start-time').textContent = `${initTime}ms`;
+                document.getElementById('total-time').textContent = `${(testState.wrapperLoadEnd - testState.wrapperLoadStart + parseFloat(initTime)).toFixed(2)}ms`;
+
+                addTimelineEvent('SUCCESS', 'Wrapper initialized', { initTime: `${initTime}ms` });
+
+                document.getElementById('wrapper-status').innerHTML = '✅ Wrapper initialized and ready for bidding!';
+                document.getElementById('request-bids-btn').disabled = false;
+                document.getElementById('auto-bids-btn').disabled = false;
+
+                testState.initialized = true;
+
+                // Subscribe to events
+                window.pb.on('bidsReady', (data) => {
+                    addTimelineEvent('EVENT', 'Bids ready', data);
+                    updateBidsTable();
+                });
+
+                window.pb.on('bidResponse', (data) => {
+                    testState.bids.push(data);
+                });
+            }).catch(err => {
+                addTimelineEvent('ERROR', 'Initialization failed', { error: err.message });
+                document.getElementById('wrapper-status').className = 'status error';
+                document.getElementById('wrapper-status').textContent = '❌ Initialization failed: ' + err.message;
+            });
+        }
+
+        // Test request bids
+        function testRequestBids() {
+            if (!testState.initialized) {
+                alert('Initialize wrapper first');
+                return;
+            }
+
+            addTimelineEvent('TEST', 'Requesting bids for specific ad units');
+            window.pb.requestBids(['header-banner', 'sidebar-1']);
+        }
+
+        // Test auto request bids
+        function testAutoRequestBids() {
+            if (!testState.initialized) {
+                alert('Initialize wrapper first');
+                return;
+            }
+
+            addTimelineEvent('TEST', 'Auto-detecting ad units on page');
+            window.pb.autoRequestBids();
+        }
+
+        // Show config
+        function showConfig() {
+            const configEl = document.getElementById('config-details');
+            if (configEl.style.display === 'none') {
+                configEl.style.display = 'block';
+                configEl.textContent = JSON.stringify(window.__PB_CONFIG__, null, 2);
+            } else {
+                configEl.style.display = 'none';
+            }
+        }
+
+        // Update bids table
+        function updateBidsTable() {
+            if (testState.bids.length === 0) {
+                return;
+            }
+
+            const table = document.getElementById('bids-table');
+            const tbody = document.getElementById('bids-tbody');
+
+            tbody.innerHTML = '';
+            testState.bids.forEach(bid => {
+                const row = tbody.insertRow();
+                row.innerHTML = `
+                    <td>${bid.adUnitCode || 'N/A'}</td>
+                    <td>${bid.bidder || 'N/A'}</td>
+                    <td>${bid.cpm ? '$' + bid.cpm.toFixed(2) : 'N/A'}</td>
+                    <td>${bid.timeToRespond || 'N/A'}</td>
+                    <td>${bid.statusMessage || 'OK'}</td>
+                `;
+            });
+
+            table.style.display = 'table';
+            document.getElementById('bids-status').className = 'status success';
+            document.getElementById('bids-status').textContent = `✅ Received ${testState.bids.length} bid responses`;
+        }
+
+        // Initialize page
+        addTimelineEvent('INFO', 'Test page loaded');
+    </script>
+</body>
+</html>

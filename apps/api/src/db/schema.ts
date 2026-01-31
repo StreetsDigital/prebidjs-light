@@ -519,6 +519,7 @@ export const impersonationSessions = sqliteTable('impersonation_sessions', {
 export const wrapperConfigs = sqliteTable('wrapper_configs', {
   id: text('id').primaryKey(),
   publisherId: text('publisher_id').notNull(),
+  websiteId: text('website_id'), // Optional - configs can be publisher-level or website-specific
 
   // Config metadata
   name: text('name').notNull(),
@@ -526,6 +527,7 @@ export const wrapperConfigs = sqliteTable('wrapper_configs', {
   status: text('status', {
     enum: ['draft', 'active', 'paused', 'archived']
   }).notNull().default('draft'),
+  blockWrapper: integer('block_wrapper', { mode: 'boolean' }).default(false), // NEW: Don't initialize wrapper if true
 
   // Complete wrapper config (same structure as publisher_config)
   bidderTimeout: integer('bidder_timeout').default(1500),

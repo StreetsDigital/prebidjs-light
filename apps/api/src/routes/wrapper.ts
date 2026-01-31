@@ -187,6 +187,39 @@ export default async function wrapperRoutes(fastify: FastifyInstance) {
         });
       }
 
+      // 9.5. NEW: Check if config blocks wrapper initialization
+      if (matchedConfig.blockWrapper) {
+        // Log blocked request asynchronously
+        logConfigServe(
+          publisherId,
+          matchedConfig.id,
+          attributes,
+          matchedRuleId
+        ).catch(err => {
+          fastify.log.error({ err }, 'Failed to log blocked config serve');
+        });
+
+        // Return minimal JavaScript that does nothing
+        const blockedScript = `
+/* Wrapper blocked by configuration */
+(function() {
+  if (typeof window !== 'undefined') {
+    window.pbjs_blocked = true;
+    window.pbjs_block_reason = 'config_match';
+    window.pbjs_config_id = '${matchedConfig.id}';
+    console.log('[pbjs_engine] Wrapper initialization blocked by config: ${matchedConfig.name || matchedConfig.id}');
+  }
+})();
+`.trim();
+
+        return reply
+          .header('Content-Type', 'application/javascript; charset=utf-8')
+          .header('Cache-Control', 'public, max-age=300')
+          .header('Vary', 'CF-IPCountry, User-Agent')
+          .header('Access-Control-Allow-Origin', '*')
+          .send(blockedScript);
+      }
+
       // 10. Generate wrapper with embedded config
       const wrapper = generateWrapper(
         publisherId,

@@ -4,12 +4,13 @@ import TargetingBuilder from './TargetingBuilder';
 
 interface ConfigWizardProps {
   publisherId: string;
+  websiteId?: string | null; // NEW: Website-specific config
   config?: any;
   onClose: () => void;
   onSave: () => void;
 }
 
-export default function ConfigWizard({ publisherId, config, onClose, onSave }: ConfigWizardProps) {
+export default function ConfigWizard({ publisherId, websiteId, config, onClose, onSave }: ConfigWizardProps) {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     // Step 1: Basic Info
@@ -17,6 +18,7 @@ export default function ConfigWizard({ publisherId, config, onClose, onSave }: C
     description: '',
     status: 'draft' as 'draft' | 'active' | 'paused',
     isDefault: false,
+    blockWrapper: false, // NEW: Block wrapper initialization
 
     // Step 2: Wrapper Settings
     bidderTimeout: 1500,
@@ -56,6 +58,7 @@ export default function ConfigWizard({ publisherId, config, onClose, onSave }: C
         description: config.description || '',
         status: config.status || 'draft',
         isDefault: config.isDefault || false,
+        blockWrapper: config.blockWrapper || false, // NEW: Load blockWrapper state
         bidderTimeout: config.bidderTimeout || 1500,
         priceGranularity: config.priceGranularity || 'medium',
         enableSendAllBids: config.enableSendAllBids !== false,
@@ -153,6 +156,7 @@ export default function ConfigWizard({ publisherId, config, onClose, onSave }: C
     try {
       const payload = {
         ...formData,
+        websiteId: websiteId || undefined, // NEW: Include websiteId if provided
         bidders: formData.bidders.length > 0 ? formData.bidders : undefined,
         targetingRules: formData.targetingRules.conditions.length > 0 ? formData.targetingRules : undefined,
       };
@@ -316,6 +320,33 @@ export default function ConfigWizard({ publisherId, config, onClose, onSave }: C
                 <label htmlFor="isDefault" className="text-sm font-medium text-gray-700">
                   Set as default config (fallback for unmatched traffic)
                 </label>
+              </div>
+
+              <div className="border-t border-gray-200 pt-4">
+                <div className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    id="blockWrapper"
+                    checked={formData.blockWrapper}
+                    onChange={(e) => setFormData({ ...formData, blockWrapper: e.target.checked })}
+                    className="mt-1 rounded text-red-600 focus:ring-red-500"
+                  />
+                  <div className="flex-1">
+                    <label htmlFor="blockWrapper" className="text-sm font-medium text-gray-700 cursor-pointer">
+                      Block wrapper initialization
+                    </label>
+                    <p className="text-xs text-gray-500 mt-1">
+                      When this config matches, the wrapper will NOT load Prebid.js. Useful for blocking specific geos, bots, or unwanted traffic.
+                    </p>
+                    {formData.blockWrapper && (
+                      <div className="mt-2 bg-red-50 border border-red-200 rounded-lg p-3">
+                        <p className="text-xs text-red-800 font-medium">
+                          ⚠️ WARNING: This config will prevent Prebid.js from loading when matched. Make sure you have proper targeting rules configured.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}

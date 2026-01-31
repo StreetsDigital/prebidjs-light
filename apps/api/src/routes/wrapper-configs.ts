@@ -10,6 +10,8 @@ interface CreateConfigBody {
   description?: string;
   status?: 'draft' | 'active' | 'paused' | 'archived';
   isDefault?: boolean;
+  websiteId?: string; // NEW: Website-specific config
+  blockWrapper?: boolean; // NEW: Block wrapper initialization
 
   // Wrapper settings
   bidderTimeout?: number;
@@ -158,9 +160,11 @@ export default async function wrapperConfigsRoutes(fastify: FastifyInstance) {
       await db.insert(wrapperConfigs).values({
         id: configId,
         publisherId,
+        websiteId: body.websiteId || null, // NEW: Website-specific config support
         name: body.name,
         description: body.description,
         status: body.status || 'draft',
+        blockWrapper: body.blockWrapper || false, // NEW: Blocking support
         bidderTimeout: body.bidderTimeout,
         priceGranularity: body.priceGranularity,
         customPriceBucket: body.customPriceBucket ? JSON.stringify(body.customPriceBucket) : null,
@@ -258,6 +262,8 @@ export default async function wrapperConfigsRoutes(fastify: FastifyInstance) {
       if (body.description !== undefined) updates.description = body.description;
       if (body.status !== undefined) updates.status = body.status;
       if (body.isDefault !== undefined) updates.isDefault = body.isDefault;
+      if (body.websiteId !== undefined) updates.websiteId = body.websiteId; // NEW: Website support
+      if (body.blockWrapper !== undefined) updates.blockWrapper = body.blockWrapper; // NEW: Blocking support
       if (body.bidderTimeout !== undefined) updates.bidderTimeout = body.bidderTimeout;
       if (body.priceGranularity !== undefined) updates.priceGranularity = body.priceGranularity;
       if (body.customPriceBucket !== undefined) updates.customPriceBucket = JSON.stringify(body.customPriceBucket);

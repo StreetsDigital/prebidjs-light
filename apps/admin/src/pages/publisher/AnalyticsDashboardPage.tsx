@@ -1,6 +1,21 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import { TrendingUp, Activity, DollarSign, Target } from 'lucide-react';
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
 
 interface MetricData {
   bidderCode: string;
@@ -111,6 +126,28 @@ export function AnalyticsDashboardPage() {
   const topBiddersList = Object.values(topBidders)
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 5);
+
+  // Prepare chart data
+  const revenueByBidder = topBiddersList.map((bidder) => ({
+    name: bidder.bidderCode,
+    revenue: Number(bidder.revenue.toFixed(2)),
+    impressions: bidder.impressions,
+  }));
+
+  const pieChartData = topBiddersList.map((bidder) => ({
+    name: bidder.bidderCode,
+    value: Number(bidder.revenue.toFixed(2)),
+  }));
+
+  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'];
+
+  // Aggregate timeseries data by date
+  const timeseriesChartData = timeseries.map((ts) => ({
+    date: new Date(ts.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    revenue: Number(ts.revenue.toFixed(2)),
+    impressions: Math.round(ts.impressions / 1000), // Show in thousands
+    winRate: Number((ts.winRate * 100).toFixed(1)),
+  }));
 
   if (loading) {
     return (
@@ -273,12 +310,76 @@ export function AnalyticsDashboardPage() {
         )}
       </div>
 
-      {/* Timeseries Chart (Placeholder) */}
+      {/* Revenue Trend Chart */}
       {timeseries.length > 0 && (
         <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Revenue Trend</h2>
-          <div className="h-64 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg">
-            <p className="text-gray-500">Chart visualization would go here</p>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Revenue Trend Over Time</h2>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={timeseriesChartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Line
+                type="monotone"
+                dataKey="revenue"
+                stroke="#3B82F6"
+                strokeWidth={2}
+                name="Revenue ($)"
+              />
+              <Line
+                type="monotone"
+                dataKey="impressions"
+                stroke="#10B981"
+                strokeWidth={2}
+                name="Impressions (K)"
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Bidder Revenue Comparison */}
+      {topBiddersList.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Bar Chart */}
+          <div className="bg-white shadow rounded-lg p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Revenue by Bidder</h2>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={revenueByBidder}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="revenue" fill="#3B82F6" name="Revenue ($)" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Pie Chart */}
+          <div className="bg-white shadow rounded-lg p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Revenue Distribution</h2>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={pieChartData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {pieChartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
           </div>
         </div>
       )}

@@ -5,7 +5,7 @@ import { Login } from './pages/Login';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { ResetPassword } from './pages/ResetPassword';
 import { ChatPage, DashboardPage, PublishersPage, PublisherDetailPage, PublisherCreatePage, UsersPage, ModulesPage, AnalyticsPage, AuditLogsPage, ProfilePage, SystemSettingsPage, ABTestsPage, ABTestAnalyticsPage, BidderHealthPage, OptimizationRulesPage, AuctionInspectorPage, RevenueForecastingPage, NotificationsPage, CustomReportsPage, YieldAdvisorPage } from './pages/admin';
-import { PublisherDashboard, AdUnitsPage, BiddersPage, GetCodePage, SitesPage } from './pages/publisher';
+import { PublisherDashboard, AdUnitsPage, BiddersPage, GetCodePage, SitesPage, ModulesPage as PublisherModulesPage, AnalyticsPage as PublisherAnalyticsPage } from './pages/publisher';
 import { NotFound } from './pages/NotFound';
 
 // Placeholder components for routes that aren't implemented yet
@@ -107,9 +107,10 @@ function App() {
         <Route path="ad-units" element={<AdUnitsPage />} />
         <Route path="sites" element={<SitesPage />} />
         <Route path="bidders" element={<BiddersPage />} />
+        <Route path="modules" element={<PublisherModulesPage />} />
+        <Route path="analytics" element={<PublisherAnalyticsPage />} />
         <Route path="settings" element={<PlaceholderPage title="Settings" />} />
         <Route path="get-code" element={<GetCodePage />} />
-        <Route path="analytics" element={<PlaceholderPage title="Analytics" />} />
         <Route path="support" element={<PlaceholderPage title="Support" />} />
         <Route path="*" element={<PlaceholderPage title="Page Not Found" />} />
       </Route>

@@ -1,5 +1,5 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { db, publisherCustomBidders } from '../db';
+import { db, publisherCustomBidders, publisherRemovedBidders } from '../db';
 import { eq, and } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -41,6 +41,15 @@ export default async function customBiddersRoutes(fastify: FastifyInstance) {
     const { publisherId } = request.params;
 
     try {
+      // Get removed bidders (including built-ins explicitly removed by publisher)
+      const removedBidders = db
+        .select()
+        .from(publisherRemovedBidders)
+        .where(eq(publisherRemovedBidders.publisherId, publisherId))
+        .all();
+
+      const removedBidderCodes = new Set(removedBidders.map(b => b.bidderCode));
+
       // Get custom bidders from database
       const customBidders = db
         .select()
@@ -53,32 +62,36 @@ export default async function customBiddersRoutes(fastify: FastifyInstance) {
         )
         .all();
 
-      // Combine built-in bidders with custom bidders
+      // Combine built-in bidders with custom bidders, excluding removed ones
       const allBidders = [
-        // Built-in bidders with capability info
-        ...BUILT_IN_BIDDERS.map(bidder => {
-          const info = getBidderInfo(bidder.code);
-          return {
-            code: bidder.code,
-            name: bidder.name,
-            isBuiltIn: true,
-            isClientSide: info.isClientSide,
-            isServerSide: info.isServerSide,
-            documentationUrl: info.documentationUrl,
-            description: info.description,
-          };
-        }),
-        // Custom bidders
-        ...customBidders.map(bidder => ({
-          id: bidder.id,
-          code: bidder.bidderCode,
-          name: bidder.bidderName,
-          isBuiltIn: false,
-          isClientSide: bidder.isClientSide,
-          isServerSide: bidder.isServerSide,
-          documentationUrl: bidder.documentationUrl,
-          description: bidder.description,
-        })),
+        // Built-in bidders with capability info (exclude removed ones)
+        ...BUILT_IN_BIDDERS
+          .filter(bidder => !removedBidderCodes.has(bidder.code))
+          .map(bidder => {
+            const info = getBidderInfo(bidder.code);
+            return {
+              code: bidder.code,
+              name: bidder.name,
+              isBuiltIn: true,
+              isClientSide: info.isClientSide,
+              isServerSide: info.isServerSide,
+              documentationUrl: info.documentationUrl,
+              description: info.description,
+            };
+          }),
+        // Custom bidders (exclude removed ones)
+        ...customBidders
+          .filter(bidder => !removedBidderCodes.has(bidder.bidderCode))
+          .map(bidder => ({
+            id: bidder.id,
+            code: bidder.bidderCode,
+            name: bidder.bidderName,
+            isBuiltIn: false,
+            isClientSide: bidder.isClientSide,
+            isServerSide: bidder.isServerSide,
+            documentationUrl: bidder.documentationUrl,
+            description: bidder.description,
+          })),
       ];
 
       return reply.send({ data: allBidders });
@@ -90,7 +103,7 @@ export default async function customBiddersRoutes(fastify: FastifyInstance) {
 
   /**
    * POST /api/publishers/:publisherId/available-bidders
-   * Add a custom bidder
+   * Add a custom bidder OR re-add a removed built-in bidder
    */
   fastify.post('/:publisherId/available-bidders', async (request: FastifyRequest<{ Params: { publisherId: string }; Body: AddBidderRequest }>, reply: FastifyReply) => {
     const { publisherId } = request.params;
@@ -106,11 +119,39 @@ export default async function customBiddersRoutes(fastify: FastifyInstance) {
 
       const normalizedCode = bidderCode.toLowerCase().trim();
 
-      // Check if it's a built-in bidder
-      if (BUILT_IN_BIDDERS.some(b => b.code === normalizedCode)) {
-        return reply.status(400).send({
-          error: 'This bidder is already available as a built-in bidder.'
-        });
+      // Check if it's a built-in bidder that was previously removed
+      const builtInBidder = BUILT_IN_BIDDERS.find(b => b.code === normalizedCode);
+      if (builtInBidder) {
+        const removed = db
+          .select()
+          .from(publisherRemovedBidders)
+          .where(
+            and(
+              eq(publisherRemovedBidders.publisherId, publisherId),
+              eq(publisherRemovedBidders.bidderCode, normalizedCode)
+            )
+          )
+          .get();
+
+        if (removed) {
+          // Re-add by removing from removed list
+          db.delete(publisherRemovedBidders)
+            .where(eq(publisherRemovedBidders.id, removed.id))
+            .run();
+
+          return reply.status(200).send({
+            data: {
+              code: normalizedCode,
+              name: builtInBidder.name,
+              isBuiltIn: true,
+            },
+            message: `${builtInBidder.name} re-added successfully`
+          });
+        } else {
+          return reply.status(400).send({
+            error: 'This bidder is already available as a built-in bidder.'
+          });
+        }
       }
 
       // Check if custom bidder already exists for this publisher
@@ -173,14 +214,47 @@ export default async function customBiddersRoutes(fastify: FastifyInstance) {
 
   /**
    * DELETE /api/publishers/:publisherId/available-bidders/:bidderId
-   * Remove a custom bidder
+   * Remove a bidder (custom or built-in)
+   * For custom bidders: delete from publisher_custom_bidders
+   * For built-in bidders: add to publisher_removed_bidders
    */
   fastify.delete('/:publisherId/available-bidders/:bidderId', async (request: FastifyRequest<DeleteBidderRequest>, reply: FastifyReply) => {
     const { publisherId, bidderId } = request.params;
 
     try {
-      // Verify bidder belongs to publisher
-      const bidder = db
+      // Check if it's a built-in bidder (bidderId would be the bidder code)
+      const builtInBidder = BUILT_IN_BIDDERS.find(b => b.code === bidderId);
+
+      if (builtInBidder) {
+        // Check if already removed
+        const existing = db
+          .select()
+          .from(publisherRemovedBidders)
+          .where(
+            and(
+              eq(publisherRemovedBidders.publisherId, publisherId),
+              eq(publisherRemovedBidders.bidderCode, bidderId)
+            )
+          )
+          .get();
+
+        if (existing) {
+          return reply.status(400).send({ error: 'Bidder already removed' });
+        }
+
+        // Add to removed bidders list
+        db.insert(publisherRemovedBidders).values({
+          id: uuidv4(),
+          publisherId,
+          bidderCode: bidderId,
+          createdAt: new Date().toISOString()
+        }).run();
+
+        return reply.send({ message: `${builtInBidder.name} removed successfully` });
+      }
+
+      // Otherwise, it's a custom bidder - verify and delete
+      const customBidder = db
         .select()
         .from(publisherCustomBidders)
         .where(
@@ -191,19 +265,19 @@ export default async function customBiddersRoutes(fastify: FastifyInstance) {
         )
         .get();
 
-      if (!bidder) {
-        return reply.status(404).send({ error: 'Custom bidder not found' });
+      if (!customBidder) {
+        return reply.status(404).send({ error: 'Bidder not found' });
       }
 
-      // Delete the bidder
+      // Delete the custom bidder
       db.delete(publisherCustomBidders)
         .where(eq(publisherCustomBidders.id, bidderId))
         .run();
 
-      return reply.send({ message: 'Custom bidder removed successfully' });
+      return reply.send({ message: 'Bidder removed successfully' });
     } catch (error) {
       fastify.log.error(error);
-      return reply.status(500).send({ error: 'Failed to remove custom bidder' });
+      return reply.status(500).send({ error: 'Failed to remove bidder' });
     }
   });
 

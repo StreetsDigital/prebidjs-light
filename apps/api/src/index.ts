@@ -31,6 +31,10 @@ import systemRoutes from './routes/system';
 import chatRoutes from './routes/chat';
 import customBiddersRoutes from './routes/custom-bidders';
 import biddersRoutes from './routes/bidders';
+import prebidComponentsRoutes from './routes/prebid-components';
+import publisherModulesRoutes from './routes/publisher-modules';
+import publisherAnalyticsRoutes from './routes/publisher-analytics';
+import { fetchPrebidData, startPeriodicRefresh } from './utils/prebid-data-fetcher';
 
 const app = Fastify({
   logger: {
@@ -91,6 +95,9 @@ app.register(wrapperRoutes); // No prefix - serves at root level
 app.register(wrapperConfigsRoutes, { prefix: '/api/publishers/:publisherId/configs' });
 app.register(customBiddersRoutes, { prefix: '/api/publishers' });
 app.register(biddersRoutes, { prefix: '/api/bidders' });
+app.register(prebidComponentsRoutes, { prefix: '/api/prebid' });
+app.register(publisherModulesRoutes, { prefix: '/api/publishers' });
+app.register(publisherAnalyticsRoutes, { prefix: '/api/publishers' });
 
 // Placeholder for other routes
 // app.register(configRoutes, { prefix: '/api/config' });
@@ -561,6 +568,14 @@ const start = async () => {
     console.log('Initializing database...');
     initializeDatabase();
     console.log('Database initialized');
+
+    // Fetch Prebid component data on startup
+    console.log('Fetching Prebid component data...');
+    await fetchPrebidData();
+    console.log('Prebid component data loaded');
+
+    // Start periodic refresh (every 24 hours)
+    startPeriodicRefresh();
 
     const host = process.env.API_HOST || '0.0.0.0';
     const port = parseInt(process.env.API_PORT || '3001', 10);

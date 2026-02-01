@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../stores/authStore';
+import { PrebidMarketplaceModal } from '../../components/PrebidMarketplaceModal';
 
 interface Module {
-  id?: string;
+  id: string;
   code: string;
   name: string;
-  category: 'recommended' | 'userId' | 'rtd' | 'general' | 'vendor';
-  description?: string;
-  documentationUrl?: string;
-  params?: Record<string, any>;
+  params?: Record<string, any> | null;
+  enabled: boolean;
+  isPrebidMember: boolean;
+  documentationUrl?: string | null;
+  dependencies?: string[];
+  category: 'userId' | 'rtd' | 'general';
 }
 
 export function ModulesPage() {
@@ -19,8 +22,9 @@ export function ModulesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [deletingModule, setDeletingModule] = useState<string | null>(null);
+  const [filterCategory, setFilterCategory] = useState<'all' | 'userId' | 'rtd' | 'general'>('all');
+  const [isMarketplaceOpen, setIsMarketplaceOpen] = useState(false);
 
   // Fetch modules from API
   useEffect(() => {
@@ -56,16 +60,14 @@ export function ModulesPage() {
     const matchesSearch =
       module.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       module.code.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesCategory = categoryFilter === 'all' || module.category === categoryFilter;
-
+    const matchesCategory = filterCategory === 'all' || module.category === filterCategory;
     return matchesSearch && matchesCategory;
   });
 
   const handleDelete = async (module: Module) => {
     if (!publisherId) return;
 
-    const confirmMessage = `Remove ${module.name}? This will remove it from your module list.`;
+    const confirmMessage = `Remove ${module.name}? This will disable this module in your Prebid configuration.`;
 
     if (!confirm(confirmMessage)) return;
 
@@ -91,23 +93,47 @@ export function ModulesPage() {
     }
   };
 
-  // Get category badge
-  const getCategoryBadge = (category: string) => {
-    const badges: Record<string, { label: string; color: string }> = {
-      recommended: { label: 'Recommended', color: 'bg-purple-50 text-purple-700 ring-purple-700/10' },
-      userId: { label: 'User ID', color: 'bg-blue-50 text-blue-700 ring-blue-700/10' },
-      rtd: { label: 'RTD', color: 'bg-green-50 text-green-700 ring-green-600/20' },
-      general: { label: 'General', color: 'bg-gray-50 text-gray-600 ring-gray-500/10' },
-      vendor: { label: 'Vendor', color: 'bg-orange-50 text-orange-700 ring-orange-600/10' },
-    };
+  // Handle adding component from marketplace
+  const handleAddComponent = async (component: any, type: 'bidder' | 'module' | 'analytics') => {
+    if (!publisherId) return;
 
-    const badge = badges[category] || badges.general;
+    if (type !== 'module') {
+      alert('Only modules can be added from this page.');
+      return;
+    }
 
-    return (
-      <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${badge.color}`}>
-        {badge.label}
-      </span>
-    );
+    try {
+      const response = await fetch(
+        `http://localhost:3001/api/publishers/${publisherId}/modules`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            moduleCode: component.code,
+            moduleName: component.name,
+            category: component.category,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to add module');
+      }
+
+      // Refresh modules list
+      const fetchResponse = await fetch(
+        `http://localhost:3001/api/publishers/${publisherId}/modules`
+      );
+      const { data } = await fetchResponse.json();
+      setModules(data);
+    } catch (err) {
+      console.error('Error adding module:', err);
+      alert(err instanceof Error ? err.message : 'Failed to add module');
+      throw err; // Re-throw to let modal handle the error
+    }
   };
 
   if (loading) {
@@ -147,7 +173,9 @@ export function ModulesPage() {
     );
   }
 
-  const recommendedModules = modules.filter(m => m.category === 'recommended');
+  const prebidMemberCount = modules.filter((m) => m.isPrebidMember).length;
+  const userIdCount = modules.filter((m) => m.category === 'userId').length;
+  const rtdCount = modules.filter((m) => m.category === 'rtd').length;
 
   return (
     <div className="space-y-6">
@@ -156,11 +184,12 @@ export function ModulesPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Modules</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Configure Prebid.js modules for User ID, RTD, consent management, and more.
+            Manage User ID, RTD, and other Prebid modules for enhanced functionality.
           </p>
         </div>
         <button
           type="button"
+          onClick={() => setIsMarketplaceOpen(true)}
           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
           <svg className="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -171,49 +200,45 @@ export function ModulesPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-lg shadow p-4">
           <p className="text-sm font-medium text-gray-500">Total Modules</p>
           <p className="text-2xl font-semibold text-gray-900">{modules.length}</p>
         </div>
         <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm font-medium text-gray-500">Recommended Modules</p>
-          <p className="text-2xl font-semibold text-gray-900">{recommendedModules.length}</p>
+          <p className="text-sm font-medium text-gray-500">User ID Modules</p>
+          <p className="text-2xl font-semibold text-gray-900">{userIdCount}</p>
         </div>
         <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm font-medium text-gray-500">Enabled Modules</p>
-          <p className="text-2xl font-semibold text-gray-900">{modules.length}</p>
+          <p className="text-sm font-medium text-gray-500">RTD Modules</p>
+          <p className="text-2xl font-semibold text-gray-900">{rtdCount}</p>
+        </div>
+        <div className="bg-white rounded-lg shadow p-4">
+          <p className="text-sm font-medium text-gray-500">Prebid Members</p>
+          <p className="text-2xl font-semibold text-gray-900">{prebidMemberCount}</p>
         </div>
       </div>
 
-      {/* Search and Filter */}
-      <div className="bg-white shadow rounded-lg p-4 space-y-4">
-        <input
-          type="text"
-          placeholder="Search modules..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 px-3"
-        />
-
-        {/* Category Filter */}
-        <div className="flex items-center space-x-2">
-          <span className="text-sm font-medium text-gray-700">Filter by category:</span>
-          <div className="flex flex-wrap gap-2">
-            {['all', 'recommended', 'userId', 'rtd', 'general', 'vendor'].map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setCategoryFilter(cat)}
-                className={`px-3 py-1 text-xs font-medium rounded-md ${
-                  categoryFilter === cat
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {cat === 'all' ? 'All' : cat === 'userId' ? 'User ID' : cat === 'rtd' ? 'RTD' : cat.charAt(0).toUpperCase() + cat.slice(1)}
-              </button>
-            ))}
-          </div>
+      {/* Filters */}
+      <div className="bg-white shadow rounded-lg p-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <input
+            type="text"
+            placeholder="Search modules..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 px-3"
+          />
+          <select
+            value={filterCategory}
+            onChange={(e) => setFilterCategory(e.target.value as typeof filterCategory)}
+            className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 px-3"
+          >
+            <option value="all">All Categories</option>
+            <option value="userId">User ID</option>
+            <option value="rtd">Real-Time Data</option>
+            <option value="general">General</option>
+          </select>
         </div>
       </div>
 
@@ -231,15 +256,15 @@ export function ModulesPage() {
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
+                d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"
               />
             </svg>
             <h3 className="mt-4 text-lg font-medium text-gray-900">
-              {searchQuery || categoryFilter !== 'all' ? 'No modules found' : 'No modules added yet'}
+              {searchQuery || filterCategory !== 'all' ? 'No modules found' : 'No modules added yet'}
             </h3>
             <p className="mt-2 text-sm text-gray-500">
-              {searchQuery || categoryFilter !== 'all'
-                ? 'No modules match your search or filter criteria.'
+              {searchQuery || filterCategory !== 'all'
+                ? 'No modules match your search criteria.'
                 : 'Click "Browse Modules" to add modules to your account.'}
             </p>
           </div>
@@ -249,25 +274,37 @@ export function ModulesPage() {
               <li key={module.code} className="p-4 hover:bg-gray-50">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-4 flex-1 min-w-0">
-                    <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                      <span className="text-sm font-semibold text-white">
-                        {module.code.substring(0, 2).toUpperCase()}
-                      </span>
+                    <div className="flex-shrink-0 w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+                      <svg
+                        className="w-5 h-5 text-indigo-600"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"
+                        />
+                      </svg>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-2 flex-wrap">
                         <h3 className="text-sm font-semibold text-gray-900 truncate">
                           {module.name}
                         </h3>
-                        {module.category === 'recommended' && (
-                          <span className="text-yellow-500" title="Recommended">
-                            ⭐
+                        <span className="inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">
+                          {module.category}
+                        </span>
+                        {module.isPrebidMember && (
+                          <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                            Prebid Member
                           </span>
                         )}
-                        {getCategoryBadge(module.category)}
                       </div>
                       <p className="text-sm text-gray-500 truncate">
-                        {module.description || `Module code: ${module.code}`}
+                        Module code: {module.code}
                       </p>
                     </div>
                   </div>
@@ -285,6 +322,13 @@ export function ModulesPage() {
                     )}
                     <button
                       type="button"
+                      className="text-sm text-gray-600 hover:text-gray-800"
+                      title="Configure module parameters"
+                    >
+                      Configure
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => handleDelete(module)}
                       disabled={deletingModule === module.code}
                       className="text-sm text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -298,6 +342,14 @@ export function ModulesPage() {
           </ul>
         )}
       </div>
+
+      {/* Marketplace Modal */}
+      <PrebidMarketplaceModal
+        isOpen={isMarketplaceOpen}
+        onClose={() => setIsMarketplaceOpen(false)}
+        onAdd={handleAddComponent}
+        addedModules={modules.map((m) => m.code)}
+      />
     </div>
   );
 }

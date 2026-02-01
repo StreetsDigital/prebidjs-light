@@ -624,6 +624,41 @@ export const publisherCustomBidders = sqliteTable('publisher_custom_bidders', {
   updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
 });
 
+// Publisher Removed Bidders table - Track explicitly removed bidders (including built-ins)
+export const publisherRemovedBidders = sqliteTable('publisher_removed_bidders', {
+  id: text('id').primaryKey(),
+  publisherId: text('publisher_id').notNull(),
+  bidderCode: text('bidder_code').notNull(),
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+// Publisher Modules table - Track enabled Prebid.js modules
+export const publisherModules = sqliteTable('publisher_modules', {
+  id: text('id').primaryKey(),
+  publisherId: text('publisher_id').notNull(),
+  moduleCode: text('module_code').notNull(),
+  moduleName: text('module_name').notNull(),
+  category: text('category', {
+    enum: ['recommended', 'userId', 'rtd', 'general', 'vendor']
+  }).notNull().default('general'),
+  params: text('params'), // JSON - module parameters
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+// Publisher Analytics table - Track enabled analytics adapters
+export const publisherAnalytics = sqliteTable('publisher_analytics', {
+  id: text('id').primaryKey(),
+  publisherId: text('publisher_id').notNull(),
+  analyticsCode: text('analytics_code').notNull(),
+  analyticsName: text('analytics_name').notNull(),
+  params: text('params'), // JSON - adapter configuration
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
+});
+
 // Export all tables for use in other files
 export const schema = {
   users,
@@ -656,4 +691,7 @@ export const schema = {
   configTargetingRules,
   configServeLog,
   publisherCustomBidders,
+  publisherRemovedBidders,
+  publisherModules,
+  publisherAnalytics,
 };

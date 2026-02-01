@@ -818,6 +818,60 @@ function runMigrations() {
         CREATE INDEX IF NOT EXISTS idx_custom_bidders_publisher ON publisher_custom_bidders(publisher_id);
         CREATE INDEX IF NOT EXISTS idx_custom_bidders_enabled ON publisher_custom_bidders(enabled);
       `
+    },
+    {
+      name: 'add_prebid_component_marketplace_tables',
+      sql: `
+        -- Publisher Removed Bidders table - Track explicitly removed bidders (including built-ins)
+        CREATE TABLE IF NOT EXISTS publisher_removed_bidders (
+          id TEXT PRIMARY KEY,
+          publisher_id TEXT NOT NULL,
+          bidder_code TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+
+          FOREIGN KEY (publisher_id) REFERENCES publishers(id) ON DELETE CASCADE,
+          UNIQUE (publisher_id, bidder_code)
+        );
+
+        -- Publisher Modules table - Track enabled Prebid.js modules
+        CREATE TABLE IF NOT EXISTS publisher_modules (
+          id TEXT PRIMARY KEY,
+          publisher_id TEXT NOT NULL,
+          module_code TEXT NOT NULL,
+          module_name TEXT NOT NULL,
+          category TEXT NOT NULL DEFAULT 'general' CHECK(category IN ('recommended', 'userId', 'rtd', 'general', 'vendor')),
+          params TEXT,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+
+          FOREIGN KEY (publisher_id) REFERENCES publishers(id) ON DELETE CASCADE,
+          UNIQUE (publisher_id, module_code)
+        );
+
+        -- Publisher Analytics table - Track enabled analytics adapters
+        CREATE TABLE IF NOT EXISTS publisher_analytics (
+          id TEXT PRIMARY KEY,
+          publisher_id TEXT NOT NULL,
+          analytics_code TEXT NOT NULL,
+          analytics_name TEXT NOT NULL,
+          params TEXT,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+
+          FOREIGN KEY (publisher_id) REFERENCES publishers(id) ON DELETE CASCADE,
+          UNIQUE (publisher_id, analytics_code)
+        );
+
+        -- Create indexes for performance
+        CREATE INDEX IF NOT EXISTS idx_removed_bidders_publisher ON publisher_removed_bidders(publisher_id);
+        CREATE INDEX IF NOT EXISTS idx_modules_publisher ON publisher_modules(publisher_id);
+        CREATE INDEX IF NOT EXISTS idx_modules_enabled ON publisher_modules(enabled);
+        CREATE INDEX IF NOT EXISTS idx_modules_category ON publisher_modules(category);
+        CREATE INDEX IF NOT EXISTS idx_analytics_publisher ON publisher_analytics(publisher_id);
+        CREATE INDEX IF NOT EXISTS idx_analytics_enabled ON publisher_analytics(enabled);
+      `
     }
   ];
 

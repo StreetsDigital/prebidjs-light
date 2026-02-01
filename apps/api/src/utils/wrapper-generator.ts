@@ -11,6 +11,19 @@ interface CacheEntry {
 const wrapperCache = new Map<string, CacheEntry>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// Dynamic IDs per-bidder params for an ad unit
+export type DynamicBidderIds = Record<string, Record<string, any>>;
+
+// Ad unit definition within the embedded config
+export interface AdUnitDefinition {
+  mediaTypes: any;
+  bids?: any[];
+  // Dynamic IDs: per-bidder params specific to this ad unit
+  // Keys are bidder codes, values are bidder-specific params
+  // Example: { "appnexus": { "placement_id": "13144369" }, "rubicon": { "account_id": "123", ... } }
+  bidders?: DynamicBidderIds;
+}
+
 // Embedded config structure that gets injected into wrapper
 export interface EmbeddedConfig {
   publisherId: string;
@@ -34,7 +47,7 @@ export interface EmbeddedConfig {
     customConfig?: any;
   };
   bidders: any[];
-  adUnitDefinitions: Record<string, any>;
+  adUnitDefinitions: Record<string, AdUnitDefinition>;
   targeting: {
     ruleId?: string;
     matchedAttributes: RequestAttributes;

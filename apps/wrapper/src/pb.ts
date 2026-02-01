@@ -6,6 +6,18 @@
  */
 
 // Embedded config interface (injected by server)
+// Dynamic IDs: per-bidder params specific to an ad unit
+// Keys are bidder codes, values are bidder-specific params (placement_id, site_id, etc.)
+type DynamicBidderIds = Record<string, Record<string, any>>;
+
+interface AdUnitDefinition {
+  mediaTypes: any;
+  bids?: any[];
+  // Dynamic IDs - per-ad-unit bidder parameters
+  // When present, these params override/supplement publisher-level bidder params
+  bidders?: DynamicBidderIds;
+}
+
 interface EmbeddedConfig {
   publisherId: string;
   configId: string;
@@ -33,10 +45,7 @@ interface EmbeddedConfig {
     timeoutOverride?: number;
     priority?: number;
   }>;
-  adUnitDefinitions: Record<string, {
-    mediaTypes: any;
-    bids?: any[];
-  }>;
+  adUnitDefinitions: Record<string, AdUnitDefinition>;
   targeting: {
     ruleId?: string;
     matchedAttributes: {
@@ -200,6 +209,74 @@ if (typeof window !== 'undefined') {
   });
 }
 
+/**
+ * Build bids array for an ad unit, using Dynamic IDs when available.
+ *
+ * Strategy:
+ * 1. If the ad unit has Dynamic IDs (`bidders` map), use those per-bidder params
+ *    for each publisher-level bidder that has a matching entry. Bidders without
+ *    a Dynamic ID entry still get included with publisher-level default params.
+ * 2. If no Dynamic IDs are present, all publisher-level bidders are included
+ *    with their default params (backward-compatible behavior).
+ *
+ * This allows granular per-ad-unit bidder configuration while maintaining
+ * publisher-level defaults as a fallback.
+ */
+function buildBidsForAdUnit(
+  definition: AdUnitDefinition,
+  publisherBidders: Array<{ bidderCode: string; params: any }>
+): Array<{ bidder: string; params: any }> {
+  const dynamicIds = definition.bidders;
+
+  // If ad unit has explicit bids defined, use those directly (legacy support)
+  if (definition.bids && definition.bids.length > 0) {
+    return definition.bids;
+  }
+
+  // If no Dynamic IDs, use publisher-level bidder params for all bidders
+  if (!dynamicIds || Object.keys(dynamicIds).length === 0) {
+    return publisherBidders.map(bidder => ({
+      bidder: bidder.bidderCode,
+      params: bidder.params,
+    }));
+  }
+
+  // Dynamic IDs present: build bids with per-ad-unit params
+  const bids: Array<{ bidder: string; params: any }> = [];
+
+  for (const bidder of publisherBidders) {
+    const adUnitParams = dynamicIds[bidder.bidderCode];
+
+    if (adUnitParams) {
+      // Use Dynamic IDs for this bidder (ad-unit-specific params)
+      bids.push({
+        bidder: bidder.bidderCode,
+        params: adUnitParams,
+      });
+    } else {
+      // No Dynamic ID for this bidder - use publisher-level defaults
+      bids.push({
+        bidder: bidder.bidderCode,
+        params: bidder.params,
+      });
+    }
+  }
+
+  // Also include bidders that are ONLY in Dynamic IDs (not in publisher-level)
+  // This allows ad units to add bidders beyond the publisher defaults
+  for (const bidderCode of Object.keys(dynamicIds)) {
+    const alreadyIncluded = publisherBidders.some(b => b.bidderCode === bidderCode);
+    if (!alreadyIncluded) {
+      bids.push({
+        bidder: bidderCode,
+        params: dynamicIds[bidderCode],
+      });
+    }
+  }
+
+  return bids;
+}
+
 // Create pb namespace
 function createPbNamespace(): PbNamespace {
   let embeddedConfig: EmbeddedConfig | null = null;
@@ -302,6 +379,10 @@ function createPbNamespace(): PbNamespace {
     /**
      * Request bids for specific ad units
      * Only loads ad units that are specified (efficient!)
+     *
+     * Dynamic IDs: If an ad unit definition includes a `bidders` map,
+     * those per-bidder params are used instead of publisher-level defaults.
+     * This allows each ad unit to have unique placement IDs, site IDs, etc.
      */
     requestBids(adUnitCodes: string[]) {
       if (!initialized || !window.pbjs || !embeddedConfig) {
@@ -320,14 +401,13 @@ function createPbNamespace(): PbNamespace {
             continue;
           }
 
-          // Build Prebid ad unit with bidders
+          // Build bids array using Dynamic IDs when available
+          const bids = buildBidsForAdUnit(definition, embeddedConfig!.bidders);
+
           const adUnit: any = {
             code,
             mediaTypes: definition.mediaTypes,
-            bids: embeddedConfig!.bidders.map(bidder => ({
-              bidder: bidder.bidderCode,
-              params: bidder.params,
-            })),
+            bids,
           };
 
           adUnits.push(adUnit);

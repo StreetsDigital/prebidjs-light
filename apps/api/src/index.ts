@@ -31,6 +31,7 @@ import systemRoutes from './routes/system';
 import chatRoutes from './routes/chat';
 import customBiddersRoutes from './routes/custom-bidders';
 import biddersRoutes from './routes/bidders';
+import dynamicIdsRoutes, { bidderParamSchemaRoutes } from './routes/dynamic-ids';
 
 const app = Fastify({
   logger: {
@@ -91,6 +92,8 @@ app.register(wrapperRoutes); // No prefix - serves at root level
 app.register(wrapperConfigsRoutes, { prefix: '/api/publishers/:publisherId/configs' });
 app.register(customBiddersRoutes, { prefix: '/api/publishers' });
 app.register(biddersRoutes, { prefix: '/api/bidders' });
+app.register(dynamicIdsRoutes, { prefix: '/api/publishers/:publisherId/configs/:configId/dynamic-ids' });
+app.register(bidderParamSchemaRoutes, { prefix: '/api/bidders' });
 
 // Placeholder for other routes
 // app.register(configRoutes, { prefix: '/api/config' });

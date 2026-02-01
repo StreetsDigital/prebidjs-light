@@ -9,6 +9,9 @@ import {
   PieChart,
   Pie,
   Cell,
+  AreaChart,
+  Area,
+  ComposedChart,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -148,6 +151,32 @@ export function AnalyticsDashboardPage() {
     impressions: Math.round(ts.impressions / 1000), // Show in thousands
     winRate: Number((ts.winRate * 100).toFixed(1)),
   }));
+
+  // Latency comparison data
+  const latencyData = topBiddersList.map((bidder) => ({
+    name: bidder.bidderCode,
+    latency: Math.round(bidder.avgLatency),
+  })).sort((a, b) => a.latency - b.latency);
+
+  // Win rate by bidder
+  const winRateData = topBiddersList.map((bidder) => ({
+    name: bidder.bidderCode,
+    winRate: bidder.winRate ? Number((bidder.winRate * 100).toFixed(1)) : 0,
+    fillRate: bidder.fillRate ? Number((bidder.fillRate * 100).toFixed(1)) : 0,
+  }));
+
+  // Impressions by bidder over time (stacked area)
+  const impressionsByBidderDate = metrics.reduce((acc: any, m) => {
+    const date = new Date(m.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    if (!acc[date]) {
+      acc[date] = { date };
+    }
+    acc[date][m.bidderCode] = m.impressions;
+    return acc;
+  }, {});
+  const impressionsAreaData = Object.values(impressionsByBidderDate).sort((a: any, b: any) =>
+    new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
 
   if (loading) {
     return (
@@ -380,6 +409,132 @@ export function AnalyticsDashboardPage() {
                 <Tooltip />
               </PieChart>
             </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {/* Win Rate & Fill Rate Comparison */}
+      {topBiddersList.length > 0 && (
+        <div className="bg-white shadow rounded-lg p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Performance Metrics by Bidder</h2>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={winRateData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis label={{ value: 'Percentage (%)', angle: -90, position: 'insideLeft' }} />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="winRate" fill="#10B981" name="Win Rate (%)" />
+              <Bar dataKey="fillRate" fill="#3B82F6" name="Fill Rate (%)" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Latency Comparison & Impressions Area */}
+      {topBiddersList.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Latency Comparison */}
+          <div className="bg-white shadow rounded-lg p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Average Latency (Lower is Better)</h2>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={latencyData} layout="horizontal">
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis label={{ value: 'Latency (ms)', angle: -90, position: 'insideLeft' }} />
+                <Tooltip />
+                <Bar dataKey="latency" name="Latency (ms)">
+                  {latencyData.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={
+                        entry.latency < 100
+                          ? '#10B981'
+                          : entry.latency < 150
+                          ? '#F59E0B'
+                          : '#EF4444'
+                      }
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="mt-4 flex gap-4 text-xs justify-center">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-green-500 rounded"></div>
+                <span className="text-gray-600">Fast (&lt;100ms)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-amber-500 rounded"></div>
+                <span className="text-gray-600">Medium (100-150ms)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-red-500 rounded"></div>
+                <span className="text-gray-600">Slow (&gt;150ms)</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Impressions Stacked Area */}
+          <div className="bg-white shadow rounded-lg p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Impressions by Bidder Over Time</h2>
+            <ResponsiveContainer width="100%" height={300}>
+              <AreaChart data={impressionsAreaData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                {topBiddersList.slice(0, 5).map((bidder, index) => (
+                  <Area
+                    key={bidder.bidderCode}
+                    type="monotone"
+                    dataKey={bidder.bidderCode}
+                    stackId="1"
+                    stroke={COLORS[index % COLORS.length]}
+                    fill={COLORS[index % COLORS.length]}
+                    name={bidder.bidderCode}
+                  />
+                ))}
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {/* Performance Summary Cards */}
+      {metrics.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg shadow p-6 border border-blue-200">
+            <h3 className="text-sm font-semibold text-blue-900 mb-2">Fastest Bidder</h3>
+            <p className="text-2xl font-bold text-blue-600">
+              {latencyData.length > 0 ? latencyData[0].name : 'N/A'}
+            </p>
+            <p className="text-sm text-blue-700 mt-1">
+              {latencyData.length > 0 ? `${latencyData[0].latency}ms avg latency` : ''}
+            </p>
+          </div>
+
+          <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg shadow p-6 border border-green-200">
+            <h3 className="text-sm font-semibold text-green-900 mb-2">Best Win Rate</h3>
+            <p className="text-2xl font-bold text-green-600">
+              {winRateData.length > 0
+                ? winRateData.reduce((a, b) => (a.winRate > b.winRate ? a : b)).name
+                : 'N/A'}
+            </p>
+            <p className="text-sm text-green-700 mt-1">
+              {winRateData.length > 0
+                ? `${winRateData.reduce((a, b) => (a.winRate > b.winRate ? a : b)).winRate}% win rate`
+                : ''}
+            </p>
+          </div>
+
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg shadow p-6 border border-purple-200">
+            <h3 className="text-sm font-semibold text-purple-900 mb-2">Total Bidders Active</h3>
+            <p className="text-2xl font-bold text-purple-600">{Object.keys(topBidders).length}</p>
+            <p className="text-sm text-purple-700 mt-1">
+              {metrics.length} data points collected
+            </p>
           </div>
         </div>
       )}

@@ -4,10 +4,12 @@ import {
   prebidBuilds,
   publisherModules,
   publisherAnalytics,
+  publisherRemovedBidders,
 } from '../db/schema.js';
 import { eq, and, desc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
-import crypto from 'crypto';
+import * as crypto from 'crypto';
+import { buildPrebidJs, getBuildFile } from '../services/prebid-build-service.js';
 
 interface TriggerBuildBody {
   force?: boolean;
@@ -50,10 +52,17 @@ export default async function prebidBuildsRoutes(fastify: FastifyInstance) {
         )
         .all();
 
+      const removedBidders = db
+        .select()
+        .from(publisherRemovedBidders)
+        .where(eq(publisherRemovedBidders.publisherId, publisherId))
+        .all();
+
       // Create component hash for cache invalidation
       const componentsList = [
         ...modules.map((m) => m.moduleCode),
         ...analytics.map((a) => a.analyticsCode),
+        ...removedBidders.map((b) => `!${b.bidderCode}`), // Include removed bidders in hash
       ].sort();
 
       const componentsHash = crypto
@@ -99,34 +108,66 @@ export default async function prebidBuildsRoutes(fastify: FastifyInstance) {
           version,
           buildStatus: 'pending',
           componentsHash,
-          biddersIncluded: JSON.stringify([]), // Would populate from bidders table
+          biddersIncluded: JSON.stringify(removedBidders.map((b) => `!${b.bidderCode}`)),
           modulesIncluded: JSON.stringify(modules.map((m) => m.moduleCode)),
           analyticsIncluded: JSON.stringify(analytics.map((a) => a.analyticsCode)),
           createdAt: now,
-          isActive: 0,
+          isActive: false,
         })
         .run();
 
-      // In a real implementation, this would trigger an async build process
-      // For now, we'll simulate it by immediately marking as success
-      setTimeout(() => {
-        const buildStartTime = Date.now();
+      // Trigger async build process in the background
+      const buildStartTime = Date.now();
 
-        // Simulate build process
-        const mockCdnUrl = `https://cdn.example.com/builds/${publisherId}/prebid-${version}.js`;
-        const mockFileSize = 120000 + Math.floor(Math.random() * 50000); // 120-170KB
+      // Start the real build asynchronously (don't await here)
+      buildPrebidJs({
+        publisherId,
+        buildId,
+        onProgress: (progress, message) => {
+          fastify.log.info(`Build ${buildId}: ${progress}% - ${message}`);
+        },
+      }).then((result) => {
+        const buildDurationMs = Date.now() - buildStartTime;
 
+        if (result.success) {
+          db.update(prebidBuilds)
+            .set({
+              buildStatus: 'success',
+              cdnUrl: result.cdnUrl,
+              fileSize: result.fileSize,
+              buildDurationMs,
+              completedAt: new Date().toISOString(),
+            })
+            .where(eq(prebidBuilds.id, buildId))
+            .run();
+
+          fastify.log.info(`Build ${buildId} completed successfully in ${buildDurationMs}ms`);
+        } else {
+          db.update(prebidBuilds)
+            .set({
+              buildStatus: 'failed',
+              errorMessage: result.errorMessage,
+              buildDurationMs,
+              completedAt: new Date().toISOString(),
+            })
+            .where(eq(prebidBuilds.id, buildId))
+            .run();
+
+          fastify.log.error(`Build ${buildId} failed: ${result.errorMessage}`);
+        }
+      }).catch((err) => {
         db.update(prebidBuilds)
           .set({
-            buildStatus: 'success',
-            cdnUrl: mockCdnUrl,
-            fileSize: mockFileSize,
+            buildStatus: 'failed',
+            errorMessage: err.message,
             buildDurationMs: Date.now() - buildStartTime,
             completedAt: new Date().toISOString(),
           })
           .where(eq(prebidBuilds.id, buildId))
           .run();
-      }, 100); // Simulate async build
+
+        fastify.log.error(`Build ${buildId} error:`, err);
+      });
 
       return reply.code(201).send({
         data: {
@@ -256,7 +297,7 @@ export default async function prebidBuildsRoutes(fastify: FastifyInstance) {
         .where(
           and(
             eq(prebidBuilds.publisherId, publisherId),
-            eq(prebidBuilds.isActive, 1)
+            eq(prebidBuilds.isActive, true)
           )
         )
         .get();
@@ -317,14 +358,14 @@ export default async function prebidBuildsRoutes(fastify: FastifyInstance) {
 
       // Deactivate all other builds
       db.update(prebidBuilds)
-        .set({ isActive: 0 })
+        .set({ isActive: false })
         .where(eq(prebidBuilds.publisherId, publisherId))
         .run();
 
       // Activate this build
       db.update(prebidBuilds)
         .set({
-          isActive: 1,
+          isActive: true,
           activatedAt: now,
         })
         .where(eq(prebidBuilds.id, buildId))
@@ -340,6 +381,28 @@ export default async function prebidBuildsRoutes(fastify: FastifyInstance) {
         error: 'Failed to activate build',
         details: err instanceof Error ? err.message : String(err),
       });
+    }
+  });
+
+  // Serve build files
+  fastify.get('/builds/:filename', async (request, reply) => {
+    const { filename } = request.params as { filename: string };
+
+    try {
+      // Security: Only allow .js files and sanitize filename
+      if (!filename.endsWith('.js') || filename.includes('..')) {
+        return reply.code(400).send({ error: 'Invalid filename' });
+      }
+
+      const fileContent = await getBuildFile(filename);
+
+      return reply
+        .type('application/javascript')
+        .header('Cache-Control', 'public, max-age=31536000') // Cache for 1 year
+        .send(fileContent);
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.code(404).send({ error: 'Build file not found' });
     }
   });
 }

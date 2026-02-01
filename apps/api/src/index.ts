@@ -34,7 +34,14 @@ import biddersRoutes from './routes/bidders';
 import prebidComponentsRoutes from './routes/prebid-components';
 import publisherModulesRoutes from './routes/publisher-modules';
 import publisherAnalyticsRoutes from './routes/publisher-analytics';
+import componentParametersRoutes from './routes/component-parameters';
+import templatesRoutes from './routes/templates';
+import bulkOperationsRoutes from './routes/bulk-operations';
+import analyticsDashboardRoutes from './routes/analytics-dashboard';
+import prebidBuildsRoutes from './routes/prebid-builds';
 import { fetchPrebidData, startPeriodicRefresh } from './utils/prebid-data-fetcher';
+import { seedParameterSchemas } from './utils/prebid-markdown-parser';
+import { seedPresetTemplates } from './utils/preset-templates';
 
 const app = Fastify({
   logger: {
@@ -77,7 +84,7 @@ app.register(dashboardRoutes, { prefix: '/api/dashboard' });
 app.register(auditLogsRoutes, { prefix: '/api/audit-logs' });
 app.register(scheduledReportsRoutes, { prefix: '/api/scheduled-reports' });
 app.register(analyticsRoutes, { prefix: '/api/analytics' });
-app.register(buildsRoutes, { prefix: '/api' });
+// app.register(buildsRoutes, { prefix: '/api' }); // OLD build system - replaced by prebidBuildsRoutes (Phase 2)
 app.register(abTestRoutes, { prefix: '/api/publishers' });
 app.register(abTestAnalyticsRoutes, { prefix: '/api/publishers' });
 app.register(bidderHealthRoutes, { prefix: '/api/publishers' });
@@ -98,6 +105,11 @@ app.register(biddersRoutes, { prefix: '/api/bidders' });
 app.register(prebidComponentsRoutes, { prefix: '/api/prebid' });
 app.register(publisherModulesRoutes, { prefix: '/api/publishers' });
 app.register(publisherAnalyticsRoutes, { prefix: '/api/publishers' });
+app.register(componentParametersRoutes, { prefix: '/api' });
+app.register(templatesRoutes, { prefix: '/api' });
+app.register(bulkOperationsRoutes, { prefix: '/api' });
+app.register(analyticsDashboardRoutes, { prefix: '/api' });
+app.register(prebidBuildsRoutes, { prefix: '/api' });
 
 // Placeholder for other routes
 // app.register(configRoutes, { prefix: '/api/config' });
@@ -573,6 +585,16 @@ const start = async () => {
     console.log('Fetching Prebid component data...');
     await fetchPrebidData();
     console.log('Prebid component data loaded');
+
+    // Seed parameter schemas
+    console.log('Seeding parameter schemas...');
+    await seedParameterSchemas();
+    console.log('Parameter schemas seeded');
+
+    // Seed preset templates
+    console.log('Seeding preset templates...');
+    await seedPresetTemplates();
+    console.log('Preset templates seeded');
 
     // Start periodic refresh (every 24 hours)
     startPeriodicRefresh();

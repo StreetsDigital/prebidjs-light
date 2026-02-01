@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import { PrebidMarketplaceModal } from '../../components/PrebidMarketplaceModal';
+import ComponentConfigModal from '../../components/ComponentConfigModal';
 
 interface Analytics {
   id: string;
@@ -23,6 +24,8 @@ export function AnalyticsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [deletingAnalytics, setDeletingAnalytics] = useState<string | null>(null);
   const [isMarketplaceOpen, setIsMarketplaceOpen] = useState(false);
+  const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [selectedAnalytics, setSelectedAnalytics] = useState<Analytics | null>(null);
 
   // Fetch analytics from API
   useEffect(() => {
@@ -298,7 +301,11 @@ export function AnalyticsPage() {
                     )}
                     <button
                       type="button"
-                      className="text-sm text-gray-600 hover:text-gray-800"
+                      onClick={() => {
+                        setSelectedAnalytics(adapter);
+                        setConfigModalOpen(true);
+                      }}
+                      className="text-sm text-blue-600 hover:text-blue-800"
                       title="Configure adapter parameters"
                     >
                       Configure
@@ -326,6 +333,25 @@ export function AnalyticsPage() {
         onAdd={handleAddComponent}
         addedAnalytics={analytics.map((a) => a.code)}
       />
+
+      {/* Configuration Modal */}
+      {selectedAnalytics && publisherId && (
+        <ComponentConfigModal
+          isOpen={configModalOpen}
+          onClose={() => {
+            setConfigModalOpen(false);
+            setSelectedAnalytics(null);
+          }}
+          componentType="analytics"
+          componentCode={selectedAnalytics.code}
+          componentName={selectedAnalytics.name}
+          publisherId={publisherId}
+          onSave={() => {
+            // Configuration saved successfully
+            // Could reload analytics adapters here if we need to show updated config
+          }}
+        />
+      )}
     </div>
   );
 }

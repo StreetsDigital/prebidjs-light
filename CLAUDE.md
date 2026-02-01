@@ -598,3 +598,69 @@ Encourage Claude to:
 - Suggest creating agents for exploration or complex tasks
 - Update documentation as part of every implementation
 - Learn from past mistakes documented in the codebase
+
+## Phase 2 Features
+
+Phase 2 adds advanced configuration management capabilities. See `PHASE2_FEATURES.md` for detailed documentation.
+
+**Implemented:**
+- ✅ **Parameter Configuration (Feature 1)** - Dynamic forms for configuring bidder/module/analytics parameters
+  - Backend: `/apps/api/src/routes/component-parameters.ts`
+  - Frontend: `/apps/admin/src/components/ComponentConfigModal.tsx`, `DynamicParameterForm.tsx`, `ParameterField.tsx`
+  - Database: `component_parameters`, `component_parameter_values` tables
+  - Schemas: `/apps/api/src/utils/prebid-markdown-parser.ts`
+
+**Planned:**
+- ⏳ **Enhanced Analytics (Feature 2)** - Rich dashboards with trends, heatmaps, geo analytics
+- ⏳ **Prebid.js Build System (Feature 3)** - Custom bundle generation with selected components
+- ⏳ **Bulk Operations & Templates (Feature 4)** - Templates, bulk operations, import/export
+
+### Parameter Configuration Patterns
+
+**Adding New Parameter Schemas:**
+
+1. Edit `/apps/api/src/utils/prebid-markdown-parser.ts`
+2. Add to BIDDER_SCHEMAS, MODULE_SCHEMAS, or ANALYTICS_SCHEMAS:
+
+```typescript
+rubicon: [
+  {
+    name: 'accountId',
+    type: 'number',
+    required: true,
+    description: 'The publisher account ID',
+    validation: { min: 1 },
+  },
+  // ... more parameters
+],
+```
+
+3. Restart server - schemas auto-seed on startup
+
+**Using Configuration Modal in Pages:**
+
+```typescript
+import ComponentConfigModal from '../../components/ComponentConfigModal';
+
+// Add state
+const [configModalOpen, setConfigModalOpen] = useState(false);
+const [selectedComponent, setSelectedComponent] = useState<ComponentType | null>(null);
+
+// Add button
+<button onClick={() => {
+  setSelectedComponent(component);
+  setConfigModalOpen(true);
+}}>
+  Configure
+</button>
+
+// Add modal
+<ComponentConfigModal
+  isOpen={configModalOpen}
+  onClose={() => setConfigModalOpen(false)}
+  componentType="bidder" // or "module" or "analytics"
+  componentCode={selectedComponent.code}
+  componentName={selectedComponent.name}
+  publisherId={publisherId}
+/>
+```

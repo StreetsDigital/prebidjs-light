@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import { PrebidMarketplaceModal } from '../../components/PrebidMarketplaceModal';
+import ComponentConfigModal from '../../components/ComponentConfigModal';
 
 interface Bidder {
   id?: string;
@@ -23,6 +24,8 @@ export function BiddersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [deletingBidder, setDeletingBidder] = useState<string | null>(null);
   const [isMarketplaceOpen, setIsMarketplaceOpen] = useState(false);
+  const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [selectedBidder, setSelectedBidder] = useState<Bidder | null>(null);
 
   // Fetch bidders from API
   useEffect(() => {
@@ -306,7 +309,7 @@ export function BiddersPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center space-x-2 ml-4">
+                  <div className="flex items-center space-x-3 ml-4">
                     {bidder.documentationUrl && (
                       <a
                         href={bidder.documentationUrl}
@@ -317,6 +320,16 @@ export function BiddersPage() {
                         Docs
                       </a>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedBidder(bidder);
+                        setConfigModalOpen(true);
+                      }}
+                      className="text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      Configure
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleDelete(bidder)}
@@ -340,6 +353,25 @@ export function BiddersPage() {
         onAdd={handleAddComponent}
         addedBidders={bidders.map((b) => b.code)}
       />
+
+      {/* Configuration Modal */}
+      {selectedBidder && publisherId && (
+        <ComponentConfigModal
+          isOpen={configModalOpen}
+          onClose={() => {
+            setConfigModalOpen(false);
+            setSelectedBidder(null);
+          }}
+          componentType="bidder"
+          componentCode={selectedBidder.code}
+          componentName={selectedBidder.name}
+          publisherId={publisherId}
+          onSave={() => {
+            // Configuration saved successfully
+            // Could reload bidders here if we need to show updated config
+          }}
+        />
+      )}
     </div>
   );
 }

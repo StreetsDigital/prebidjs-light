@@ -5,3 +5,6 @@ export { BiddersPage } from './BiddersPage';
 export { GetCodePage } from './GetCodePage';
 export { ModulesPage } from './ModulesPage';
 export { AnalyticsPage } from './AnalyticsPage';
+export { TemplatesPage } from './TemplatesPage';
+export { BuildsPage } from './BuildsPage';
+export { AnalyticsDashboardPage } from './AnalyticsDashboardPage';

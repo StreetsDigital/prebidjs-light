@@ -659,6 +659,116 @@ export const publisherAnalytics = sqliteTable('publisher_analytics', {
   updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
 });
 
+// ============================================================================
+// Phase 2 Tables
+// ============================================================================
+
+// Component Parameters table - Parameter schemas from Prebid.org
+export const componentParameters = sqliteTable('component_parameters', {
+  id: text('id').primaryKey(),
+  componentType: text('component_type', { enum: ['bidder', 'module', 'analytics'] }).notNull(),
+  componentCode: text('component_code').notNull(),
+  parameterName: text('parameter_name').notNull(),
+  parameterType: text('parameter_type', { enum: ['string', 'number', 'boolean', 'object', 'array'] }).notNull(),
+  required: integer('required', { mode: 'boolean' }).notNull().default(false),
+  defaultValue: text('default_value'),
+  description: text('description'),
+  validationPattern: text('validation_pattern'),
+  minValue: integer('min_value'),
+  maxValue: integer('max_value'),
+  enumValues: text('enum_values'), // JSON array
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+// Component Parameter Values table - User-configured parameter values
+export const componentParameterValues = sqliteTable('component_parameter_values', {
+  id: text('id').primaryKey(),
+  publisherId: text('publisher_id').notNull(),
+  componentType: text('component_type', { enum: ['bidder', 'module', 'analytics'] }).notNull(),
+  componentCode: text('component_code').notNull(),
+  websiteId: text('website_id'),
+  adUnitId: text('ad_unit_id'),
+  parameterName: text('parameter_name').notNull(),
+  parameterValue: text('parameter_value').notNull(), // JSON-encoded value
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+// Bidder Metrics table - Time-series performance data
+export const bidderMetrics = sqliteTable('bidder_metrics', {
+  id: text('id').primaryKey(),
+  publisherId: text('publisher_id').notNull(),
+  bidderCode: text('bidder_code').notNull(),
+  metricDate: text('metric_date').notNull(), // YYYY-MM-DD
+  metricHour: integer('metric_hour'), // 0-23 for hourly granularity
+  impressions: integer('impressions').notNull().default(0),
+  bids: integer('bids').notNull().default(0),
+  wins: integer('wins').notNull().default(0),
+  revenue: integer('revenue').notNull().default(0), // Store as cents to avoid floating point issues
+  avgCpm: integer('avg_cpm').notNull().default(0), // Store as cents
+  avgLatency: integer('avg_latency').notNull().default(0), // Milliseconds
+  p95Latency: integer('p95_latency'),
+  p99Latency: integer('p99_latency'),
+  timeoutCount: integer('timeout_count').notNull().default(0),
+  errorCount: integer('error_count').notNull().default(0),
+  fillRate: integer('fill_rate'), // Store as basis points (0.0001 = 1 basis point)
+  winRate: integer('win_rate'), // Store as basis points
+  countryCode: text('country_code'),
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+// Prebid Builds table - Custom build tracking
+export const prebidBuilds = sqliteTable('prebid_builds', {
+  id: text('id').primaryKey(),
+  publisherId: text('publisher_id').notNull(),
+  version: text('version').notNull(),
+  buildStatus: text('build_status', { enum: ['pending', 'building', 'success', 'failed'] }).notNull().default('pending'),
+  cdnUrl: text('cdn_url'),
+  fileSize: integer('file_size'),
+  componentsHash: text('components_hash'),
+  biddersIncluded: text('bidders_included'), // JSON array
+  modulesIncluded: text('modules_included'), // JSON array
+  analyticsIncluded: text('analytics_included'), // JSON array
+  errorMessage: text('error_message'),
+  buildDurationMs: integer('build_duration_ms'),
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+  completedAt: text('completed_at'),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(false),
+  activatedAt: text('activated_at'),
+});
+
+// Configuration Templates table - Preset and custom templates
+export const configurationTemplates = sqliteTable('configuration_templates', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description'),
+  templateType: text('template_type', { enum: ['preset', 'custom', 'community'] }).notNull().default('custom'),
+  creatorPublisherId: text('creator_publisher_id'),
+  isPublic: integer('is_public', { mode: 'boolean' }).notNull().default(false),
+  configJson: text('config_json').notNull(), // Full configuration as JSON
+  useCount: integer('use_count').notNull().default(0),
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+// Bulk Operations table - Track bulk component operations
+export const bulkOperations = sqliteTable('bulk_operations', {
+  id: text('id').primaryKey(),
+  publisherId: text('publisher_id').notNull(),
+  operationType: text('operation_type', { enum: ['add', 'remove', 'enable', 'disable', 'update'] }).notNull(),
+  componentType: text('component_type', { enum: ['bidder', 'module', 'analytics'] }).notNull(),
+  componentCodes: text('component_codes').notNull(), // JSON array
+  targetSites: text('target_sites').notNull(), // JSON array or 'all'
+  parameters: text('parameters'), // JSON - for update operations
+  status: text('status', { enum: ['pending', 'processing', 'completed', 'failed'] }).notNull().default('pending'),
+  totalCount: integer('total_count').notNull(),
+  completedCount: integer('completed_count').notNull().default(0),
+  errorMessage: text('error_message'),
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+  completedAt: text('completed_at'),
+});
+
 // Export all tables for use in other files
 export const schema = {
   users,
@@ -694,4 +804,11 @@ export const schema = {
   publisherRemovedBidders,
   publisherModules,
   publisherAnalytics,
+  // Phase 2 tables
+  componentParameters,
+  componentParameterValues,
+  bidderMetrics,
+  prebidBuilds,
+  configurationTemplates,
+  bulkOperations,
 };

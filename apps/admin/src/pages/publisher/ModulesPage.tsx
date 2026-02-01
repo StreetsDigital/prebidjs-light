@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import { PrebidMarketplaceModal } from '../../components/PrebidMarketplaceModal';
+import ComponentConfigModal from '../../components/ComponentConfigModal';
 
 interface Module {
   id: string;
@@ -25,6 +26,8 @@ export function ModulesPage() {
   const [deletingModule, setDeletingModule] = useState<string | null>(null);
   const [filterCategory, setFilterCategory] = useState<'all' | 'userId' | 'rtd' | 'general'>('all');
   const [isMarketplaceOpen, setIsMarketplaceOpen] = useState(false);
+  const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [selectedModule, setSelectedModule] = useState<Module | null>(null);
 
   // Fetch modules from API
   useEffect(() => {
@@ -322,7 +325,11 @@ export function ModulesPage() {
                     )}
                     <button
                       type="button"
-                      className="text-sm text-gray-600 hover:text-gray-800"
+                      onClick={() => {
+                        setSelectedModule(module);
+                        setConfigModalOpen(true);
+                      }}
+                      className="text-sm text-blue-600 hover:text-blue-800"
                       title="Configure module parameters"
                     >
                       Configure
@@ -350,6 +357,25 @@ export function ModulesPage() {
         onAdd={handleAddComponent}
         addedModules={modules.map((m) => m.code)}
       />
+
+      {/* Configuration Modal */}
+      {selectedModule && publisherId && (
+        <ComponentConfigModal
+          isOpen={configModalOpen}
+          onClose={() => {
+            setConfigModalOpen(false);
+            setSelectedModule(null);
+          }}
+          componentType="module"
+          componentCode={selectedModule.code}
+          componentName={selectedModule.name}
+          publisherId={publisherId}
+          onSave={() => {
+            // Configuration saved successfully
+            // Could reload modules here if we need to show updated config
+          }}
+        />
+      )}
     </div>
   );
 }

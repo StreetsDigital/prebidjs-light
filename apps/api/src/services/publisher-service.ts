@@ -151,7 +151,7 @@ export class PublisherService {
 
     const now = new Date().toISOString();
     const id = uuidv4();
-    const apiKey = `pb_${uuidv4().replace(/-/g, '')}`;
+    const apiKey = `tne_${uuidv4().replace(/-/g, '').substring(0, 24)}`;
 
     db.insert(publishers).values({
       id,
@@ -321,7 +321,7 @@ export class PublisherService {
       return null;
     }
 
-    const newApiKey = `pb_${uuidv4().replace(/-/g, '')}`;
+    const newApiKey = `tne_${uuidv4().replace(/-/g, '').substring(0, 24)}`;
     const now = new Date().toISOString();
 
     db.update(publishers)

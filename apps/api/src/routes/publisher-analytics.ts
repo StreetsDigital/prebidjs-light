@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getAllAnalytics } from '../utils/prebid-data-fetcher';
 import { requireAdmin } from '../middleware/auth';
 import { safeJsonParse, safeJsonParseArray, safeJsonParseObject } from '../utils/safe-json';
+import { triggerBuildIfNeeded } from '../utils/build-trigger';
 
 interface AddAnalyticsRequest {
   analyticsCode: string;
@@ -128,6 +129,9 @@ export default async function publisherAnalyticsRoutes(fastify: FastifyInstance)
 
       db.insert(publisherAnalytics).values(newAnalytics).run();
 
+      // Trigger build with new analytics adapter
+      triggerBuildIfNeeded(publisherId, `Added analytics: ${analyticsCode}`);
+
       return reply.status(201).send({
         data: {
           id: newAnalytics.id,
@@ -175,6 +179,9 @@ export default async function publisherAnalyticsRoutes(fastify: FastifyInstance)
       db.delete(publisherAnalytics)
         .where(eq(publisherAnalytics.id, analytics.id))
         .run();
+
+      // Trigger build after removing analytics adapter
+      triggerBuildIfNeeded(publisherId, `Removed analytics: ${analyticsCode}`);
 
       return reply.send({ message: 'Analytics adapter removed successfully' });
     } catch (error) {

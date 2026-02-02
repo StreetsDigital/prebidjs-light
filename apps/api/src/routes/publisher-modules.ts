@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getAllModules, getRecommendedModules, getComponentInfo } from '../utils/prebid-data-fetcher';
 import { requireAdmin } from '../middleware/auth';
 import { safeJsonParse, safeJsonParseArray, safeJsonParseObject } from '../utils/safe-json';
+import { triggerBuildIfNeeded } from '../utils/build-trigger';
 
 interface AddModuleRequest {
   moduleCode: string;
@@ -129,6 +130,9 @@ export default async function publisherModulesRoutes(fastify: FastifyInstance) {
 
       db.insert(publisherModules).values(newModule).run();
 
+      // Trigger build with new module
+      triggerBuildIfNeeded(publisherId, `Added module: ${moduleCode}`);
+
       return reply.status(201).send({
         data: {
           id: newModule.id,
@@ -176,6 +180,9 @@ export default async function publisherModulesRoutes(fastify: FastifyInstance) {
       db.delete(publisherModules)
         .where(eq(publisherModules.id, module.id))
         .run();
+
+      // Trigger build after removing module
+      triggerBuildIfNeeded(publisherId, `Removed module: ${moduleCode}`);
 
       return reply.send({ message: 'Module removed successfully' });
     } catch (error) {

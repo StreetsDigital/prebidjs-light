@@ -1,8 +1,12 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { db, publishers, auditLogs } from '../db';
-import { eq } from 'drizzle-orm';
+import { db, publishers, auditLogs, publisherBuilds } from '../db';
+import { eq, and, desc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { BuildManagementService } from '../services/build-management-service';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const BUILDS_DIR = path.join(process.cwd(), 'data', 'builds');
 
 // Auth middleware
 async function verifyAuth(request: FastifyRequest, reply: FastifyReply) {
@@ -235,5 +239,71 @@ export default async function buildsRoutes(fastify: FastifyInstance) {
     reply.header('Cache-Control', 'public, max-age=86400'); // 24 hour cache
 
     return content;
+  });
+
+  // Serve publisher's Prebid.js bundle (PUBLIC - used by wrapper)
+  // GET /builds/:publisherId/prebid.js
+  fastify.get<{
+    Params: { publisherId: string };
+  }>('/:publisherId/prebid.js', async (request, reply) => {
+    const { publisherId } = request.params;
+
+    try {
+      // Verify publisher exists
+      const publisher = db.select().from(publishers).where(eq(publishers.id, publisherId)).get();
+      if (!publisher) {
+        return reply.code(404).send({ error: 'Publisher not found' });
+      }
+
+      // Get latest ready build
+      const build = db.select()
+        .from(publisherBuilds)
+        .where(and(
+          eq(publisherBuilds.publisherId, publisherId),
+          eq(publisherBuilds.status, 'ready')
+        ))
+        .orderBy(desc(publisherBuilds.createdAt))
+        .limit(1)
+        .get();
+
+      if (!build || !build.buildPath) {
+        // No build available - return helpful error
+        return reply.code(404).send({
+          error: 'No Prebid.js build available',
+          message: 'This publisher has no completed build. Create one first.',
+          publisherId,
+        });
+      }
+
+      // Read build file
+      const fileName = path.basename(build.buildPath);
+      const filePath = path.join(BUILDS_DIR, fileName);
+
+      if (!fs.existsSync(filePath)) {
+        fastify.log.error({ filePath, buildId: build.id }, 'Build file missing from disk');
+        return reply.code(404).send({
+          error: 'Build file not found',
+          message: 'Build exists in database but file is missing'
+        });
+      }
+
+      const content = fs.readFileSync(filePath, 'utf-8');
+
+      // Serve with aggressive caching
+      reply
+        .header('Content-Type', 'application/javascript; charset=utf-8')
+        .header('Cache-Control', 'public, max-age=3600, immutable') // 1 hour, immutable
+        .header('Access-Control-Allow-Origin', '*')
+        .header('X-Build-ID', build.id)
+        .header('X-Build-Version', build.prebidVersion || '1.0.0')
+        .send(content);
+
+    } catch (error: any) {
+      fastify.log.error({ err: error, publisherId }, 'Failed to serve Prebid.js build');
+      return reply.code(500).send({
+        error: 'Failed to load Prebid.js',
+        message: error.message
+      });
+    }
   });
 }

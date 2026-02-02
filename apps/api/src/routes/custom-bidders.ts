@@ -10,6 +10,7 @@ import {
 } from '../utils/bidder-registry';
 import { requireAdmin } from '../middleware/auth';
 import { handleError, ApiError } from '../utils/error-handler';
+import { triggerBuildIfNeeded } from '../utils/build-trigger';
 
 // Built-in bidders (always available to all publishers)
 const BUILT_IN_BIDDERS = [
@@ -145,6 +146,9 @@ export default async function customBiddersRoutes(fastify: FastifyInstance) {
             .where(eq(publisherRemovedBidders.id, removed.id))
             .run();
 
+          // Trigger build with updated bidders
+          triggerBuildIfNeeded(publisherId, `Re-added bidder: ${normalizedCode}`);
+
           return reply.status(200).send({
             data: {
               code: normalizedCode,
@@ -197,6 +201,9 @@ export default async function customBiddersRoutes(fastify: FastifyInstance) {
       };
 
       db.insert(publisherCustomBidders).values(newBidder).run();
+
+      // Trigger build with new bidder
+      triggerBuildIfNeeded(publisherId, `Added custom bidder: ${normalizedCode}`);
 
       return reply.status(201).send({
         data: {
@@ -258,6 +265,9 @@ export default async function customBiddersRoutes(fastify: FastifyInstance) {
           createdAt: new Date().toISOString()
         }).run();
 
+        // Trigger build with removed bidder
+        triggerBuildIfNeeded(publisherId, `Removed built-in bidder: ${bidderId}`);
+
         return reply.send({ message: `${builtInBidder.name} removed successfully` });
       }
 
@@ -281,6 +291,9 @@ export default async function customBiddersRoutes(fastify: FastifyInstance) {
       db.delete(publisherCustomBidders)
         .where(eq(publisherCustomBidders.id, bidderId))
         .run();
+
+      // Trigger build after deleting custom bidder
+      triggerBuildIfNeeded(publisherId, `Removed custom bidder: ${customBidder.bidderCode}`);
 
       return reply.send({ message: 'Bidder removed successfully' });
     } catch (error) {

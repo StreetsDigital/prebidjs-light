@@ -207,10 +207,31 @@ export function generateWrapper(
   // Build embedded config
   const embeddedConfig = buildEmbeddedConfig(publisherId, config, attributes, ruleId);
 
-  // Inject config into wrapper
+  // Generate Prebid.js loader
+  const prebidLoader = `
+// Load publisher's optimized Prebid.js build
+(function loadPrebid(){
+  if(typeof window==='undefined')return;
+  var s=document.createElement('script');
+  s.src='/builds/${publisherId}/prebid.js';
+  s.async=true;
+  s.onerror=function(){
+    console.error('pb: Failed to load Prebid.js build');
+    // Fallback to CDN Prebid.js
+    var fallback=document.createElement('script');
+    fallback.src='https://cdn.jsdelivr.net/npm/prebid.js@latest/dist/prebid.js';
+    fallback.async=true;
+    document.head.appendChild(fallback);
+  };
+  document.head.appendChild(s);
+})();
+`;
+
+  // Inject config + Prebid.js loader + wrapper
   const wrapper = `
 (function(){
 window.__PB_CONFIG__=${JSON.stringify(embeddedConfig)};
+${prebidLoader}
 ${baseWrapper}
 })();
 `.trim();

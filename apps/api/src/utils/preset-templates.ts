@@ -144,5 +144,5 @@ export async function seedPresetTemplates(): Promise<void> {
     }
   }
 
-  console.log(`Seeded ${PRESET_TEMPLATES.length} preset templates`);
+  // Preset templates seeded successfully
 }

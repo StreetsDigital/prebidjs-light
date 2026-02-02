@@ -20,13 +20,16 @@ import {
   getComponentInfo,
   getCacheStatus
 } from '../utils/prebid-data-fetcher.js';
+import { requireAuth } from '../middleware/auth';
 
 export default async function prebidComponentsRoutes(fastify: FastifyInstance) {
   /**
    * GET /api/prebid/bidders
    * Get all available Prebid.js bidder adapters (700+)
    */
-  fastify.get('/bidders', async (request, reply) => {
+  fastify.get('/bidders', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
     const bidders = getAllBidders();
     return reply.send({
       data: bidders,
@@ -39,7 +42,9 @@ export default async function prebidComponentsRoutes(fastify: FastifyInstance) {
    * Get all available Prebid.js modules (200+)
    * Optional query param: ?category=recommended|userId|rtd|general|vendor
    */
-  fastify.get('/modules', async (request, reply) => {
+  fastify.get('/modules', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
     const { category } = request.query as { category?: string };
 
     let modules = getAllModules();
@@ -59,7 +64,9 @@ export default async function prebidComponentsRoutes(fastify: FastifyInstance) {
    * GET /api/prebid/analytics
    * Get all available Prebid.js analytics adapters (50+)
    */
-  fastify.get('/analytics', async (request, reply) => {
+  fastify.get('/analytics', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
     const analytics = getAllAnalytics();
     return reply.send({
       data: analytics,
@@ -71,7 +78,9 @@ export default async function prebidComponentsRoutes(fastify: FastifyInstance) {
    * GET /api/prebid/recommended
    * Get recommended Prebid.js modules (core functionality)
    */
-  fastify.get('/recommended', async (request, reply) => {
+  fastify.get('/recommended', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
     const recommended = getRecommendedModules();
     return reply.send({
       data: recommended,
@@ -86,7 +95,9 @@ export default async function prebidComponentsRoutes(fastify: FastifyInstance) {
    *   - q: search query (required)
    *   - type: component type filter (optional: bidder|module|analytics)
    */
-  fastify.get('/search', async (request, reply) => {
+  fastify.get('/search', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
     const { q, type } = request.query as { q?: string; type?: 'bidder' | 'module' | 'analytics' };
 
     if (!q) {
@@ -112,7 +123,9 @@ export default async function prebidComponentsRoutes(fastify: FastifyInstance) {
    *   - type: bidder|module|analytics
    *   - code: component code
    */
-  fastify.get('/component/:type/:code', async (request, reply) => {
+  fastify.get('/component/:type/:code', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
     const { type, code } = request.params as { type: 'bidder' | 'module' | 'analytics'; code: string };
 
     if (!['bidder', 'module', 'analytics'].includes(type)) {
@@ -138,7 +151,9 @@ export default async function prebidComponentsRoutes(fastify: FastifyInstance) {
    * GET /api/prebid/status
    * Get cache status and metadata
    */
-  fastify.get('/status', async (request, reply) => {
+  fastify.get('/status', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
     const status = getCacheStatus();
 
     return reply.send({

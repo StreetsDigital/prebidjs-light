@@ -3,6 +3,8 @@ import { db } from '../db/index.js';
 import { componentParameters, componentParameterValues } from '../db/schema.js';
 import { eq, and, isNull } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
+import { requireAdmin } from '../middleware/auth';
+import { safeJsonParse, safeJsonParseArray, safeJsonParseObject } from '../utils/safe-json';
 
 interface GetParametersQuery {
   websiteId?: string;
@@ -28,7 +30,9 @@ type ComponentType = 'bidder' | 'module' | 'analytics';
 export default async function componentParametersRoutes(fastify: FastifyInstance) {
 
   // Get parameter schema for a component
-  fastify.get('/components/:type/:code/parameters', async (request, reply) => {
+  fastify.get('/components/:type/:code/parameters', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { type, code } = request.params as { type: string; code: string };
 
     // Validate component type
@@ -58,13 +62,13 @@ export default async function componentParametersRoutes(fastify: FastifyInstance
         name: param.parameterName,
         type: param.parameterType,
         required: Boolean(param.required),
-        defaultValue: param.defaultValue ? JSON.parse(param.defaultValue) : undefined,
+        defaultValue: safeJsonParse(param.defaultValue, undefined),
         description: param.description || '',
         validation: {
           pattern: param.validationPattern || undefined,
           min: param.minValue || undefined,
           max: param.maxValue || undefined,
-          enum: param.enumValues ? JSON.parse(param.enumValues) : undefined,
+          enum: safeJsonParseArray(param.enumValues, undefined),
         },
       }));
 
@@ -85,7 +89,9 @@ export default async function componentParametersRoutes(fastify: FastifyInstance
   });
 
   // Get saved parameter values for a component
-  fastify.get('/publishers/:publisherId/components/:type/:code/parameters', async (request, reply) => {
+  fastify.get('/publishers/:publisherId/components/:type/:code/parameters', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId, type, code } = request.params as {
       publisherId: string;
       type: string;
@@ -123,7 +129,7 @@ export default async function componentParametersRoutes(fastify: FastifyInstance
       // Transform to key-value pairs
       const parameters: Record<string, any> = {};
       values.forEach((val) => {
-        parameters[val.parameterName] = JSON.parse(val.parameterValue);
+        parameters[val.parameterName] = safeJsonParse(val.parameterValue, null);
       });
 
       return reply.send({ data: parameters });
@@ -137,7 +143,9 @@ export default async function componentParametersRoutes(fastify: FastifyInstance
   });
 
   // Save parameter values for a component
-  fastify.post('/publishers/:publisherId/components/:type/:code/parameters', async (request, reply) => {
+  fastify.post('/publishers/:publisherId/components/:type/:code/parameters', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId, type, code } = request.params as {
       publisherId: string;
       type: string;
@@ -214,7 +222,7 @@ export default async function componentParametersRoutes(fastify: FastifyInstance
 
         // Enum validation
         if (paramDef.enumValues) {
-          const allowedValues = JSON.parse(paramDef.enumValues);
+          const allowedValues = safeJsonParseArray(paramDef.enumValues, []);
           if (!allowedValues.includes(value)) {
             validationErrors.push({
               field: paramDef.parameterName,
@@ -295,7 +303,9 @@ export default async function componentParametersRoutes(fastify: FastifyInstance
   });
 
   // Validate parameters without saving
-  fastify.post('/components/:type/:code/parameters/validate', async (request, reply) => {
+  fastify.post('/components/:type/:code/parameters/validate', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { type, code } = request.params as { type: string; code: string };
     const { parameters } = request.body as ValidateParametersBody;
 
@@ -364,7 +374,7 @@ export default async function componentParametersRoutes(fastify: FastifyInstance
         }
 
         if (paramDef.enumValues) {
-          const allowedValues = JSON.parse(paramDef.enumValues);
+          const allowedValues = safeJsonParseArray(paramDef.enumValues, []);
           if (!allowedValues.includes(value)) {
             errors.push({
               field: paramDef.parameterName,
@@ -398,7 +408,9 @@ export default async function componentParametersRoutes(fastify: FastifyInstance
   });
 
   // Delete parameter values for a component
-  fastify.delete('/publishers/:publisherId/components/:type/:code/parameters', async (request, reply) => {
+  fastify.delete('/publishers/:publisherId/components/:type/:code/parameters', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId, type, code } = request.params as {
       publisherId: string;
       type: string;

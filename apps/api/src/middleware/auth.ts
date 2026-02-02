@@ -27,7 +27,7 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply) 
     await request.jwtVerify();
     request.user = request.user as TokenPayload;
   } catch (err) {
-    reply.code(401).send({
+    return reply.code(401).send({
       error: 'Unauthorized',
       message: 'Authentication required'
     });

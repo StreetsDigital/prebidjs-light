@@ -1,607 +1,68 @@
-import Fastify from 'fastify';
-import cors from '@fastify/cors';
-import jwt from '@fastify/jwt';
-import rateLimit from '@fastify/rate-limit';
-import cookie from '@fastify/cookie';
+/**
+ * pbjs_engine API Server
+ * Main entry point for the Fastify backend server
+ */
+
 import { initializeDatabase } from './db';
-import authRoutes from './routes/auth';
-import impersonationRoutes from './routes/impersonation';
-import publisherRoutes from './routes/publishers';
-import websiteRoutes from './routes/websites';
-import userRoutes from './routes/users';
-import dashboardRoutes from './routes/dashboard';
-import auditLogsRoutes from './routes/audit-logs';
-import scheduledReportsRoutes from './routes/scheduled-reports';
-import analyticsRoutes from './routes/analytics';
-import buildsRoutes from './routes/builds';
-import abTestRoutes from './routes/ab-tests';
-import abTestAnalyticsRoutes from './routes/ab-test-analytics';
-import bidderHealthRoutes from './routes/bidder-health';
-import optimizationRulesRoutes from './routes/optimization-rules';
-import auctionInspectorRoutes from './routes/auction-inspector';
-import revenueForecastingRoutes from './routes/revenue-forecasting';
-import notificationsRoutes from './routes/notifications';
-import customReportsRoutes from './routes/custom-reports';
-import yieldAdvisorRoutes from './routes/yield-advisor';
-import adUnitsRoutes from './routes/ad-units';
-import wrapperRoutes from './routes/wrapper';
-import wrapperConfigsRoutes from './routes/wrapper-configs';
-import monitoringRoutes from './routes/monitoring';
-import systemRoutes from './routes/system';
-import chatRoutes from './routes/chat';
-import customBiddersRoutes from './routes/custom-bidders';
-import biddersRoutes from './routes/bidders';
-import prebidComponentsRoutes from './routes/prebid-components';
-import publisherModulesRoutes from './routes/publisher-modules';
-import publisherAnalyticsRoutes from './routes/publisher-analytics';
-import componentParametersRoutes from './routes/component-parameters';
-import templatesRoutes from './routes/templates';
-import bulkOperationsRoutes from './routes/bulk-operations';
-import analyticsDashboardRoutes from './routes/analytics-dashboard';
-import prebidBuildsRoutes from './routes/prebid-builds';
 import { fetchPrebidData, startPeriodicRefresh } from './utils/prebid-data-fetcher';
 import { seedParameterSchemas } from './utils/prebid-markdown-parser';
 import { seedPresetTemplates } from './utils/preset-templates';
+import {
+  validateEnvironment,
+  createFastifyInstance,
+  registerPlugins,
+  getServerConfig,
+} from './config/server-config';
+import { registerRoutes } from './middleware/setup';
 
-const app = Fastify({
-  logger: {
-    level: process.env.LOG_LEVEL || 'info',
-  },
-});
+// Validate environment variables
+validateEnvironment();
 
-// Register plugins - CORS with dynamic origin checking
-app.register(cors, {
-  origin: true, // Reflect the request origin - for development
-  credentials: true,
-});
+// Create Fastify instance
+const app = createFastifyInstance();
 
-app.register(jwt, {
-  secret: (process.env.JWT_SECRET || 'dev-jwt-secret-change-in-production') as string,
-});
-
-app.register(cookie, {
-  secret: (process.env.COOKIE_SECRET || 'dev-cookie-secret-change-in-production') as string,
-});
-
-app.register(rateLimit, {
-  max: 100,
-  timeWindow: '1 minute',
-});
-
-// Health check endpoint
-app.get('/health', async () => {
-  return { status: 'ok', timestamp: new Date().toISOString(), version: 'v2-cors-fixed' };
-});
-
-// Register API routes
-app.register(authRoutes, { prefix: '/api/auth' });
-app.register(impersonationRoutes, { prefix: '/api/auth' });
-app.register(publisherRoutes, { prefix: '/api/publishers' });
-app.register(websiteRoutes, { prefix: '/api' });
-
-app.register(userRoutes, { prefix: '/api/users' });
-app.register(dashboardRoutes, { prefix: '/api/dashboard' });
-app.register(auditLogsRoutes, { prefix: '/api/audit-logs' });
-app.register(scheduledReportsRoutes, { prefix: '/api/scheduled-reports' });
-app.register(analyticsRoutes, { prefix: '/api/analytics' });
-// app.register(buildsRoutes, { prefix: '/api' }); // OLD build system - replaced by prebidBuildsRoutes (Phase 2)
-app.register(abTestRoutes, { prefix: '/api/publishers' });
-app.register(abTestAnalyticsRoutes, { prefix: '/api/publishers' });
-app.register(bidderHealthRoutes, { prefix: '/api/publishers' });
-app.register(optimizationRulesRoutes, { prefix: '/api/publishers' });
-app.register(auctionInspectorRoutes, { prefix: '/api/publishers' });
-app.register(revenueForecastingRoutes, { prefix: '/api/publishers' });
-app.register(notificationsRoutes, { prefix: '/api/publishers' });
-app.register(customReportsRoutes, { prefix: '/api/publishers' });
-app.register(yieldAdvisorRoutes, { prefix: '/api/publishers' });
-app.register(adUnitsRoutes, { prefix: '/api' });
-app.register(systemRoutes, { prefix: '/api/system' });
-app.register(monitoringRoutes, { prefix: '/api/system' });
-app.register(chatRoutes, { prefix: '/api' });
-app.register(wrapperRoutes); // No prefix - serves at root level
-app.register(wrapperConfigsRoutes, { prefix: '/api/publishers/:publisherId/configs' });
-app.register(customBiddersRoutes, { prefix: '/api/publishers' });
-app.register(biddersRoutes, { prefix: '/api/bidders' });
-app.register(prebidComponentsRoutes, { prefix: '/api/prebid' });
-app.register(publisherModulesRoutes, { prefix: '/api/publishers' });
-app.register(publisherAnalyticsRoutes, { prefix: '/api/publishers' });
-app.register(componentParametersRoutes, { prefix: '/api' });
-app.register(templatesRoutes, { prefix: '/api' });
-app.register(bulkOperationsRoutes, { prefix: '/api' });
-app.register(analyticsDashboardRoutes, { prefix: '/api' });
-app.register(prebidBuildsRoutes, { prefix: '/api' });
-
-// Placeholder for other routes
-// app.register(configRoutes, { prefix: '/api/config' });
-// app.register(analyticsRoutes, { prefix: '/api/analytics' });
-
-// Wrapper script endpoint - serves the pb.js script for publishers
-// Uses publisher slug (public identifier) instead of API key for security
-app.get('/pb.js', async (request, reply) => {
-  const { id } = request.query as { id?: string };
-
-  if (!id) {
-    return reply.code(400).type('text/plain').send('// Error: Missing publisher identifier');
-  }
-
-  // Import db and schema
-  const { db, publishers } = await import('./db');
-  const { eq, or } = await import('drizzle-orm');
-
-  // Validate publisher exists and is active - look up by slug or id (not API key)
-  const publisher = db.select().from(publishers).where(
-    or(eq(publishers.slug, id), eq(publishers.id, id))
-  ).get();
-
-  if (!publisher) {
-    return reply.code(404).type('text/plain').send('// Error: Publisher not found');
-  }
-
-  if (publisher.status !== 'active') {
-    return reply.code(403).type('text/plain').send('// Error: Publisher is not active');
-  }
-
-  // Get the API base URL
-  const protocol = request.headers['x-forwarded-proto'] || 'http';
-  const host = request.headers['x-forwarded-host'] || request.headers.host || 'localhost:3001';
-  const apiEndpoint = `${protocol}://${host}`;
-
-  // Generate the wrapper script with the publisher's config
-  const wrapperScript = `
 /**
- * pbjs_engine Publisher Wrapper v1.0.0
- * Publisher: ${publisher.name}
- * Generated: ${new Date().toISOString()}
+ * Initialize and start the server
  */
-(function() {
-  'use strict';
-
-  var publisherId = '${publisher.slug}';
-  var apiEndpoint = '${apiEndpoint}';
-  var CONFIG_CACHE_KEY = 'pb_config_cache';
-  var CONFIG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-  // Event listeners
-  var eventListeners = {};
-
-  function addEventListener(event, callback) {
-    if (!eventListeners[event]) {
-      eventListeners[event] = [];
-    }
-    eventListeners[event].push(callback);
-  }
-
-  function removeEventListener(event, callback) {
-    if (!eventListeners[event]) return;
-    if (callback) {
-      eventListeners[event] = eventListeners[event].filter(function(cb) { return cb !== callback; });
-    } else {
-      delete eventListeners[event];
-    }
-  }
-
-  function emitEvent(event, data) {
-    if (!eventListeners[event]) return;
-    eventListeners[event].forEach(function(callback) {
-      try {
-        callback(data);
-      } catch (e) {
-        console.error('pb: Event callback error', e);
-      }
-    });
-  }
-
-  // Config caching
-  function getCachedConfig() {
-    try {
-      var cached = localStorage.getItem(CONFIG_CACHE_KEY + '_' + publisherId);
-      if (cached) {
-        var parsed = JSON.parse(cached);
-        if (Date.now() - parsed.timestamp < CONFIG_CACHE_TTL) {
-          return parsed.data;
-        }
-      }
-    } catch (e) {}
-    return null;
-  }
-
-  function setCachedConfig(config) {
-    try {
-      localStorage.setItem(CONFIG_CACHE_KEY + '_' + publisherId, JSON.stringify({
-        data: config,
-        timestamp: Date.now()
-      }));
-    } catch (e) {}
-  }
-
-  // Analytics beacon
-  function sendBeacon(events) {
-    try {
-      var payload = JSON.stringify({ events: events });
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon(apiEndpoint + '/b', payload);
-      } else {
-        fetch(apiEndpoint + '/b', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: payload,
-          keepalive: true
-        });
-      }
-    } catch (e) {
-      console.error('pb: Beacon error', e);
-    }
-  }
-
-  // Create pb namespace
-  var config = null;
-  var initialized = false;
-
-  window.pb = {
-    version: '1.0.0',
-    publisherId: publisherId,
-
-    init: function() {
-      var self = this;
-      if (initialized) {
-        console.warn('pb: Already initialized');
-        return Promise.resolve();
-      }
-
-      return new Promise(function(resolve, reject) {
-        // Check cache first
-        config = getCachedConfig();
-
-        if (config) {
-          initialized = true;
-          emitEvent('pbReady', { publisherId: publisherId, cached: true });
-          resolve();
-          return;
-        }
-
-        // Fetch config from server
-        fetch(apiEndpoint + '/c/' + publisherId)
-          .then(function(response) {
-            if (!response.ok) {
-              throw new Error('Config fetch failed: ' + response.status);
-            }
-            return response.json();
-          })
-          .then(function(data) {
-            config = data;
-            setCachedConfig(config);
-            initialized = true;
-            emitEvent('pbReady', { publisherId: publisherId, cached: false });
-            resolve();
-          })
-          .catch(function(error) {
-            console.error('pb: Initialization failed', error);
-            emitEvent('pbError', { error: error });
-            reject(error);
-          });
-      });
-    },
-
-    getConfig: function() {
-      return config;
-    },
-
-    refresh: function(adUnitCodes) {
-      if (!initialized) {
-        console.warn('pb: Not initialized');
-        return;
-      }
-      emitEvent('refreshRequested', { adUnitCodes: adUnitCodes });
-      // In production, this would trigger Prebid.js refresh
-    },
-
-    on: function(event, callback) {
-      addEventListener(event, callback);
-    },
-
-    off: function(event, callback) {
-      removeEventListener(event, callback);
-    },
-
-    sendAnalytics: function(eventType, data) {
-      sendBeacon([{
-        publisherId: publisherId,
-        eventType: eventType,
-        timestamp: new Date().toISOString(),
-        data: data
-      }]);
-    }
-  };
-
-  // Auto-initialize if not in debug mode
-  if (typeof window.pbDebug === 'undefined' || !window.pbDebug) {
-    window.pb.init().catch(function(e) {
-      console.error('pb: Auto-init failed', e);
-    });
-  }
-})();
-`;
-
-  // Set appropriate headers
-  reply.header('Content-Type', 'application/javascript; charset=utf-8');
-  reply.header('Cache-Control', 'public, max-age=300'); // 5 minute cache
-
-  return wrapperScript;
-});
-
-// Public config endpoint (high performance)
-// Uses publisher slug or ID (public identifier) instead of API key for security
-// Supports A/B testing via variant query param or random selection
-app.get('/c/:publisherSlug', async (request, reply) => {
-  const { publisherSlug } = request.params as { publisherSlug: string };
-  const { variant: variantParam } = request.query as { variant?: string };
-
-  // Import db and schema
-  const { db, publishers, publisherConfig, websites, adUnits, publisherBidders, abTests, abTestVariants } = await import('./db');
-  const { eq, or, and } = await import('drizzle-orm');
-
-  // Find publisher by slug or ID (not API key - keep that secret)
-  const publisher = db.select().from(publishers).where(
-    or(eq(publishers.slug, publisherSlug), eq(publishers.id, publisherSlug))
-  ).get();
-
-  if (!publisher) {
-    return reply.code(404).send({ error: 'Publisher not found' });
-  }
-
-  if (publisher.status !== 'active') {
-    return reply.code(403).send({ error: 'Publisher is not active' });
-  }
-
-  // Get publisher config
-  const config = db.select().from(publisherConfig).where(eq(publisherConfig.publisherId, publisher.id)).get();
-
-  // Get ad units through websites
-  const publisherWebsites = db.select().from(websites).where(eq(websites.publisherId, publisher.id)).all();
-  const websiteIds = publisherWebsites.map((w: any) => w.id);
-  const units = websiteIds.length > 0
-    ? db.select().from(adUnits).where(eq(adUnits.websiteId, websiteIds[0])).all() // Simplified for now
-    : [];
-
-  // Get bidders
-  const bidders = db.select().from(publisherBidders).where(eq(publisherBidders.publisherId, publisher.id)).all();
-
-  // Check for active A/B test
-  const activeTest = db
-    .select()
-    .from(abTests)
-    .where(and(eq(abTests.publisherId, publisher.id), eq(abTests.status, 'running')))
-    .get();
-
-  let selectedVariant: typeof abTestVariants.$inferSelect | null = null;
-  let abTestInfo: { testId: string; testName: string; variantId: string; variantName: string } | null = null;
-
-  if (activeTest) {
-    const variants = db
-      .select()
-      .from(abTestVariants)
-      .where(eq(abTestVariants.testId, activeTest.id))
-      .all();
-
-    if (variants.length > 0) {
-      // Check if a specific variant was requested
-      if (variantParam) {
-        selectedVariant = variants.find(v => v.id === variantParam || v.name === variantParam) || null;
-      }
-
-      // If no specific variant requested or not found, randomly select based on traffic percentages
-      if (!selectedVariant) {
-        const random = Math.random() * 100;
-        let cumulative = 0;
-        for (const v of variants) {
-          cumulative += v.trafficPercent;
-          if (random <= cumulative) {
-            selectedVariant = v;
-            break;
-          }
-        }
-        // Fallback to first variant if somehow nothing was selected
-        if (!selectedVariant) {
-          selectedVariant = variants[0];
-        }
-      }
-
-      abTestInfo = {
-        testId: activeTest.id,
-        testName: activeTest.name,
-        variantId: selectedVariant.id,
-        variantName: selectedVariant.name,
-      };
-    }
-  }
-
-  // Build base Prebid-compatible config
-  let prebidConfig: Record<string, any> = {
-    publisherId: publisher.id,
-    publisherName: publisher.name,
-    domains: publisher.domains ? JSON.parse(publisher.domains) : [],
-    config: {
-      bidderTimeout: config?.bidderTimeout || 1500,
-      priceGranularity: config?.priceGranularity || 'medium',
-      enableSendAllBids: config?.enableSendAllBids ?? true,
-      bidderSequence: config?.bidderSequence || 'random',
-      debug: config?.debugMode || false,
-    },
-    adUnits: units.map(u => ({
-      code: u.code,
-      name: u.name,
-      mediaTypes: u.mediaTypes ? JSON.parse(u.mediaTypes) : {},
-      floorPrice: u.floorPrice,
-      status: u.status,
-    })),
-    bidders: bidders.filter(b => b.enabled).map(b => ({
-      bidderCode: b.bidderCode,
-      params: b.params ? JSON.parse(b.params) : {},
-      timeoutOverride: b.timeoutOverride,
-      priority: b.priority,
-    })),
-    version: config?.version || 1,
-    generatedAt: new Date().toISOString(),
-  };
-
-  // Apply A/B test variant overrides if selected (and not control)
-  if (selectedVariant && !selectedVariant.isControl) {
-    if (selectedVariant.bidderTimeout) {
-      prebidConfig.config.bidderTimeout = selectedVariant.bidderTimeout;
-    }
-    if (selectedVariant.priceGranularity) {
-      prebidConfig.config.priceGranularity = selectedVariant.priceGranularity;
-    }
-    if (selectedVariant.enableSendAllBids !== null) {
-      prebidConfig.config.enableSendAllBids = !!selectedVariant.enableSendAllBids;
-    }
-    if (selectedVariant.bidderSequence) {
-      prebidConfig.config.bidderSequence = selectedVariant.bidderSequence;
-    }
-    if (selectedVariant.floorsConfig) {
-      prebidConfig.config.floors = JSON.parse(selectedVariant.floorsConfig);
-    }
-    if (selectedVariant.bidderOverrides) {
-      const overrides = JSON.parse(selectedVariant.bidderOverrides);
-      // Apply bidder-specific overrides
-      prebidConfig.bidders = prebidConfig.bidders.map((b: any) => {
-        if (overrides[b.bidderCode]) {
-          return { ...b, ...overrides[b.bidderCode] };
-        }
-        return b;
-      });
-    }
-  }
-
-  // Add A/B test info to the response
-  if (abTestInfo) {
-    prebidConfig.abTest = abTestInfo;
-  }
-
-  // Set cache headers (shorter for A/B tests to allow variant switching)
-  const cacheTime = activeTest ? 60 : 300; // 1 minute for A/B tests, 5 minutes otherwise
-  reply.header('Cache-Control', `public, max-age=${cacheTime}`);
-
-  return prebidConfig;
-});
-
-// Analytics beacon endpoint (high throughput)
-app.post('/b', async (request, reply) => {
-  try {
-    const { db, analyticsEvents } = await import('./db');
-    const { v4: uuidv4 } = await import('uuid');
-    const { analyticsEmitter } = await import('./routes/analytics');
-
-    const body = request.body as {
-      events?: Array<{
-        publisherId: string;
-        eventType: string;
-        auctionId?: string;
-        adUnitCode?: string;
-        bidderCode?: string;
-        cpm?: number;
-        currency?: string;
-        latencyMs?: number;
-        timeout?: boolean;
-        won?: boolean;
-        rendered?: boolean;
-        pageUrl?: string;
-        domain?: string;
-        deviceType?: string;
-        country?: string;
-        timestamp?: string;
-      }>;
-    };
-
-    if (!body?.events || !Array.isArray(body.events)) {
-      return reply.code(400).send({ error: 'Invalid beacon payload' });
-    }
-
-    const now = new Date().toISOString();
-    const insertedEvents: any[] = [];
-
-    // Insert events (in a real system, this would go to Redis Streams then ClickHouse)
-    for (const event of body.events) {
-      if (!event.publisherId || !event.eventType) {
-        continue; // Skip invalid events
-      }
-
-      const eventId = uuidv4();
-      db.insert(analyticsEvents).values({
-        id: eventId,
-        publisherId: event.publisherId,
-        eventType: event.eventType,
-        auctionId: event.auctionId || null,
-        adUnitCode: event.adUnitCode || null,
-        bidderCode: event.bidderCode || null,
-        cpm: event.cpm?.toString() || null,
-        currency: event.currency || 'USD',
-        latencyMs: event.latencyMs || null,
-        timeout: event.timeout ? 1 : 0,
-        won: event.won ? 1 : 0,
-        rendered: event.rendered ? 1 : 0,
-        pageUrl: event.pageUrl || null,
-        domain: event.domain || null,
-        deviceType: event.deviceType || null,
-        country: event.country || null,
-        timestamp: event.timestamp || now,
-        receivedAt: now,
-      } as any);
-
-      insertedEvents.push({
-        id: eventId,
-        publisherId: event.publisherId,
-        eventType: event.eventType,
-        bidderCode: event.bidderCode,
-        cpm: event.cpm,
-        timestamp: event.timestamp || now,
-      });
-    }
-
-    // Emit events for SSE subscribers
-    if (insertedEvents.length > 0) {
-      for (const event of insertedEvents) {
-        analyticsEmitter.emit('newEvent', event);
-      }
-    }
-
-    // Return 200 for successful beacon processing
-    return reply.code(200).send({ received: body.events.length });
-  } catch (err) {
-    request.log.error(err, 'Failed to process beacon');
-    return reply.code(500).send({ error: 'Failed to process beacon' });
-  }
-});
-
-// Start server
 const start = async () => {
   try {
+    // Register plugins (middleware)
+    app.log.info('Registering plugins...');
+    await registerPlugins(app);
+    app.log.info('Plugins registered');
+
+    // Register routes
+    app.log.info('Registering routes...');
+    await registerRoutes(app);
+    app.log.info('Routes registered');
+
     // Initialize database
-    console.log('Initializing database...');
+    app.log.info('Initializing database...');
     initializeDatabase();
-    console.log('Database initialized');
+    app.log.info('Database initialized');
 
     // Fetch Prebid component data on startup
-    console.log('Fetching Prebid component data...');
+    app.log.info('Fetching Prebid component data...');
     await fetchPrebidData();
-    console.log('Prebid component data loaded');
+    app.log.info('Prebid component data loaded');
 
     // Seed parameter schemas
-    console.log('Seeding parameter schemas...');
+    app.log.info('Seeding parameter schemas...');
     await seedParameterSchemas();
-    console.log('Parameter schemas seeded');
+    app.log.info('Parameter schemas seeded');
 
     // Seed preset templates
-    console.log('Seeding preset templates...');
+    app.log.info('Seeding preset templates...');
     await seedPresetTemplates();
-    console.log('Preset templates seeded');
+    app.log.info('Preset templates seeded');
 
     // Start periodic refresh (every 24 hours)
     startPeriodicRefresh();
 
-    const host = process.env.API_HOST || '0.0.0.0';
-    const port = parseInt(process.env.API_PORT || '3001', 10);
+    // Get server configuration
+    const { host, port } = getServerConfig();
 
+    // Start listening
     await app.listen({ port, host });
     app.log.info(`Server running at http://${host}:${port}`);
   } catch (err) {

@@ -111,7 +111,6 @@ async function fetchBidderData(): Promise<PrebidBidder[]> {
       };
     });
 
-    console.log(`✅ Fetched ${bidders.length} bidders from Prebid.org`);
     return bidders;
   } catch (error) {
     console.error('❌ Error fetching bidder data:', error);
@@ -169,7 +168,6 @@ async function fetchModuleData(): Promise<{ modules: PrebidModule[], analytics: 
       }
     }
 
-    console.log(`✅ Fetched ${modules.length} modules and ${analytics.length} analytics adapters`);
     return { modules, analytics };
   } catch (error) {
     console.error('❌ Error fetching module data:', error);
@@ -213,12 +211,11 @@ function formatName(code: string): string {
  */
 export async function fetchPrebidData(): Promise<void> {
   if (isFetching) {
-    console.log('⏳ Prebid data fetch already in progress, skipping...');
+    // Fetch already in progress, skipping
     return;
   }
 
   isFetching = true;
-  console.log('🔄 Fetching Prebid component data...');
 
   try {
     // Fetch bidders and modules in parallel
@@ -239,7 +236,6 @@ export async function fetchPrebidData(): Promise<void> {
     }
 
     lastFetchTime = new Date();
-    console.log(`✅ Prebid data cached: ${biddersCache.length} bidders, ${modulesCache.length} modules, ${analyticsCache.length} analytics`);
   } catch (error) {
     console.error('❌ Error fetching Prebid data:', error);
   } finally {
@@ -334,7 +330,13 @@ export function getComponentInfo(
 /**
  * Get cache status
  */
-export function getCacheStatus() {
+export function getCacheStatus(): {
+  biddersCount: number;
+  modulesCount: number;
+  analyticsCount: number;
+  lastFetchTime: Date | null;
+  isFetching: boolean;
+} {
   return {
     biddersCount: biddersCache.length,
     modulesCount: modulesCache.length,
@@ -347,11 +349,10 @@ export function getCacheStatus() {
 /**
  * Schedule periodic refresh (every 24 hours)
  */
-export function startPeriodicRefresh() {
+export function startPeriodicRefresh(): void {
   const REFRESH_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
 
   setInterval(async () => {
-    console.log('🔄 Running scheduled Prebid data refresh...');
     await fetchPrebidData();
   }, REFRESH_INTERVAL);
 }

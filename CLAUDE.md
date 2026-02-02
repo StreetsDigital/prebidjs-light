@@ -64,6 +64,7 @@ pbjs_engine/
 - **Code Style**: Prettier for formatting, ESLint for linting
 - **Error Handling**: Use try-catch with proper error responses
 - **Testing**: Vitest for unit and integration tests
+- **Naming**: Follow conventions in `NAMING_CONVENTIONS.md`
 
 **Frontend:**
 - **Language**: TypeScript with React JSX
@@ -71,6 +72,7 @@ pbjs_engine/
 - **Styling**: Tailwind CSS utility classes
 - **State**: Zustand for global state, React hooks for local state
 - **Forms**: Controlled components with validation
+- **Naming**: Follow conventions in `NAMING_CONVENTIONS.md`
 
 ### 2. Database Guidelines
 
@@ -283,7 +285,49 @@ npm run dev        # Watch mode
 - JWT token validation on protected routes
 - Role-based access control (RBAC)
 
-### 7. Testing
+### 7. Naming Conventions
+
+**IMPORTANT**: Follow the comprehensive naming standards documented in `NAMING_CONVENTIONS.md`.
+
+**Quick Reference:**
+
+**Variables:**
+- Use **camelCase** for standard variables: `userId`, `apiEndpoint`
+- Prefix booleans with `is`, `has`, `should`, or `can`: `isActive`, `hasPermission`
+- Use **SCREAMING_SNAKE_CASE** for constants: `API_BASE_URL`, `MAX_RETRY_ATTEMPTS`
+
+**Functions:**
+- Use **camelCase** with verb-based names: `fetchPublishers()`, `validateInput()`
+- Prefix async functions with action verbs: `fetchUserData()`, `loadConfiguration()`
+- Prefix boolean-returning functions: `isValidUUID()`, `hasPermission()`
+- Prefix event handlers: `handleClick()`, `onSubmit()`
+
+**Classes & Interfaces:**
+- Use **PascalCase** for classes: `UserService`, `DataRepository`
+- Use **PascalCase** for interfaces (no `I` prefix): `User`, `PublisherConfig`
+- Use **PascalCase** for type aliases: `UserId`, `PublisherStatus`
+
+**Files:**
+- Use **kebab-case** for utilities: `safe-json.ts`, `error-handler.ts`
+- Use **PascalCase** for React components: `PublisherCard.tsx`, `WebsiteModal.tsx`
+- Use **kebab-case** or singular for routes: `auth.ts`, `publishers.ts`
+
+**Database:**
+- Use **snake_case** for table names (plural): `publishers`, `ad_units`
+- Use **snake_case** for column names: `user_id`, `created_at`
+
+**API Routes:**
+- Use **kebab-case** and plurals: `/api/publishers`, `/api/ad-units`
+- Use **camelCase** for query params: `?page=1&sortBy=name`
+
+**React:**
+- Use **PascalCase** for components: `PublisherCard`, `WebsiteModal`
+- Suffix props interfaces with `Props`: `PublisherCardProps`
+- Prefix hooks with `use`: `useAuth()`, `usePublishers()`
+
+See `NAMING_CONVENTIONS.md` for complete details and examples.
+
+### 8. Testing
 
 **Backend Tests:**
 ```bash
@@ -542,6 +586,7 @@ Task tool with subagent_type=Explore to find all error handling patterns
 **Keep These Files Updated:**
 - `CLAUDE.md` - Development guidelines (this file)
 - `README.md` - Project overview and setup
+- `NAMING_CONVENTIONS.md` - Naming standards and conventions
 - `ARCHITECTURE_NOTES.md` - Architecture decisions and clarifications
 - Feature-specific `.md` files - Implementation details
 

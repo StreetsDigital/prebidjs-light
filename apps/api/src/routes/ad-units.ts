@@ -8,10 +8,8 @@
  */
 
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { db, adUnits, websites, publishers, auditLogs } from '../db';
-import { eq, and } from 'drizzle-orm';
-import { v4 as uuidv4 } from 'uuid';
 import { requireAuth, TokenPayload } from '../middleware/auth';
+import * as adUnitService from '../services/ad-unit-service';
 
 interface CreateAdUnitBody {
   code: string;
@@ -46,40 +44,25 @@ export default async function adUnitsRoutes(fastify: FastifyInstance) {
     const user = request.user as TokenPayload;
 
     // Verify website exists and get publisher info
-    const website = db.select()
-      .from(websites)
-      .where(eq(websites.id, websiteId))
-      .get();
+    const website = adUnitService.getWebsiteById(websiteId);
 
     if (!website) {
       return reply.code(404).send({ error: 'Website not found' });
     }
 
     // Check authorization
-    if (user.role === 'publisher' && user.publisherId !== website.publisherId) {
+    if (!adUnitService.isAuthorizedForWebsite({
+      role: user.role,
+      publisherId: user.publisherId
+    }, website.publisherId)) {
       return reply.code(403).send({ error: 'Forbidden' });
     }
 
     // Get all ad units for this website
-    const units = db.select()
-      .from(adUnits)
-      .where(eq(adUnits.websiteId, websiteId))
-      .all();
+    const units = adUnitService.listAdUnitsByWebsite(websiteId);
 
     return {
-      adUnits: units.map(unit => ({
-        id: unit.id,
-        websiteId: unit.websiteId,
-        code: unit.code,
-        name: unit.name,
-        mediaTypes: unit.mediaTypes ? JSON.parse(unit.mediaTypes) : null,
-        floorPrice: unit.floorPrice,
-        targeting: unit.targeting ? JSON.parse(unit.targeting) : null,
-        sizeMapping: unit.sizeMapping ? JSON.parse(unit.sizeMapping) : null,
-        status: unit.status,
-        createdAt: unit.createdAt,
-        updatedAt: unit.updatedAt,
-      })),
+      adUnits: units,
       websiteId,
       websiteName: website.name,
       websiteDomain: website.domain,
@@ -112,30 +95,22 @@ export default async function adUnitsRoutes(fastify: FastifyInstance) {
     }
 
     // Verify website exists and get publisher info
-    const website = db.select()
-      .from(websites)
-      .where(eq(websites.id, websiteId))
-      .get();
+    const website = adUnitService.getWebsiteById(websiteId);
 
     if (!website) {
       return reply.code(404).send({ error: 'Website not found' });
     }
 
     // Check authorization
-    if (user.role === 'publisher' && user.publisherId !== website.publisherId) {
+    if (!adUnitService.isAuthorizedForWebsite({
+      role: user.role,
+      publisherId: user.publisherId
+    }, website.publisherId)) {
       return reply.code(403).send({ error: 'Forbidden' });
     }
 
     // Check if ad unit code already exists for this website
-    const existingUnit = db.select()
-      .from(adUnits)
-      .where(and(
-        eq(adUnits.websiteId, websiteId),
-        eq(adUnits.code, code)
-      ))
-      .get();
-
-    if (existingUnit) {
+    if (adUnitService.adUnitCodeExists(websiteId, code)) {
       return reply.code(409).send({
         error: 'Conflict',
         message: `Ad unit with code "${code}" already exists for this website`,
@@ -143,54 +118,21 @@ export default async function adUnitsRoutes(fastify: FastifyInstance) {
     }
 
     // Create ad unit
-    const adUnitId = uuidv4();
-    const now = new Date().toISOString();
-
-    db.insert(adUnits).values({
-      id: adUnitId,
-      websiteId, // Required - enforces hierarchy
+    const created = adUnitService.createAdUnit({
+      websiteId,
       code,
       name,
-      mediaTypes: mediaTypes || null,
-      floorPrice: floorPrice || null,
-      targeting: targeting || null,
-      sizeMapping: sizeMapping || null,
-      status: 'active',
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    // Audit log
-    db.insert(auditLogs).values({
-      id: uuidv4(),
+      mediaTypes,
+      floorPrice,
+      targeting,
+      sizeMapping,
+    }, website.publisherId, {
       userId: user.userId,
-      action: 'CREATE_AD_UNIT',
-      entityType: 'ad_unit',
-      entityId: adUnitId,
-      newValues: JSON.stringify({ websiteId, code, name }),
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
-      createdAt: now,
     });
 
-    const created = db.select()
-      .from(adUnits)
-      .where(eq(adUnits.id, adUnitId))
-      .get();
-
-    return reply.code(201).send({
-      id: created.id,
-      websiteId: created.websiteId,
-      code: created.code,
-      name: created.name,
-      mediaTypes: created.mediaTypes ? JSON.parse(created.mediaTypes) : null,
-      floorPrice: created.floorPrice,
-      targeting: created.targeting ? JSON.parse(created.targeting) : null,
-      sizeMapping: created.sizeMapping ? JSON.parse(created.sizeMapping) : null,
-      status: created.status,
-      createdAt: created.createdAt,
-      updatedAt: created.updatedAt,
-    });
+    return reply.code(201).send(created);
   });
 
   /**
@@ -205,42 +147,32 @@ export default async function adUnitsRoutes(fastify: FastifyInstance) {
     const { id } = request.params;
     const user = request.user as TokenPayload;
 
-    const adUnit = db.select()
-      .from(adUnits)
-      .where(eq(adUnits.id, id))
-      .get();
+    const adUnit = adUnitService.getAdUnitById(id);
 
     if (!adUnit) {
       return reply.code(404).send({ error: 'Ad unit not found' });
     }
 
     // Get website to check authorization
-    const website = db.select()
-      .from(websites)
-      .where(eq(websites.id, adUnit.websiteId))
-      .get();
+    const website = adUnitService.getWebsiteById(adUnit.websiteId);
 
     if (!website) {
       return reply.code(500).send({ error: 'Data integrity error: website not found' });
     }
 
     // Check authorization
-    if (user.role === 'publisher' && user.publisherId !== website.publisherId) {
+    if (!adUnitService.isAuthorizedForWebsite({
+      role: user.role,
+      publisherId: user.publisherId
+    }, website.publisherId)) {
       return reply.code(403).send({ error: 'Forbidden' });
     }
 
+    const formattedUnit = adUnitService.listAdUnitsByWebsite(adUnit.websiteId)
+      .find(u => u.id === id);
+
     return {
-      id: adUnit.id,
-      websiteId: adUnit.websiteId,
-      code: adUnit.code,
-      name: adUnit.name,
-      mediaTypes: adUnit.mediaTypes ? JSON.parse(adUnit.mediaTypes) : null,
-      floorPrice: adUnit.floorPrice,
-      targeting: adUnit.targeting ? JSON.parse(adUnit.targeting) : null,
-      sizeMapping: adUnit.sizeMapping ? JSON.parse(adUnit.sizeMapping) : null,
-      status: adUnit.status,
-      createdAt: adUnit.createdAt,
-      updatedAt: adUnit.updatedAt,
+      ...formattedUnit,
       website: {
         id: website.id,
         name: website.name,
@@ -268,41 +200,30 @@ export default async function adUnitsRoutes(fastify: FastifyInstance) {
     const updates = request.body;
 
     // Get existing ad unit
-    const existing = db.select()
-      .from(adUnits)
-      .where(eq(adUnits.id, id))
-      .get();
+    const existing = adUnitService.getAdUnitById(id);
 
     if (!existing) {
       return reply.code(404).send({ error: 'Ad unit not found' });
     }
 
     // Get website to check authorization
-    const website = db.select()
-      .from(websites)
-      .where(eq(websites.id, existing.websiteId))
-      .get();
+    const website = adUnitService.getWebsiteById(existing.websiteId);
 
     if (!website) {
       return reply.code(500).send({ error: 'Data integrity error' });
     }
 
     // Check authorization
-    if (user.role === 'publisher' && user.publisherId !== website.publisherId) {
+    if (!adUnitService.isAuthorizedForWebsite({
+      role: user.role,
+      publisherId: user.publisherId
+    }, website.publisherId)) {
       return reply.code(403).send({ error: 'Forbidden' });
     }
 
     // If code is being changed, check for conflicts
     if (updates.code && updates.code !== existing.code) {
-      const conflict = db.select()
-        .from(adUnits)
-        .where(and(
-          eq(adUnits.websiteId, existing.websiteId),
-          eq(adUnits.code, updates.code)
-        ))
-        .get();
-
-      if (conflict) {
+      if (adUnitService.adUnitCodeExists(existing.websiteId, updates.code)) {
         return reply.code(409).send({
           error: 'Conflict',
           message: `Ad unit with code "${updates.code}" already exists for this website`,
@@ -311,54 +232,13 @@ export default async function adUnitsRoutes(fastify: FastifyInstance) {
     }
 
     // Update ad unit
-    const now = new Date().toISOString();
-    const updateData: any = { updatedAt: now };
-
-    if (updates.code) updateData.code = updates.code;
-    if (updates.name) updateData.name = updates.name;
-    if (updates.mediaTypes !== undefined) updateData.mediaTypes = updates.mediaTypes;
-    if (updates.floorPrice !== undefined) updateData.floorPrice = updates.floorPrice;
-    if (updates.targeting !== undefined) updateData.targeting = updates.targeting;
-    if (updates.sizeMapping !== undefined) updateData.sizeMapping = updates.sizeMapping;
-    if (updates.status) updateData.status = updates.status;
-
-    db.update(adUnits)
-      .set(updateData)
-      .where(eq(adUnits.id, id))
-      ;
-
-    // Audit log
-    db.insert(auditLogs).values({
-      id: uuidv4(),
+    const updated = adUnitService.updateAdUnit(id, updates, existing, {
       userId: user.userId,
-      action: 'UPDATE_AD_UNIT',
-      entityType: 'ad_unit',
-      entityId: id,
-      oldValues: JSON.stringify(existing),
-      newValues: JSON.stringify(updates),
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
-      createdAt: now,
     });
 
-    const updated = db.select()
-      .from(adUnits)
-      .where(eq(adUnits.id, id))
-      .get();
-
-    return {
-      id: updated.id,
-      websiteId: updated.websiteId,
-      code: updated.code,
-      name: updated.name,
-      mediaTypes: updated.mediaTypes ? JSON.parse(updated.mediaTypes) : null,
-      floorPrice: updated.floorPrice,
-      targeting: updated.targeting ? JSON.parse(updated.targeting) : null,
-      sizeMapping: updated.sizeMapping ? JSON.parse(updated.sizeMapping) : null,
-      status: updated.status,
-      createdAt: updated.createdAt,
-      updatedAt: updated.updatedAt,
-    };
+    return updated;
   });
 
   /**
@@ -373,47 +253,32 @@ export default async function adUnitsRoutes(fastify: FastifyInstance) {
     const { id } = request.params;
     const user = request.user as TokenPayload;
 
-    const adUnit = db.select()
-      .from(adUnits)
-      .where(eq(adUnits.id, id))
-      .get();
+    const adUnit = adUnitService.getAdUnitById(id);
 
     if (!adUnit) {
       return reply.code(404).send({ error: 'Ad unit not found' });
     }
 
     // Get website to check authorization
-    const website = db.select()
-      .from(websites)
-      .where(eq(websites.id, adUnit.websiteId))
-      .get();
+    const website = adUnitService.getWebsiteById(adUnit.websiteId);
 
     if (!website) {
       return reply.code(500).send({ error: 'Data integrity error' });
     }
 
     // Check authorization
-    if (user.role === 'publisher' && user.publisherId !== website.publisherId) {
+    if (!adUnitService.isAuthorizedForWebsite({
+      role: user.role,
+      publisherId: user.publisherId
+    }, website.publisherId)) {
       return reply.code(403).send({ error: 'Forbidden' });
     }
 
     // Delete ad unit
-    db.delete(adUnits)
-      .where(eq(adUnits.id, id))
-      ;
-
-    // Audit log
-    const now = new Date().toISOString();
-    db.insert(auditLogs).values({
-      id: uuidv4(),
+    adUnitService.deleteAdUnit(id, adUnit, {
       userId: user.userId,
-      action: 'DELETE_AD_UNIT',
-      entityType: 'ad_unit',
-      entityId: id,
-      oldValues: JSON.stringify(adUnit),
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
-      createdAt: now,
     });
 
     return { message: 'Ad unit deleted successfully' };
@@ -437,40 +302,29 @@ export default async function adUnitsRoutes(fastify: FastifyInstance) {
     const user = request.user as TokenPayload;
 
     // Get source ad unit
-    const source = db.select()
-      .from(adUnits)
-      .where(eq(adUnits.id, id))
-      .get();
+    const source = adUnitService.getAdUnitById(id);
 
     if (!source) {
       return reply.code(404).send({ error: 'Ad unit not found' });
     }
 
     // Get website to check authorization
-    const website = db.select()
-      .from(websites)
-      .where(eq(websites.id, source.websiteId))
-      .get();
+    const website = adUnitService.getWebsiteById(source.websiteId);
 
     if (!website) {
       return reply.code(500).send({ error: 'Data integrity error' });
     }
 
     // Check authorization
-    if (user.role === 'publisher' && user.publisherId !== website.publisherId) {
+    if (!adUnitService.isAuthorizedForWebsite({
+      role: user.role,
+      publisherId: user.publisherId
+    }, website.publisherId)) {
       return reply.code(403).send({ error: 'Forbidden' });
     }
 
     // Check for code conflict
-    const existing = db.select()
-      .from(adUnits)
-      .where(and(
-        eq(adUnits.websiteId, source.websiteId),
-        eq(adUnits.code, newCode)
-      ))
-      .get();
-
-    if (existing) {
+    if (adUnitService.adUnitCodeExists(source.websiteId, newCode)) {
       return reply.code(409).send({
         error: 'Conflict',
         message: `Ad unit with code "${newCode}" already exists`,
@@ -478,53 +332,15 @@ export default async function adUnitsRoutes(fastify: FastifyInstance) {
     }
 
     // Create duplicate
-    const newId = uuidv4();
-    const now = new Date().toISOString();
-
-    db.insert(adUnits).values({
-      id: newId,
-      websiteId: source.websiteId,
-      code: newCode,
-      name: newName,
-      mediaTypes: source.mediaTypes,
-      floorPrice: source.floorPrice,
-      targeting: source.targeting,
-      sizeMapping: source.sizeMapping,
-      status: 'active',
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    // Audit log
-    db.insert(auditLogs).values({
-      id: uuidv4(),
+    const created = adUnitService.duplicateAdUnit(id, source, website.publisherId, {
+      newCode,
+      newName,
+    }, {
       userId: user.userId,
-      action: 'DUPLICATE_AD_UNIT',
-      entityType: 'ad_unit',
-      entityId: newId,
-      newValues: JSON.stringify({ sourceId: id, newCode, newName }),
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
-      createdAt: now,
     });
 
-    const created = db.select()
-      .from(adUnits)
-      .where(eq(adUnits.id, newId))
-      .get();
-
-    return reply.code(201).send({
-      id: created.id,
-      websiteId: created.websiteId,
-      code: created.code,
-      name: created.name,
-      mediaTypes: created.mediaTypes ? JSON.parse(created.mediaTypes) : null,
-      floorPrice: created.floorPrice,
-      targeting: created.targeting ? JSON.parse(created.targeting) : null,
-      sizeMapping: created.sizeMapping ? JSON.parse(created.sizeMapping) : null,
-      status: created.status,
-      createdAt: created.createdAt,
-      updatedAt: created.updatedAt,
-    });
+    return reply.code(201).send(created);
   });
 }

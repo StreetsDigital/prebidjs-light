@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import { PrebidMarketplaceModal } from '../../components/PrebidMarketplaceModal';
 import ComponentConfigModal from '../../components/ComponentConfigModal';
+import { useLoadingState } from '../../hooks/useLoadingState';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || '${API_BASE_URL}';
 
 interface Bidder {
   id?: string;
@@ -19,25 +22,23 @@ export function BiddersPage() {
   const publisherId = user?.publisherId;
 
   const [bidders, setBidders] = useState<Bidder[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [deletingBidder, setDeletingBidder] = useState<string | null>(null);
   const [isMarketplaceOpen, setIsMarketplaceOpen] = useState(false);
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [selectedBidder, setSelectedBidder] = useState<Bidder | null>(null);
+
+  const { isLoading: loading, error, setError, withLoading } = useLoadingState(true);
+  const { isLoading: isDeleting, withLoading: withDeleteLoading } = useLoadingState(false);
+  const { isLoading: isAdding, withLoading: withAddLoading } = useLoadingState(false);
 
   // Fetch bidders from API
   useEffect(() => {
     if (!publisherId) return;
 
     const fetchBidders = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
+      const result = await withLoading(async () => {
         const response = await fetch(
-          `http://localhost:3001/api/publishers/${publisherId}/available-bidders`
+          `${API_BASE_URL}/api/publishers/${publisherId}/available-bidders`
         );
 
         if (!response.ok) {
@@ -45,17 +46,16 @@ export function BiddersPage() {
         }
 
         const { data } = await response.json();
-        setBidders(data);
-      } catch (err) {
-        console.error('Error fetching bidders:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load bidders');
-      } finally {
-        setLoading(false);
+        return data;
+      });
+
+      if (result) {
+        setBidders(result);
       }
     };
 
     fetchBidders();
-  }, [publisherId]);
+  }, [publisherId, withLoading]);
 
   const filteredBidders = bidders.filter(
     (bidder) =>
@@ -64,7 +64,7 @@ export function BiddersPage() {
   );
 
   const handleDelete = async (bidder: Bidder) => {
-    if (!publisherId) return;
+    if (!publisherId || isDeleting) return;
 
     const confirmMessage = bidder.isBuiltIn
       ? `Remove ${bidder.name}? This will hide it from your bidder list.`
@@ -72,14 +72,18 @@ export function BiddersPage() {
 
     if (!confirm(confirmMessage)) return;
 
-    try {
-      setDeletingBidder(bidder.code);
+    // Store the previous state for rollback
+    const previousBidders = [...bidders];
 
+    // Optimistically update UI before API call
+    setBidders((prev) => prev.filter((b) => b.code !== bidder.code));
+
+    const result = await withDeleteLoading(async () => {
       // For built-in bidders, use bidder code; for custom bidders, use ID
       const identifier = bidder.isBuiltIn ? bidder.code : bidder.id;
 
       const response = await fetch(
-        `http://localhost:3001/api/publishers/${publisherId}/available-bidders/${identifier}`,
+        `${API_BASE_URL}/api/publishers/${publisherId}/available-bidders/${identifier}`,
         { method: 'DELETE' }
       );
 
@@ -87,28 +91,41 @@ export function BiddersPage() {
         throw new Error('Failed to delete bidder');
       }
 
-      // Optimistically update UI
-      setBidders((prev) => prev.filter((b) => b.code !== bidder.code));
-    } catch (err) {
-      console.error('Error deleting bidder:', err);
+      return true;
+    });
+
+    // Rollback on error
+    if (!result) {
+      setBidders(previousBidders);
       alert('Failed to delete bidder. Please try again.');
-    } finally {
-      setDeletingBidder(null);
     }
   };
 
   // Handle adding component from marketplace
   const handleAddComponent = async (component: any, type: 'bidder' | 'module' | 'analytics') => {
-    if (!publisherId) return;
+    if (!publisherId || isAdding) return;
 
     if (type !== 'bidder') {
       alert('Only bidders can be added from this page. Modules and Analytics coming soon!');
       return;
     }
 
-    try {
+    // Optimistically add the bidder to the UI
+    const optimisticBidder: Bidder = {
+      name: component.name,
+      code: component.code,
+      description: component.description,
+      isBuiltIn: true,
+      isClientSide: component.isClientSide || false,
+      isServerSide: component.isServerSide || false,
+      documentationUrl: component.documentationUrl,
+    };
+
+    setBidders((prev) => [...prev, optimisticBidder]);
+
+    const result = await withAddLoading(async () => {
       const response = await fetch(
-        `http://localhost:3001/api/publishers/${publisherId}/available-bidders`,
+        `${API_BASE_URL}/api/publishers/${publisherId}/available-bidders`,
         {
           method: 'POST',
           headers: {
@@ -125,16 +142,20 @@ export function BiddersPage() {
         throw new Error(data.error || 'Failed to add bidder');
       }
 
-      // Refresh bidders list
+      // Fetch fresh data to get correct ID and all fields
       const fetchResponse = await fetch(
-        `http://localhost:3001/api/publishers/${publisherId}/available-bidders`
+        `${API_BASE_URL}/api/publishers/${publisherId}/available-bidders`
       );
       const { data } = await fetchResponse.json();
-      setBidders(data);
-    } catch (err) {
-      console.error('Error adding bidder:', err);
-      alert(err instanceof Error ? err.message : 'Failed to add bidder');
-      throw err; // Re-throw to let modal handle the error
+      return data;
+    });
+
+    if (result) {
+      setBidders(result);
+    } else {
+      // Rollback optimistic update on error
+      setBidders((prev) => prev.filter((b) => b.code !== component.code));
+      throw new Error('Failed to add bidder'); // Re-throw to let modal handle the error
     }
   };
 
@@ -333,10 +354,10 @@ export function BiddersPage() {
                     <button
                       type="button"
                       onClick={() => handleDelete(bidder)}
-                      disabled={deletingBidder === bidder.code}
+                      disabled={isDeleting}
                       className="text-sm text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {deletingBidder === bidder.code ? 'Removing...' : 'Remove'}
+                      {isDeleting ? 'Removing...' : 'Remove'}
                     </button>
                   </div>
                 </div>

@@ -14,7 +14,7 @@ if (!fs.existsSync(dataDir)) {
 }
 
 // Initialize SQLite database
-const sqlite: any = new Database(DB_PATH);
+const sqlite = new Database(DB_PATH);
 
 // Enable foreign keys
 sqlite.pragma('journal_mode = WAL');
@@ -26,9 +26,39 @@ export const db = drizzle(sqlite, { schema });
 // Export schema for use in other files
 export * from './schema';
 
+// Whitelist of allowed table names for PRAGMA queries
+const ALLOWED_TABLES = [
+  'users',
+  'publishers',
+  'websites',
+  'ad_units',
+  'wrapper_configs',
+  'targeting_rules',
+  'bidders',
+  'available_bidders',
+  'publisher_bidders',
+  'analytics_events',
+  'component_parameters',
+  'component_parameter_values',
+  'migrations',
+  'scheduled_reports',
+  'password_reset_tokens',
+];
+
+/**
+ * Validates table name against whitelist before PRAGMA queries
+ * @param table - Table name to validate
+ * @throws Error if table name is not in whitelist
+ */
+function validateTableName(table: string): void {
+  if (!ALLOWED_TABLES.includes(table)) {
+    throw new Error(`Invalid table name: ${table}. Table not in allowed list.`);
+  }
+}
+
 // Initialize database tables
 export function initializeDatabase() {
-  console.log('Initializing database...');
+  // Silent initialization - logs handled by server startup
 
   // Create tables if they don't exist
   sqlite.exec(`
@@ -291,13 +321,23 @@ export function initializeDatabase() {
   const userCount = db.select().from(schema.users).all().length;
 
   if (userCount === 0 && process.env.AUTO_SEED_ADMIN === 'true') {
-    console.log('No users found, auto-seeding super admin...');
+    // Auto-seed admin user on first run
     import('./seed-admin').then(({ seedSuperAdmin }) => {
       seedSuperAdmin().catch(console.error);
     });
   }
+}
 
-  console.log('Database initialized');
+// Migration definition type
+interface Migration {
+  name: string;
+  sql: string;
+  columnCheck?: {
+    table: string;
+    column: string;
+    addSql: string;
+  };
+  postSql?: string;
 }
 
 // Migration system for schema updates
@@ -312,7 +352,7 @@ function runMigrations() {
   `);
 
   // Define migrations
-  const migrations = [
+  const migrations: Migration[] = [
     {
       name: 'add_websites_and_website_id',
       sql: `
@@ -886,6 +926,8 @@ function runMigrations() {
         // Handle column additions (SQLite doesn't support IF NOT EXISTS for columns)
         if (migration.columnCheck) {
           const { table, column, addSql } = migration.columnCheck;
+          // Validate table name before executing PRAGMA query
+          validateTableName(table);
           const columns = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
           const hasColumn = columns.some((col) => col.name === column);
           if (!hasColumn) {
@@ -894,8 +936,8 @@ function runMigrations() {
         }
 
         // Run post-migration SQL (like index creation)
-        if ((migration as any).postSql) {
-          sqlite.exec((migration as any).postSql);
+        if (migration.postSql) {
+          sqlite.exec(migration.postSql);
         }
 
         // Mark migration as applied
@@ -903,7 +945,7 @@ function runMigrations() {
           migration.name,
           new Date().toISOString()
         );
-        console.log(`Migration applied: ${migration.name}`);
+        // Migration applied successfully
       } catch (err) {
         console.error(`Migration failed: ${migration.name}`, err);
         throw err;
@@ -913,4 +955,8 @@ function runMigrations() {
 }
 
 // Export raw sqlite for direct queries if needed
+// Type is inferred from better-sqlite3
 export { sqlite };
+
+// Export table name validator for use in other modules
+export { validateTableName };

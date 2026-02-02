@@ -299,7 +299,7 @@ export async function seedParameterSchemas(): Promise<void> {
     await storeComponentSchema('analytics', analyticsCode, params, now);
   }
 
-  console.log('Parameter schemas seeded successfully');
+  // Parameter schemas seeded successfully
 }
 
 /**
@@ -394,11 +394,7 @@ export async function parseMarkdownFromPrebidOrg(
  * Should be run periodically (e.g., weekly via cron job)
  */
 export async function refreshParameterSchemas(): Promise<void> {
-  console.log('Refreshing parameter schemas from Prebid.org...');
-
   // In production, this would fetch latest docs from Prebid.org
   // For now, just re-seed with our predefined schemas
   await seedParameterSchemas();
-
-  console.log('Parameter schemas refreshed successfully');
 }

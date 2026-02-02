@@ -1,15 +1,40 @@
 import fs from 'fs';
 import path from 'path';
 import { WrapperConfig, RequestAttributes } from './targeting';
+import { safeJsonParseObject, safeJsonParseArray } from './safe-json';
+import { TIMEOUTS } from '../constants/timeouts';
 
 // In-memory cache for generated wrappers
 interface CacheEntry {
   code: string;
   expires: number;
+  timestamp: number;
 }
 
 const wrapperCache = new Map<string, CacheEntry>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL = TIMEOUTS.CACHE_TTL;
+const CACHE_MAX_SIZE = 1000;
+const CLEANUP_INTERVAL = TIMEOUTS.CLEANUP_INTERVAL;
+
+// Periodic cache cleanup to prevent unbounded growth
+setInterval(() => {
+  const now = Date.now();
+  const entries = Array.from(wrapperCache.entries());
+
+  // Remove expired entries
+  for (const [key, entry] of entries) {
+    if (now > entry.expires) {
+      wrapperCache.delete(key);
+    }
+  }
+
+  // If still too large, remove oldest entries
+  if (wrapperCache.size > CACHE_MAX_SIZE) {
+    const sorted = entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+    const toRemove = sorted.slice(0, wrapperCache.size - CACHE_MAX_SIZE);
+    toRemove.forEach(([key]) => wrapperCache.delete(key));
+  }
+}, CLEANUP_INTERVAL);
 
 // Embedded config structure that gets injected into wrapper
 export interface EmbeddedConfig {
@@ -71,9 +96,11 @@ export function getCachedWrapper(cacheKey: string): string | null {
  * Store wrapper in cache
  */
 export function cacheWrapper(cacheKey: string, code: string): void {
+  const now = Date.now();
   wrapperCache.set(cacheKey, {
     code,
-    expires: Date.now() + CACHE_TTL,
+    expires: now + CACHE_TTL,
+    timestamp: now,
   });
 }
 
@@ -100,18 +127,18 @@ function buildEmbeddedConfig(
   ruleId?: string
 ): EmbeddedConfig {
   // Parse JSON fields
-  const customPriceBucket = config.customPriceBucket ? JSON.parse(config.customPriceBucket) : undefined;
-  const userSync = config.userSync ? JSON.parse(config.userSync) : undefined;
-  const targetingControls = config.targetingControls ? JSON.parse(config.targetingControls) : undefined;
-  const currencyConfig = config.currencyConfig ? JSON.parse(config.currencyConfig) : undefined;
-  const consentManagement = config.consentManagement ? JSON.parse(config.consentManagement) : undefined;
-  const floorsConfig = config.floorsConfig ? JSON.parse(config.floorsConfig) : undefined;
-  const userIdModules = config.userIdModules ? JSON.parse(config.userIdModules) : undefined;
-  const videoConfig = config.videoConfig ? JSON.parse(config.videoConfig) : undefined;
-  const s2sConfig = config.s2sConfig ? JSON.parse(config.s2sConfig) : undefined;
-  const customConfig = config.customConfig ? JSON.parse(config.customConfig) : undefined;
-  const bidders = config.bidders ? JSON.parse(config.bidders) : [];
-  const adUnits = config.adUnits ? JSON.parse(config.adUnits) : {};
+  const customPriceBucket = safeJsonParseObject(config.customPriceBucket, undefined);
+  const userSync = safeJsonParseObject(config.userSync, undefined);
+  const targetingControls = safeJsonParseObject(config.targetingControls, undefined);
+  const currencyConfig = safeJsonParseObject(config.currencyConfig, undefined);
+  const consentManagement = safeJsonParseObject(config.consentManagement, undefined);
+  const floorsConfig = safeJsonParseObject(config.floorsConfig, undefined);
+  const userIdModules = safeJsonParseArray(config.userIdModules, undefined);
+  const videoConfig = safeJsonParseObject(config.videoConfig, undefined);
+  const s2sConfig = safeJsonParseObject(config.s2sConfig, undefined);
+  const customConfig = safeJsonParseObject(config.customConfig, undefined);
+  const bidders = safeJsonParseArray(config.bidders, []);
+  const adUnits = safeJsonParseObject(config.adUnits, {});
 
   return {
     publisherId,
@@ -172,7 +199,7 @@ export function generateWrapper(
       } catch {
         // If wrapper doesn't exist, return a minimal stub
         console.warn('Wrapper file not found, using stub');
-        baseWrapper = '(function(){console.log("Wrapper stub - build wrapper first");})();';
+        baseWrapper = '(function(){/* Wrapper stub - build wrapper first */})();';
       }
     }
   }
@@ -194,7 +221,7 @@ ${baseWrapper}
 /**
  * Get cache statistics
  */
-export function getCacheStats() {
+export function getCacheStats(): { size: number; entries: string[] } {
   return {
     size: wrapperCache.size,
     entries: Array.from(wrapperCache.keys()),

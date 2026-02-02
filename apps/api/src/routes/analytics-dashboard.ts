@@ -3,6 +3,7 @@ import { db } from '../db/index.js';
 import { bidderMetrics } from '../db/schema.js';
 import { eq, and, gte, lte, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
+import { requireAdmin } from '../middleware/auth';
 
 interface AnalyticsQuery {
   startDate?: string;
@@ -19,7 +20,9 @@ interface AnalyticsQuery {
 export default async function analyticsDashboardRoutes(fastify: FastifyInstance) {
 
   // Get bidder performance metrics
-  fastify.get('/publishers/:publisherId/analytics/bidders', async (request, reply) => {
+  fastify.get('/publishers/:publisherId/analytics/bidders', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId } = request.params as { publisherId: string };
     const { startDate, endDate, granularity = 'day', bidderCode } = request.query as AnalyticsQuery;
 
@@ -75,7 +78,9 @@ export default async function analyticsDashboardRoutes(fastify: FastifyInstance)
   });
 
   // Get geographic analytics
-  fastify.get('/publishers/:publisherId/analytics/geo', async (request, reply) => {
+  fastify.get('/publishers/:publisherId/analytics/geo', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId } = request.params as { publisherId: string };
     const { startDate, endDate, metric = 'winRate' } = request.query as AnalyticsQuery;
 
@@ -123,7 +128,9 @@ export default async function analyticsDashboardRoutes(fastify: FastifyInstance)
   });
 
   // Get time series data
-  fastify.get('/publishers/:publisherId/analytics/timeseries', async (request, reply) => {
+  fastify.get('/publishers/:publisherId/analytics/timeseries', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId } = request.params as { publisherId: string };
     const { startDate, endDate, metric = 'revenue' } = request.query as AnalyticsQuery;
 
@@ -172,7 +179,9 @@ export default async function analyticsDashboardRoutes(fastify: FastifyInstance)
   });
 
   // Get component health
-  fastify.get('/publishers/:publisherId/analytics/health', async (request, reply) => {
+  fastify.get('/publishers/:publisherId/analytics/health', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId } = request.params as { publisherId: string };
     const { componentType, componentCode } = request.query as {
       componentType?: string;
@@ -266,7 +275,9 @@ export default async function analyticsDashboardRoutes(fastify: FastifyInstance)
   });
 
   // Ingest metrics (for publishers to submit performance data)
-  fastify.post('/publishers/:publisherId/analytics/ingest', async (request, reply) => {
+  fastify.post('/publishers/:publisherId/analytics/ingest', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId } = request.params as { publisherId: string };
     const bodyMetrics = request.body as any;
 

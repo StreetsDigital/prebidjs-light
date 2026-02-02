@@ -5,6 +5,8 @@
  * This eliminates the 50-200ms config API fetch for 3-4x faster auction starts.
  */
 
+import { ANALYTICS } from './constants/analytics';
+
 // Embedded config interface (injected by server)
 interface EmbeddedConfig {
   publisherId: string;
@@ -133,8 +135,8 @@ function emitEvent(event: string, data: unknown): void {
 }
 
 // Analytics batching
-const BATCH_SIZE = 10;
-const BATCH_INTERVAL = 30000;
+const BATCH_SIZE = ANALYTICS.BATCH_SIZE;
+const BATCH_INTERVAL = ANALYTICS.BATCH_INTERVAL;
 let batchQueue: unknown[] = [];
 let batchTimer: number | null = null;
 

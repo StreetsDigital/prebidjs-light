@@ -8,6 +8,8 @@ import {
   getAllKnownBidders,
   isValidBidderCode
 } from '../utils/bidder-registry';
+import { requireAdmin } from '../middleware/auth';
+import { handleError, ApiError } from '../utils/error-handler';
 
 // Built-in bidders (always available to all publishers)
 const BUILT_IN_BIDDERS = [
@@ -37,7 +39,9 @@ export default async function customBiddersRoutes(fastify: FastifyInstance) {
    * GET /api/publishers/:publisherId/available-bidders
    * List all available bidders (built-in + custom)
    */
-  fastify.get('/:publisherId/available-bidders', async (request: FastifyRequest<{ Params: { publisherId: string } }>, reply: FastifyReply) => {
+  fastify.get('/:publisherId/available-bidders', {
+    preHandler: requireAdmin,
+  }, async (request: FastifyRequest<{ Params: { publisherId: string } }>, reply: FastifyReply) => {
     const { publisherId } = request.params;
 
     try {
@@ -97,7 +101,7 @@ export default async function customBiddersRoutes(fastify: FastifyInstance) {
       return reply.send({ data: allBidders });
     } catch (error) {
       fastify.log.error(error);
-      return reply.status(500).send({ error: 'Failed to fetch bidders' });
+      return handleError(reply, error);
     }
   });
 
@@ -105,7 +109,9 @@ export default async function customBiddersRoutes(fastify: FastifyInstance) {
    * POST /api/publishers/:publisherId/available-bidders
    * Add a custom bidder OR re-add a removed built-in bidder
    */
-  fastify.post('/:publisherId/available-bidders', async (request: FastifyRequest<{ Params: { publisherId: string }; Body: AddBidderRequest }>, reply: FastifyReply) => {
+  fastify.post('/:publisherId/available-bidders', {
+    preHandler: requireAdmin,
+  }, async (request: FastifyRequest<{ Params: { publisherId: string }; Body: AddBidderRequest }>, reply: FastifyReply) => {
     const { publisherId } = request.params;
     const { bidderCode, bidderName } = request.body;
 
@@ -208,7 +214,7 @@ export default async function customBiddersRoutes(fastify: FastifyInstance) {
       });
     } catch (error) {
       fastify.log.error(error);
-      return reply.status(500).send({ error: 'Failed to add custom bidder' });
+      return handleError(reply, error);
     }
   });
 
@@ -218,7 +224,9 @@ export default async function customBiddersRoutes(fastify: FastifyInstance) {
    * For custom bidders: delete from publisher_custom_bidders
    * For built-in bidders: add to publisher_removed_bidders
    */
-  fastify.delete('/:publisherId/available-bidders/:bidderId', async (request: FastifyRequest<DeleteBidderRequest>, reply: FastifyReply) => {
+  fastify.delete('/:publisherId/available-bidders/:bidderId', {
+    preHandler: requireAdmin,
+  }, async (request: FastifyRequest<DeleteBidderRequest>, reply: FastifyReply) => {
     const { publisherId, bidderId } = request.params;
 
     try {
@@ -277,8 +285,7 @@ export default async function customBiddersRoutes(fastify: FastifyInstance) {
       return reply.send({ message: 'Bidder removed successfully' });
     } catch (error) {
       fastify.log.error(error);
-      return reply.status(500).send({ error: 'Failed to remove bidder' });
+      return handleError(reply, error);
     }
   });
-
 }

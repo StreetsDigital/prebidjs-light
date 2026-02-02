@@ -2,7 +2,11 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { db, websites, adUnits, publishers, auditLogs } from '../db';
 import { eq, and } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
-import { requireAuth, requireAdmin, TokenPayload } from '../middleware/auth';
+import { requireAuth, TokenPayload } from '../middleware/auth';
+import { validateUUID } from '../utils/validation';
+import { safeJsonParseObject } from '../utils/safe-json';
+import { getErrorMessage } from '../utils/type-helpers';
+import { PAGINATION } from '../constants/pagination';
 
 interface CreateWebsiteBody {
   name: string;
@@ -25,13 +29,22 @@ interface ListWebsitesQuery {
 }
 
 export default async function websiteRoutes(fastify: FastifyInstance) {
-  // List all websites for a publisher
+  /**
+   * Get all websites for a publisher with pagination and filtering
+   * @route GET /api/publishers/:publisherId/websites
+   * @access Authenticated (admin can see all, publisher can only see their own)
+   * @param {string} publisherId - Publisher UUID
+   * @param {ListWebsitesQuery} query - Filter and pagination parameters
+   * @returns {Promise<{websites: Website[], pagination: PaginationInfo}>} Paginated list of websites with ad unit counts
+   * @throws {404} Publisher not found
+   * @throws {403} Forbidden - publisher trying to access another publisher's websites
+   */
   fastify.get<{ Params: { publisherId: string }; Querystring: ListWebsitesQuery }>('/publishers/:publisherId/websites', {
     preHandler: requireAuth,
   }, async (request: FastifyRequest<{ Params: { publisherId: string }; Querystring: ListWebsitesQuery }>, reply: FastifyReply) => {
     const { publisherId } = request.params;
     const user = request.user as TokenPayload;
-    const { page = '1', limit = '50', status, search } = request.query;
+    const { page = '1', limit = String(PAGINATION.WEBSITES_PAGE_SIZE), status, search } = request.query;
 
     // Check if publisher exists
     const publisher = db.select().from(publishers).where(eq(publishers.id, publisherId)).get();
@@ -45,7 +58,7 @@ export default async function websiteRoutes(fastify: FastifyInstance) {
     }
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+    const limitNum = Math.min(PAGINATION.MAX_PAGE_SIZE, Math.max(1, parseInt(limit, 10) || PAGINATION.WEBSITES_PAGE_SIZE));
     const offset = (pageNum - 1) * limitNum;
 
     let allWebsites = db.select().from(websites).where(eq(websites.publisherId, publisherId)).all();
@@ -94,11 +107,29 @@ export default async function websiteRoutes(fastify: FastifyInstance) {
     };
   });
 
-  // Get single website
+  /**
+   * Get a single website by ID with associated ad units
+   * @route GET /api/publishers/:publisherId/websites/:websiteId
+   * @access Authenticated
+   * @param {string} publisherId - Publisher UUID
+   * @param {string} websiteId - Website UUID
+   * @returns {Promise<Website & {adUnits: AdUnit[]}>} Website details with all ad units
+   * @throws {400} Invalid UUID format
+   * @throws {404} Website not found
+   * @throws {403} Forbidden
+   */
   fastify.get<{ Params: { publisherId: string; websiteId: string } }>('/publishers/:publisherId/websites/:websiteId', {
     preHandler: requireAuth,
   }, async (request, reply) => {
     const { publisherId, websiteId } = request.params;
+
+    // Validate UUID parameter
+    try {
+      validateUUID(websiteId, 'Website ID');
+    } catch (err) {
+      return reply.code(400).send({ error: getErrorMessage(err) });
+    }
+
     const user = request.user as TokenPayload;
 
     // Check authorization
@@ -121,12 +152,24 @@ export default async function websiteRoutes(fastify: FastifyInstance) {
       ...website,
       adUnits: websiteAdUnits.map(u => ({
         ...u,
-        mediaTypes: u.mediaTypes ? JSON.parse(u.mediaTypes) : null,
+        mediaTypes: safeJsonParseObject(u.mediaTypes, null),
       })),
     };
   });
 
-  // Create website
+  /**
+   * Create a new website for a publisher
+   * @route POST /api/publishers/:publisherId/websites
+   * @access Authenticated
+   * @param {string} publisherId - Publisher UUID
+   * @param {CreateWebsiteBody} body - Website details (name, domain, notes)
+   * @returns {Promise<Website>} Newly created website
+   * @throws {404} Publisher not found
+   * @throws {400} Missing required fields (name, domain)
+   * @throws {409} Website with this domain already exists for this publisher
+   * @throws {403} Forbidden
+   * @description Domain is normalized (removes protocol and trailing slash) before storage
+   */
   fastify.post<{ Params: { publisherId: string }; Body: CreateWebsiteBody }>('/publishers/:publisherId/websites', {
     preHandler: requireAuth,
   }, async (request, reply) => {
@@ -174,7 +217,7 @@ export default async function websiteRoutes(fastify: FastifyInstance) {
       notes: notes || null,
       createdAt: now,
       updatedAt: now,
-    });
+    }).run();
 
     // Log audit entry
     db.insert(auditLogs).values({
@@ -188,7 +231,7 @@ export default async function websiteRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    });
+    }).run();
 
     const newWebsite = db.select().from(websites).where(eq(websites.id, websiteId)).get();
 
@@ -198,11 +241,32 @@ export default async function websiteRoutes(fastify: FastifyInstance) {
     });
   });
 
-  // Update website
+  /**
+   * Update an existing website
+   * @route PUT /api/publishers/:publisherId/websites/:websiteId
+   * @access Authenticated
+   * @param {string} publisherId - Publisher UUID
+   * @param {string} websiteId - Website UUID
+   * @param {UpdateWebsiteBody} body - Fields to update (name, domain, status, notes)
+   * @returns {Promise<Website>} Updated website with ad unit count
+   * @throws {400} Invalid UUID format
+   * @throws {404} Website not found
+   * @throws {409} Domain already exists for this publisher
+   * @throws {403} Forbidden
+   * @description Logs changes to audit log
+   */
   fastify.put<{ Params: { publisherId: string; websiteId: string }; Body: UpdateWebsiteBody }>('/publishers/:publisherId/websites/:websiteId', {
     preHandler: requireAuth,
   }, async (request, reply) => {
     const { publisherId, websiteId } = request.params;
+
+    // Validate UUID parameter
+    try {
+      validateUUID(websiteId, 'Website ID');
+    } catch (err) {
+      return reply.code(400).send({ error: getErrorMessage(err) });
+    }
+
     const { name, domain, status, notes } = request.body;
     const user = request.user as TokenPayload;
 
@@ -256,7 +320,7 @@ export default async function websiteRoutes(fastify: FastifyInstance) {
         updatedAt: now,
       })
       .where(eq(websites.id, websiteId))
-      ;
+      .run();
 
     const updated = db.select().from(websites).where(eq(websites.id, websiteId)).get();
 
@@ -277,7 +341,7 @@ export default async function websiteRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    });
+    }).run();
 
     // Get ad unit count
     const adUnitCount = db.select().from(adUnits).where(eq(adUnits.websiteId, websiteId)).all().length;
@@ -288,11 +352,30 @@ export default async function websiteRoutes(fastify: FastifyInstance) {
     };
   });
 
-  // Delete website
+  /**
+   * Delete a website (permanent deletion)
+   * @route DELETE /api/publishers/:publisherId/websites/:websiteId
+   * @access Authenticated
+   * @param {string} publisherId - Publisher UUID
+   * @param {string} websiteId - Website UUID
+   * @returns {Promise<void>} 204 No Content
+   * @throws {400} Invalid UUID format
+   * @throws {404} Website not found
+   * @throws {403} Forbidden
+   * @description Permanently deletes website. Associated ad units are preserved but their websiteId is set to null.
+   */
   fastify.delete<{ Params: { publisherId: string; websiteId: string } }>('/publishers/:publisherId/websites/:websiteId', {
     preHandler: requireAuth,
   }, async (request, reply) => {
     const { publisherId, websiteId } = request.params;
+
+    // Validate UUID parameter
+    try {
+      validateUUID(websiteId, 'Website ID');
+    } catch (err) {
+      return reply.code(400).send({ error: getErrorMessage(err) });
+    }
+
     const user = request.user as TokenPayload;
 
     // Check authorization
@@ -327,16 +410,16 @@ export default async function websiteRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    });
+    }).run();
 
     // Update ad units to remove website reference (don't delete them)
     db.update(adUnits)
-      .set({ websiteId: null as any })
+      .set({ websiteId: null })
       .where(eq(adUnits.websiteId, websiteId))
-      ;
+      .run();
 
     // Delete the website
-    db.delete(websites).where(eq(websites.id, websiteId));
+    db.delete(websites).where(eq(websites.id, websiteId)).run();
 
     return reply.code(204).send();
   });

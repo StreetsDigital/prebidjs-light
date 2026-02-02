@@ -70,10 +70,11 @@ export const websites = sqliteTable('websites', {
 });
 
 // Ad units table - BOTTOM TIER (Website → Ad Unit)
-// ⚠️ BREAKING CHANGE: Removed publisherId, websiteId is now REQUIRED
+// NOTE: Has both publisherId (required for backward compatibility) and websiteId (optional)
 export const adUnits = sqliteTable('ad_units', {
   id: text('id').primaryKey(),
-  websiteId: text('website_id').notNull(), // REQUIRED - every ad unit must belong to a website
+  publisherId: text('publisher_id').notNull(), // Required - for backward compatibility
+  websiteId: text('website_id'), // Optional - for hierarchical organization
   code: text('code').notNull(), // Unique identifier for this ad unit
   name: text('name').notNull(), // Human-readable name
   mediaTypes: text('media_types'), // JSON object stored as text

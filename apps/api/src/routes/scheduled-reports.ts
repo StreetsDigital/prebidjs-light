@@ -3,6 +3,7 @@ import { db, scheduledReports, auditLogs } from '../db';
 import { eq, desc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth, requireAdmin, TokenPayload } from '../middleware/auth';
+import { safeJsonParse, safeJsonParseArray, safeJsonParseObject } from '../utils/safe-json';
 
 interface CreateScheduledReportBody {
   name: string;
@@ -57,7 +58,7 @@ export default async function scheduledReportsRoutes(fastify: FastifyInstance) {
     return {
       scheduledReports: reports.map(r => ({
         ...r,
-        recipients: r.recipients ? JSON.parse(r.recipients) : [],
+        recipients: safeJsonParseArray(r.recipients, []),
       })),
     };
   });
@@ -76,7 +77,7 @@ export default async function scheduledReportsRoutes(fastify: FastifyInstance) {
 
     return {
       ...report,
-      recipients: report.recipients ? JSON.parse(report.recipients) : [],
+      recipients: safeJsonParseArray(report.recipients, []),
     };
   });
 
@@ -117,7 +118,7 @@ export default async function scheduledReportsRoutes(fastify: FastifyInstance) {
       nextRunAt,
       createdAt: now,
       updatedAt: now,
-    } as any);
+    } as any).run();
 
     // Log audit entry
     db.insert(auditLogs).values({
@@ -131,13 +132,13 @@ export default async function scheduledReportsRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    });
+    }).run();
 
     const newReport = db.select().from(scheduledReports).where(eq(scheduledReports.id, id)).get();
 
     return reply.code(201).send({
       ...newReport,
-      recipients: newReport?.recipients ? JSON.parse(newReport.recipients) : [],
+      recipients: safeJsonParseArray(newReport?.recipients, []),
     });
   });
 
@@ -169,7 +170,7 @@ export default async function scheduledReportsRoutes(fastify: FastifyInstance) {
       name: report.name,
       reportType: report.reportType,
       frequency: report.frequency,
-      recipients: report.recipients ? JSON.parse(report.recipients) : [],
+      recipients: safeJsonParseArray(report.recipients, []),
       format: report.format,
       isActive: report.isActive,
     };
@@ -195,7 +196,7 @@ export default async function scheduledReportsRoutes(fastify: FastifyInstance) {
         updatedAt: now,
       } as any)
       .where(eq(scheduledReports.id, id))
-      ;
+      .run();
 
     const updated = db.select().from(scheduledReports).where(eq(scheduledReports.id, id)).get();
 
@@ -211,18 +212,18 @@ export default async function scheduledReportsRoutes(fastify: FastifyInstance) {
         name: updated?.name,
         reportType: updated?.reportType,
         frequency: updated?.frequency,
-        recipients: updated?.recipients ? JSON.parse(updated.recipients) : [],
+        recipients: safeJsonParseArray(updated?.recipients, []),
         format: updated?.format,
         isActive: updated?.isActive,
       }),
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    });
+    }).run();
 
     return {
       ...updated,
-      recipients: updated?.recipients ? JSON.parse(updated.recipients) : [],
+      recipients: safeJsonParseArray(updated?.recipients, []),
     };
   });
 
@@ -251,16 +252,16 @@ export default async function scheduledReportsRoutes(fastify: FastifyInstance) {
         name: report.name,
         reportType: report.reportType,
         frequency: report.frequency,
-        recipients: report.recipients ? JSON.parse(report.recipients) : [],
+        recipients: safeJsonParseArray(report.recipients, []),
         isActive: report.isActive,
       }),
       newValues: null,
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] || null,
       createdAt: now,
-    });
+    }).run();
 
-    db.delete(scheduledReports).where(eq(scheduledReports.id, id));
+    db.delete(scheduledReports).where(eq(scheduledReports.id, id)).run();
 
     return reply.code(204).send();
   });

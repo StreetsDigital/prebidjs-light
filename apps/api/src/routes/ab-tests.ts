@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyPluginOptions } from 'fastify';
 import { db, abTests, abTestVariants, auditLogs, publishers } from '../db';
 import { eq, and, desc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
+import { safeJsonParse, safeJsonParseArray, safeJsonParseObject } from '../utils/safe-json';
 
 interface CreateTestBody {
   name: string;
@@ -96,8 +97,8 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
         ...test,
         variants: variants.map(v => ({
           ...v,
-          floorsConfig: v.floorsConfig ? JSON.parse(v.floorsConfig) : null,
-          bidderOverrides: v.bidderOverrides ? JSON.parse(v.bidderOverrides) : null,
+          floorsConfig: safeJsonParseObject(v.floorsConfig, null),
+          bidderOverrides: safeJsonParseObject(v.bidderOverrides, null),
         })),
       };
     });
@@ -129,8 +130,8 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
       ...test,
       variants: variants.map(v => ({
         ...v,
-        floorsConfig: v.floorsConfig ? JSON.parse(v.floorsConfig) : null,
-        bidderOverrides: v.bidderOverrides ? JSON.parse(v.bidderOverrides) : null,
+        floorsConfig: safeJsonParseObject(v.floorsConfig, null),
+        bidderOverrides: safeJsonParseObject(v.bidderOverrides, null),
       })),
     };
   });
@@ -203,7 +204,7 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
       level,
       createdAt: now,
       updatedAt: now,
-    });
+    }).run();
 
     // Create variants
     for (const variant of body.variants) {
@@ -222,7 +223,7 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
         additionalBidders: variant.additionalBidders ? JSON.stringify(variant.additionalBidders) : null,
         createdAt: now,
         updatedAt: now,
-      } as any);
+      } as any).run();
     }
 
     // Audit log
@@ -234,7 +235,7 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
       entityId: testId,
       newValues: JSON.stringify({ name: body.name, variants: body.variants.length }),
       createdAt: now,
-    });
+    }).run();
 
     // Return the created test with variants
     const createdTest = db.select().from(abTests).where(eq(abTests.id, testId)).get();
@@ -244,8 +245,8 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
       ...createdTest,
       variants: createdVariants.map(v => ({
         ...v,
-        floorsConfig: v.floorsConfig ? JSON.parse(v.floorsConfig) : null,
-        bidderOverrides: v.bidderOverrides ? JSON.parse(v.bidderOverrides) : null,
+        floorsConfig: safeJsonParseObject(v.floorsConfig, null),
+        bidderOverrides: safeJsonParseObject(v.bidderOverrides, null),
       })),
     });
   });
@@ -275,7 +276,7 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
     if (body.startDate !== undefined) updates.startDate = body.startDate;
     if (body.endDate !== undefined) updates.endDate = body.endDate;
 
-    db.update(abTests).set(updates).where(eq(abTests.id, testId));
+    db.update(abTests).set(updates).where(eq(abTests.id, testId)).run();
 
     // Audit log
     db.insert(auditLogs).values({
@@ -287,7 +288,7 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
       oldValues: JSON.stringify({ name: test.name, status: test.status }),
       newValues: JSON.stringify(updates),
       createdAt: now,
-    });
+    }).run();
 
     // Return updated test
     const updatedTest = db.select().from(abTests).where(eq(abTests.id, testId)).get();
@@ -297,8 +298,8 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
       ...updatedTest,
       variants: variants.map(v => ({
         ...v,
-        floorsConfig: v.floorsConfig ? JSON.parse(v.floorsConfig) : null,
-        bidderOverrides: v.bidderOverrides ? JSON.parse(v.bidderOverrides) : null,
+        floorsConfig: safeJsonParseObject(v.floorsConfig, null),
+        bidderOverrides: safeJsonParseObject(v.bidderOverrides, null),
       })),
     };
   });
@@ -343,7 +344,7 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
     if (body.bidderOverrides !== undefined) updates.bidderOverrides = JSON.stringify(body.bidderOverrides);
     if (body.additionalBidders !== undefined) updates.additionalBidders = JSON.stringify(body.additionalBidders);
 
-    db.update(abTestVariants).set(updates).where(eq(abTestVariants.id, variantId));
+    db.update(abTestVariants).set(updates).where(eq(abTestVariants.id, variantId)).run();
 
     // Audit log
     db.insert(auditLogs).values({
@@ -354,15 +355,15 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
       entityId: variantId,
       newValues: JSON.stringify(updates),
       createdAt: now,
-    });
+    }).run();
 
     // Return updated variant
     const updatedVariant = db.select().from(abTestVariants).where(eq(abTestVariants.id, variantId)).get();
     return {
       ...updatedVariant,
-      floorsConfig: updatedVariant?.floorsConfig ? JSON.parse(updatedVariant.floorsConfig) : null,
-      bidderOverrides: updatedVariant?.bidderOverrides ? JSON.parse(updatedVariant.bidderOverrides) : null,
-      additionalBidders: updatedVariant?.additionalBidders ? JSON.parse(updatedVariant.additionalBidders) : null,
+      floorsConfig: safeJsonParseObject(updatedVariant?.floorsConfig, null),
+      bidderOverrides: safeJsonParseObject(updatedVariant?.bidderOverrides, null),
+      additionalBidders: safeJsonParseArray(updatedVariant?.additionalBidders, null),
     };
   });
 
@@ -382,10 +383,10 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
     }
 
     // Delete variants first
-    db.delete(abTestVariants).where(eq(abTestVariants.testId, testId));
+    db.delete(abTestVariants).where(eq(abTestVariants.testId, testId)).run();
 
     // Delete test
-    db.delete(abTests).where(eq(abTests.id, testId));
+    db.delete(abTests).where(eq(abTests.id, testId)).run();
 
     // Audit log
     db.insert(auditLogs).values({
@@ -396,7 +397,7 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
       entityId: testId,
       oldValues: JSON.stringify({ name: test.name }),
       createdAt: new Date().toISOString(),
-    });
+    }).run();
 
     return { success: true };
   });
@@ -434,9 +435,9 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
         ...nestedTest,
         variants: variants.map(v => ({
           ...v,
-          floorsConfig: v.floorsConfig ? JSON.parse(v.floorsConfig) : null,
-          bidderOverrides: v.bidderOverrides ? JSON.parse(v.bidderOverrides) : null,
-          additionalBidders: v.additionalBidders ? JSON.parse(v.additionalBidders) : null,
+          floorsConfig: safeJsonParseObject(v.floorsConfig, null),
+          bidderOverrides: safeJsonParseObject(v.bidderOverrides, null),
+          additionalBidders: safeJsonParseObject(v.additionalBidders, null),
         })),
       };
     });
@@ -468,8 +469,8 @@ async function abTestRoutes(app: FastifyInstance, options: FastifyPluginOptions)
       ...activeTest,
       variants: variants.map(v => ({
         ...v,
-        floorsConfig: v.floorsConfig ? JSON.parse(v.floorsConfig) : null,
-        bidderOverrides: v.bidderOverrides ? JSON.parse(v.bidderOverrides) : null,
+        floorsConfig: safeJsonParseObject(v.floorsConfig, null),
+        bidderOverrides: safeJsonParseObject(v.bidderOverrides, null),
       })),
     };
   });

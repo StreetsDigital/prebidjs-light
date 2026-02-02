@@ -3,6 +3,8 @@ import { useAuthStore } from '../../stores/authStore';
 import { PrebidMarketplaceModal } from '../../components/PrebidMarketplaceModal';
 import ComponentConfigModal from '../../components/ComponentConfigModal';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || '${API_BASE_URL}';
+
 interface Analytics {
   id: string;
   code: string;
@@ -12,6 +14,98 @@ interface Analytics {
   isPrebidMember: boolean;
   documentationUrl?: string | null;
   dependencies?: string[];
+}
+
+interface PaginationProps {
+  currentPage: number;
+  totalPages: number;
+  totalItems: number;
+  itemsPerPage: number;
+  onPageChange: (page: number) => void;
+}
+
+function Pagination({ currentPage, totalPages, totalItems, itemsPerPage, onPageChange }: PaginationProps) {
+  const startItem = (currentPage - 1) * itemsPerPage + 1;
+  const endItem = Math.min(currentPage * itemsPerPage, totalItems);
+
+  return (
+    <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
+      <div className="flex flex-1 justify-between sm:hidden">
+        <button
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage === 1}
+          className="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Previous
+        </button>
+        <button
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Next
+        </button>
+      </div>
+      <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm text-gray-700">
+            Showing <span className="font-medium">{startItem}</span> to <span className="font-medium">{endItem}</span> of{' '}
+            <span className="font-medium">{totalItems}</span> results
+          </p>
+        </div>
+        <div>
+          <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+            <button
+              onClick={() => onPageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="sr-only">Previous</span>
+              <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
+              </svg>
+            </button>
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let pageNum: number;
+              if (totalPages <= 5) {
+                pageNum = i + 1;
+              } else if (currentPage <= 3) {
+                pageNum = i + 1;
+              } else if (currentPage >= totalPages - 2) {
+                pageNum = totalPages - 4 + i;
+              } else {
+                pageNum = currentPage - 2 + i;
+              }
+
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => onPageChange(pageNum)}
+                  className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${
+                    currentPage === pageNum
+                      ? 'z-10 bg-blue-600 text-white focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
+                      : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0'
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => onPageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="sr-only">Next</span>
+              <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </nav>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function AnalyticsPage() {
@@ -26,6 +120,8 @@ export function AnalyticsPage() {
   const [isMarketplaceOpen, setIsMarketplaceOpen] = useState(false);
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [selectedAnalytics, setSelectedAnalytics] = useState<Analytics | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
 
   // Fetch analytics from API
   useEffect(() => {
@@ -37,7 +133,7 @@ export function AnalyticsPage() {
         setError(null);
 
         const response = await fetch(
-          `http://localhost:3001/api/publishers/${publisherId}/analytics`
+          `${API_BASE_URL}/api/publishers/${publisherId}/analytics`
         );
 
         if (!response.ok) {
@@ -63,6 +159,18 @@ export function AnalyticsPage() {
       adapter.code.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
+  // Calculate pagination
+  const totalItems = filteredAnalytics.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedAnalytics = filteredAnalytics.slice(startIndex, endIndex);
+
   const handleDelete = async (adapter: Analytics) => {
     if (!publisherId) return;
 
@@ -74,7 +182,7 @@ export function AnalyticsPage() {
       setDeletingAnalytics(adapter.code);
 
       const response = await fetch(
-        `http://localhost:3001/api/publishers/${publisherId}/analytics/${adapter.code}`,
+        `${API_BASE_URL}/api/publishers/${publisherId}/analytics/${adapter.code}`,
         { method: 'DELETE' }
       );
 
@@ -103,7 +211,7 @@ export function AnalyticsPage() {
 
     try {
       const response = await fetch(
-        `http://localhost:3001/api/publishers/${publisherId}/analytics`,
+        `${API_BASE_URL}/api/publishers/${publisherId}/analytics`,
         {
           method: 'POST',
           headers: {
@@ -123,7 +231,7 @@ export function AnalyticsPage() {
 
       // Refresh analytics list
       const fetchResponse = await fetch(
-        `http://localhost:3001/api/publishers/${publisherId}/analytics`
+        `${API_BASE_URL}/api/publishers/${publisherId}/analytics`
       );
       const { data } = await fetchResponse.json();
       setAnalytics(data);
@@ -226,7 +334,7 @@ export function AnalyticsPage() {
 
       {/* Analytics List */}
       <div className="bg-white shadow rounded-lg overflow-hidden">
-        {filteredAnalytics.length === 0 ? (
+        {paginatedAnalytics.length === 0 ? (
           <div className="p-12 text-center">
             <svg
               className="mx-auto h-12 w-12 text-gray-400"
@@ -251,8 +359,9 @@ export function AnalyticsPage() {
             </p>
           </div>
         ) : (
+          <>
           <ul className="divide-y divide-gray-200">
-            {filteredAnalytics.map((adapter) => (
+            {paginatedAnalytics.map((adapter) => (
               <li key={adapter.code} className="p-4 hover:bg-gray-50">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-4 flex-1 min-w-0">
@@ -323,6 +432,16 @@ export function AnalyticsPage() {
               </li>
             ))}
           </ul>
+          {totalPages > 1 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              itemsPerPage={itemsPerPage}
+              onPageChange={setCurrentPage}
+            />
+          )}
+          </>
         )}
       </div>
 

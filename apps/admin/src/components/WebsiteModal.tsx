@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { X } from 'lucide-react';
+import { useFormValidation } from '../hooks/useFormValidation';
+import { useLoadingState } from '../hooks/useLoadingState';
 
 interface Website {
   id: string;
@@ -17,27 +19,8 @@ interface WebsiteModalProps {
 }
 
 export function WebsiteModal({ website, publisherId, onClose, onSave }: WebsiteModalProps) {
-  const [formData, setFormData] = useState({
-    name: '',
-    domain: '',
-    status: 'active' as 'active' | 'paused' | 'disabled',
-    notes: '',
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    if (website) {
-      setFormData({
-        name: website.name,
-        domain: website.domain,
-        status: website.status,
-        notes: website.notes || '',
-      });
-    }
-  }, [website]);
-
   const validateDomain = (domain: string): boolean => {
+    if (!domain) return false;
     // Remove protocol and trailing slashes
     const cleaned = domain.toLowerCase()
       .replace(/^https?:\/\//, '')
@@ -48,29 +31,51 @@ export function WebsiteModal({ website, publisherId, onClose, onSave }: WebsiteM
     return domainRegex.test(cleaned);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+  const validators = useMemo(() => ({
+    name: (value: string) => {
+      if (!value || !value.trim()) {
+        return 'Website name is required';
+      }
+      return null;
+    },
+    domain: (value: string) => {
+      if (!value || !value.trim()) {
+        return 'Domain is required';
+      }
+      if (!validateDomain(value)) {
+        return 'Please enter a valid domain (e.g., example.com)';
+      }
+      return null;
+    },
+    status: () => null,
+    notes: () => null,
+  }), []);
 
-    // Validation
-    if (!formData.name.trim()) {
-      setError('Website name is required');
-      return;
+  const initialValues = useMemo(() => ({
+    name: website?.name || '',
+    domain: website?.domain || '',
+    status: (website?.status || 'active') as 'active' | 'paused' | 'disabled',
+    notes: website?.notes || '',
+  }), [website]);
+
+  const { values, errors, handleChange, handleSubmit } = useFormValidation(
+    initialValues,
+    validators
+  );
+
+  const { isLoading, error: submitError, setError, withLoading } = useLoadingState(false);
+
+  useEffect(() => {
+    if (website) {
+      handleChange('name', website.name);
+      handleChange('domain', website.domain);
+      handleChange('status', website.status);
+      handleChange('notes', website.notes || '');
     }
+  }, [website, handleChange]);
 
-    if (!formData.domain.trim()) {
-      setError('Domain is required');
-      return;
-    }
-
-    if (!validateDomain(formData.domain)) {
-      setError('Please enter a valid domain (e.g., example.com)');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
+  const onSubmit = async () => {
+    const result = await withLoading(async () => {
       const url = website
         ? `/api/publishers/${publisherId}/websites/${website.id}`
         : `/api/publishers/${publisherId}/websites`;
@@ -84,10 +89,10 @@ export function WebsiteModal({ website, publisherId, onClose, onSave }: WebsiteM
         },
         credentials: 'include',
         body: JSON.stringify({
-          name: formData.name.trim(),
-          domain: formData.domain.trim(),
-          status: formData.status,
-          notes: formData.notes.trim() || undefined,
+          name: values.name.trim(),
+          domain: values.domain.trim(),
+          status: values.status,
+          notes: values.notes.trim() || undefined,
         }),
       });
 
@@ -96,13 +101,12 @@ export function WebsiteModal({ website, publisherId, onClose, onSave }: WebsiteM
         throw new Error(data.error || 'Failed to save website');
       }
 
+      return true;
+    });
+
+    if (result) {
       onSave();
       onClose();
-    } catch (err) {
-      console.error('Error saving website:', err);
-      setError(err instanceof Error ? err.message : 'Failed to save website');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -117,64 +121,82 @@ export function WebsiteModal({ website, publisherId, onClose, onSave }: WebsiteM
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 transition"
+            aria-label="Close modal"
           >
             <X className="w-6 h-6" />
           </button>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={(e) => { e.preventDefault(); handleSubmit(onSubmit); }} className="p-6 space-y-6">
           {/* Error message */}
-          {error && (
+          {submitError && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-              {error}
+              {submitError}
             </div>
           )}
 
           {/* Website Name */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="website-name" className="block text-sm font-medium text-gray-700 mb-2">
               Website Name <span className="text-red-500">*</span>
             </label>
             <input
+              id="website-name"
               type="text"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              value={values.name}
+              onChange={(e) => handleChange('name', e.target.value)}
               placeholder="e.g., The New York Times"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 ${
+                errors.name ? 'border-red-300' : 'border-gray-300'
+              }`}
               required
             />
-            <p className="mt-1 text-sm text-gray-500">
-              Human-readable name for this website
-            </p>
+            {errors.name && (
+              <p className="mt-1 text-sm text-red-600">{errors.name}</p>
+            )}
+            {!errors.name && (
+              <p className="mt-1 text-sm text-gray-500">
+                Human-readable name for this website
+              </p>
+            )}
           </div>
 
           {/* Domain */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="website-domain" className="block text-sm font-medium text-gray-700 mb-2">
               Domain <span className="text-red-500">*</span>
             </label>
             <input
+              id="website-domain"
               type="text"
-              value={formData.domain}
-              onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
+              value={values.domain}
+              onChange={(e) => handleChange('domain', e.target.value)}
               placeholder="e.g., nytimes.com"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 ${
+                errors.domain ? 'border-red-300' : 'border-gray-300'
+              }`}
               required
             />
-            <p className="mt-1 text-sm text-gray-500">
-              Domain name without protocol (https://) or trailing slash
-            </p>
+            {errors.domain && (
+              <p className="mt-1 text-sm text-red-600">{errors.domain}</p>
+            )}
+            {!errors.domain && (
+              <p className="mt-1 text-sm text-gray-500">
+                Domain name without protocol (https://) or trailing slash
+              </p>
+            )}
           </div>
 
           {/* Status */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="website-status" className="block text-sm font-medium text-gray-700 mb-2">
               Status
             </label>
             <select
-              value={formData.status}
-              onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+              id="website-status"
+              value={values.status}
+              onChange={(e) => handleChange('status', e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
             >
               <option value="active">Active</option>
@@ -188,12 +210,13 @@ export function WebsiteModal({ website, publisherId, onClose, onSave }: WebsiteM
 
           {/* Notes */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="website-notes" className="block text-sm font-medium text-gray-700 mb-2">
               Notes (Optional)
             </label>
             <textarea
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              id="website-notes"
+              value={values.notes}
+              onChange={(e) => handleChange('notes', e.target.value)}
               placeholder="Internal notes about this website..."
               rows={3}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
@@ -206,16 +229,16 @@ export function WebsiteModal({ website, publisherId, onClose, onSave }: WebsiteM
               type="button"
               onClick={onClose}
               className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
-              disabled={loading}
+              disabled={isLoading}
             >
               Cancel
             </button>
             <button
               type="submit"
               className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={loading}
+              disabled={isLoading}
             >
-              {loading ? 'Saving...' : website ? 'Update Website' : 'Create Website'}
+              {isLoading ? 'Saving...' : website ? 'Update Website' : 'Create Website'}
             </button>
           </div>
         </form>

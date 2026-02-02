@@ -1,39 +1,19 @@
 import { useState, useEffect } from 'react';
-import { Link, useSearchParams, useLocation } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import { useToastStore } from '../../stores/toastStore';
 import { ConfirmDialog, Pagination } from '../../components/ui';
+import {
+  PublisherFilters,
+  PublisherTable,
+  BulkActionsBar,
+  ErrorDisplay,
+} from '../../components/publishers';
+import { Publisher, SortField, SortOrder, PaginationInfo } from '../../types/publisher';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 
-type SortField = 'name' | 'status' | 'createdAt';
-type SortOrder = 'asc' | 'desc';
-
-interface Publisher {
-  id: string;
-  name: string;
-  slug: string;
-  apiKey: string;
-  domains: string[];
-  status: 'active' | 'paused' | 'disabled';
-  notes: string | null;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: string | null;
-}
-
-interface PaginationInfo {
-  page: number;
-  limit: number;
-  total: number;
-  totalPages: number;
-  hasMore: boolean;
-}
-
 function exportPublishersToCSV(publishers: Publisher[], filename: string): void {
-  // Define CSV headers
   const headers = ['ID', 'Name', 'Slug', 'API Key', 'Domains', 'Status', 'Notes', 'Created At', 'Updated At'];
-
-  // Convert publishers to CSV rows
   const rows = publishers.map(pub => [
     pub.id,
     pub.name,
@@ -46,13 +26,11 @@ function exportPublishersToCSV(publishers: Publisher[], filename: string): void 
     pub.updatedAt
   ]);
 
-  // Build CSV content
   const csvContent = [
     headers.join(','),
     ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
   ].join('\n');
 
-  // Create and download file
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
@@ -65,11 +43,14 @@ export function PublishersPage() {
   const { token } = useAuthStore();
   const { addToast } = useToastStore();
   const [searchParams, setSearchParams] = useSearchParams();
-  const location = useLocation();
+
   const [publishers, setPublishers] = useState<Publisher[]>([]);
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
   const [deleteDialog, setDeleteDialog] = useState<{
     isOpen: boolean;
     publisher: Publisher | null;
@@ -79,8 +60,7 @@ export function PublishersPage() {
     publisher: null,
     isDeleting: false,
   });
-  const [isExporting, setIsExporting] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
   const [bulkActionDialog, setBulkActionDialog] = useState<{
     isOpen: boolean;
     action: 'pause' | 'activate' | 'disable' | null;
@@ -147,7 +127,7 @@ export function PublishersPage() {
     } else {
       newParams.delete('status');
     }
-    newParams.set('page', '1'); // Reset to first page when filter changes
+    newParams.set('page', '1');
     setSearchParams(newParams);
   };
 
@@ -158,45 +138,23 @@ export function PublishersPage() {
     } else {
       newParams.delete('search');
     }
-    newParams.set('page', '1'); // Reset to first page when search changes
+    newParams.set('page', '1');
     setSearchParams(newParams);
   };
 
   const handleSort = (field: SortField) => {
     const newParams = new URLSearchParams(searchParams);
     if (sortField === field) {
-      // Toggle order if same field
       newParams.set('sortOrder', sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
-      // New field, start with ascending
       newParams.set('sortBy', field);
       newParams.set('sortOrder', 'asc');
     }
-    newParams.set('page', '1'); // Reset to first page when sort changes
+    newParams.set('page', '1');
     setSearchParams(newParams);
   };
 
-  const getSortIcon = (field: SortField) => {
-    if (sortField !== field) {
-      return (
-        <svg className="ml-1 w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-        </svg>
-      );
-    }
-    return sortOrder === 'asc' ? (
-      <svg className="ml-1 w-3 h-3 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-      </svg>
-    ) : (
-      <svg className="ml-1 w-3 h-3 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-      </svg>
-    );
-  };
-
   const handleDeleteClick = (publisher: Publisher) => {
-    console.log('Delete clicked for publisher:', publisher.name);
     setDeleteDialog({
       isOpen: true,
       publisher,
@@ -254,13 +212,11 @@ export function PublishersPage() {
         throw new Error('Failed to delete publisher');
       }
 
-      // Show success toast first
       addToast({
         type: 'success',
         message: `Publisher "${publisherName}" deleted successfully`,
       });
 
-      // Then refetch and close dialog
       await fetchPublishers();
       handleDeleteCancel();
     } catch (err) {
@@ -272,7 +228,6 @@ export function PublishersPage() {
   const handleExportAll = async () => {
     setIsExporting(true);
     try {
-      // Build URL with current filters applied
       const params = new URLSearchParams();
       params.set('limit', '10000');
       if (statusFilter) params.set('status', statusFilter);
@@ -290,7 +245,6 @@ export function PublishersPage() {
 
       const data = await response.json();
       const timestamp = new Date().toISOString().split('T')[0];
-      // Include filter info in filename if filters are applied
       const filterSuffix = statusFilter ? `-${statusFilter}` : '';
       const filename = `publishers${filterSuffix}-${timestamp}.csv`;
       exportPublishersToCSV(data.publishers, filename);
@@ -301,7 +255,6 @@ export function PublishersPage() {
     }
   };
 
-  // Selection handlers
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       setSelectedIds(new Set(publishers.map(p => p.id)));
@@ -320,10 +273,6 @@ export function PublishersPage() {
     setSelectedIds(newSelected);
   };
 
-  const isAllSelected = publishers.length > 0 && selectedIds.size === publishers.length;
-  const isSomeSelected = selectedIds.size > 0 && selectedIds.size < publishers.length;
-
-  // Bulk action handlers
   const handleBulkActionClick = (action: 'pause' | 'activate' | 'disable') => {
     setBulkActionDialog({
       isOpen: true,
@@ -368,7 +317,6 @@ export function PublishersPage() {
         throw new Error('Failed to update publishers');
       }
 
-      // Clear selection and refresh
       setSelectedIds(new Set());
       await fetchPublishers();
       handleBulkActionCancel();
@@ -390,32 +338,6 @@ export function PublishersPage() {
       default:
         return '';
     }
-  };
-
-  const getStatusBadge = (status: string, isDeleted: boolean = false) => {
-    if (isDeleted) {
-      return (
-        <span
-          className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-800"
-        >
-          deleted
-        </span>
-      );
-    }
-    const styles = {
-      active: 'bg-green-100 text-green-800',
-      paused: 'bg-yellow-100 text-yellow-800',
-      disabled: 'bg-red-100 text-red-800',
-    };
-    return (
-      <span
-        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-          styles[status as keyof typeof styles] || 'bg-gray-100 text-gray-800'
-        }`}
-      >
-        {status}
-      </span>
-    );
   };
 
   if (isLoading && publishers.length === 0) {
@@ -462,317 +384,58 @@ export function PublishersPage() {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white shadow rounded-lg p-4">
-        <div className="flex flex-wrap gap-4 items-center">
-          <div className="flex-1 min-w-[200px]">
-            <label htmlFor="search" className="sr-only">
-              Search
-            </label>
-            <input
-              type="text"
-              id="search"
-              placeholder="Search publishers..."
-              value={searchQuery}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 px-3"
-            />
-          </div>
-          <div>
-            <label htmlFor="status-filter" className="sr-only">
-              Filter by status
-            </label>
-            <select
-              id="status-filter"
-              value={statusFilter}
-              onChange={(e) => handleStatusChange(e.target.value)}
-              className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 px-3 pr-10"
-            >
-              <option value="">All statuses</option>
-              <option value="active">Active</option>
-              <option value="paused">Paused</option>
-              <option value="disabled">Disabled</option>
-              <option value="deleted">Deleted</option>
-            </select>
-          </div>
-          {(statusFilter || searchQuery) && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearchParams(new URLSearchParams());
-              }}
-              className="text-sm text-gray-500 hover:text-gray-700"
-            >
-              Clear filters
-            </button>
-          )}
-        </div>
-      </div>
+      <PublisherFilters
+        searchQuery={searchQuery}
+        statusFilter={statusFilter}
+        onSearchChange={handleSearchChange}
+        onStatusChange={handleStatusChange}
+        onClearFilters={() => setSearchParams(new URLSearchParams())}
+      />
 
-      {/* Bulk Actions Bar */}
-      {selectedIds.size > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-blue-700">
-              {selectedIds.size} publisher{selectedIds.size !== 1 ? 's' : ''} selected
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleBulkActionClick('activate')}
-                className="inline-flex items-center rounded-md bg-green-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-green-500"
-              >
-                Activate
-              </button>
-              <button
-                type="button"
-                onClick={() => handleBulkActionClick('pause')}
-                className="inline-flex items-center rounded-md bg-yellow-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-yellow-500"
-              >
-                Pause
-              </button>
-              <button
-                type="button"
-                onClick={() => handleBulkActionClick('disable')}
-                className="inline-flex items-center rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-red-500"
-              >
-                Disable
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedIds(new Set())}
-                className="inline-flex items-center rounded-md bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
-              >
-                Clear Selection
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <BulkActionsBar
+        selectedCount={selectedIds.size}
+        onActivate={() => handleBulkActionClick('activate')}
+        onPause={() => handleBulkActionClick('pause')}
+        onDisable={() => handleBulkActionClick('disable')}
+        onClearSelection={() => setSelectedIds(new Set())}
+      />
 
       {error && (
-        <div className="rounded-md bg-red-50 p-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg
-                className="h-5 w-5 text-red-400"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </div>
-            <div className="ml-3 flex-1">
-              <h3 className="text-sm font-medium text-red-800">
-                Unable to load publishers
-              </h3>
-              <p className="mt-1 text-sm text-red-700">
-                {error.toLowerCase().includes('fetch') || error.toLowerCase().includes('network') || error.toLowerCase().includes('failed')
-                  ? 'There was a problem connecting to the server. Please check your internet connection and try again.'
-                  : error}
-              </p>
-              <div className="mt-3">
-                <button
-                  type="button"
-                  onClick={() => fetchPublishers()}
-                  disabled={isLoading}
-                  className="inline-flex items-center rounded-md bg-red-100 px-3 py-2 text-sm font-semibold text-red-800 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-600 focus:ring-offset-2 disabled:opacity-50"
-                >
-                  {isLoading ? (
-                    <>
-                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-red-800" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Retrying...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="-ml-0.5 mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      Try Again
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <ErrorDisplay
+          error={error}
+          isLoading={isLoading}
+          onRetry={fetchPublishers}
+        />
       )}
 
-      <div className="bg-white shadow rounded-lg overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th scope="col" className="w-12 px-3 py-3">
-                <input
-                  type="checkbox"
-                  checked={isAllSelected}
-                  ref={(el) => {
-                    if (el) el.indeterminate = isSomeSelected;
-                  }}
-                  onChange={(e) => handleSelectAll(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-              </th>
-              <th
-                scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
-                onClick={() => handleSort('name')}
-              >
-                <div className="flex items-center">
-                  Publisher
-                  {getSortIcon('name')}
-                </div>
-              </th>
-              <th
-                scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-              >
-                Domains
-              </th>
-              <th
-                scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
-                onClick={() => handleSort('status')}
-              >
-                <div className="flex items-center">
-                  Status
-                  {getSortIcon('status')}
-                </div>
-              </th>
-              <th
-                scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
-                onClick={() => handleSort('createdAt')}
-              >
-                <div className="flex items-center">
-                  Created
-                  {getSortIcon('createdAt')}
-                </div>
-              </th>
-              <th scope="col" className="relative px-6 py-3">
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {publishers.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={6}
-                  className="px-6 py-12 text-center text-sm text-gray-500"
-                >
-                  {statusFilter || searchQuery
-                    ? 'No publishers match your filters.'
-                    : 'No publishers found. Create your first publisher to get started.'}
-                </td>
-              </tr>
-            ) : (
-              publishers.map((publisher) => (
-                <tr key={publisher.id} className={`hover:bg-gray-50 ${selectedIds.has(publisher.id) ? 'bg-blue-50' : ''}`}>
-                  <td className="w-12 px-3 py-4">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(publisher.id)}
-                      onChange={(e) => handleSelectOne(publisher.id, e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                        <span className="text-blue-600 font-semibold text-sm">
-                          {publisher.name.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                      <div className="ml-4 min-w-0 max-w-[250px]">
-                        <div className="text-sm font-medium text-gray-900 truncate" title={publisher.name}>
-                          {publisher.name}
-                        </div>
-                        <div className="text-sm text-gray-500 truncate" title={publisher.slug}>
-                          {publisher.slug}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
-                      {publisher.domains.length > 0 ? (
-                        <span className="inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">
-                          {publisher.domains[0]}
-                          {publisher.domains.length > 1 && (
-                            <span className="ml-1 text-gray-400">
-                              +{publisher.domains.length - 1}
-                            </span>
-                          )}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">No domains</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {getStatusBadge(publisher.status, !!publisher.deletedAt)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(publisher.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <Link
-                      to={`/admin/publishers/${publisher.id}`}
-                      state={{ returnUrl: location.pathname + location.search }}
-                      className="text-blue-600 hover:text-blue-900 mr-4"
-                    >
-                      Edit
-                    </Link>
-                    {publisher.deletedAt ? (
-                      <button
-                        type="button"
-                        onClick={() => handleRestoreClick(publisher)}
-                        className="text-green-600 hover:text-green-900"
-                      >
-                        Restore
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteClick(publisher)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Delete
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+      <PublisherTable
+        publishers={publishers}
+        selectedIds={selectedIds}
+        sortField={sortField}
+        sortOrder={sortOrder}
+        onSelectAll={handleSelectAll}
+        onSelectOne={handleSelectOne}
+        onSort={handleSort}
+        onDelete={handleDeleteClick}
+        onRestore={handleRestoreClick}
+        statusFilter={statusFilter}
+        searchQuery={searchQuery}
+      />
 
-        {/* Pagination */}
-        {pagination && pagination.totalPages > 1 && (
-          <Pagination
-            currentPage={pagination.page}
-            totalPages={pagination.totalPages}
-            onPageChange={handlePageChange}
-          />
-        )}
-      </div>
+      {pagination && pagination.totalPages > 1 && (
+        <Pagination
+          currentPage={pagination.page}
+          totalPages={pagination.totalPages}
+          onPageChange={handlePageChange}
+        />
+      )}
 
-      {/* Show pagination info */}
       {pagination && (
         <div className="text-sm text-gray-500">
           Showing {publishers.length} of {pagination.total} publishers
         </div>
       )}
 
-      {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         isOpen={deleteDialog.isOpen}
         onClose={handleDeleteCancel}
@@ -785,7 +448,6 @@ export function PublishersPage() {
         isLoading={deleteDialog.isDeleting}
       />
 
-      {/* Bulk Action Confirmation Dialog */}
       <ConfirmDialog
         isOpen={bulkActionDialog.isOpen}
         onClose={handleBulkActionCancel}

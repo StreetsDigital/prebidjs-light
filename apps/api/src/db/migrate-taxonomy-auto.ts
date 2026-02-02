@@ -6,6 +6,7 @@
 import Database from 'better-sqlite3';
 import { v4 as uuidv4 } from 'uuid';
 import * as path from 'path';
+import { safeJsonParseArray } from '../utils/safe-json';
 
 const DB_PATH = path.join(process.cwd(), 'data/pbjs_engine.db');
 
@@ -70,7 +71,7 @@ function runMigration() {
         let domain = `${publisher.slug}.com`;
         if (publisher.domains) {
           try {
-            const domainsArray = JSON.parse(publisher.domains);
+            const domainsArray = safeJsonParseArray(publisher.domains, []);
             if (Array.isArray(domainsArray) && domainsArray.length > 0) {
               domain = domainsArray[0];
             }

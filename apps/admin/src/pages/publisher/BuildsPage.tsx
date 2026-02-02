@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import { Package, Check, X, Clock, Download, Play } from 'lucide-react';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || '${API_BASE_URL}';
+
 interface Build {
   id: string;
   version: string;
@@ -34,7 +36,7 @@ export function BuildsPage() {
       setError(null);
 
       const response = await fetch(
-        `http://localhost:3001/api/publishers/${publisherId}/builds`
+        `${API_BASE_URL}/api/publishers/${publisherId}/builds`
       );
 
       if (!response.ok) {
@@ -62,7 +64,7 @@ export function BuildsPage() {
       setBuilding(true);
 
       const response = await fetch(
-        `http://localhost:3001/api/publishers/${publisherId}/builds`,
+        `${API_BASE_URL}/api/publishers/${publisherId}/builds`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -79,7 +81,7 @@ export function BuildsPage() {
       // Poll for build completion
       const pollInterval = setInterval(async () => {
         const statusResponse = await fetch(
-          `http://localhost:3001/api/publishers/${publisherId}/builds/${data.buildId}`
+          `${API_BASE_URL}/api/publishers/${publisherId}/builds/${data.buildId}`
         );
 
         if (statusResponse.ok) {
@@ -87,6 +89,7 @@ export function BuildsPage() {
 
           if (build.status === 'success' || build.status === 'failed') {
             clearInterval(pollInterval);
+            clearTimeout(timeoutId);
             setBuilding(false);
             fetchBuilds();
 
@@ -100,7 +103,7 @@ export function BuildsPage() {
       }, 2000);
 
       // Timeout after 60 seconds
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         clearInterval(pollInterval);
         setBuilding(false);
         fetchBuilds();
@@ -123,7 +126,7 @@ export function BuildsPage() {
       setActivating(buildId);
 
       const response = await fetch(
-        `http://localhost:3001/api/publishers/${publisherId}/builds/${buildId}/activate`,
+        `${API_BASE_URL}/api/publishers/${publisherId}/builds/${buildId}/activate`,
         {
           method: 'POST',
         }

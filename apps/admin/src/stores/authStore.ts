@@ -233,3 +233,38 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 );
+
+/**
+ * Selector hooks to prevent unnecessary re-renders
+ * These hooks subscribe to specific slices of the auth store state
+ */
+
+/**
+ * Get current user from auth store
+ * @returns {User | null} Current authenticated user or null
+ */
+export const useUser = () => useAuthStore(state => state.user);
+
+/**
+ * Get JWT token from auth store
+ * @returns {string | null} Current JWT token or null
+ */
+export const useToken = () => useAuthStore(state => state.token);
+
+/**
+ * Get authentication status
+ * @returns {boolean} True if user is authenticated
+ */
+export const useIsAuthenticated = () => useAuthStore(state => state.isAuthenticated);
+
+/**
+ * Check if currently impersonating another user
+ * @returns {boolean} True if impersonating
+ */
+export const useIsImpersonating = () => useAuthStore(state => state.isImpersonating);
+
+/**
+ * Get original user (before impersonation)
+ * @returns {User | null} Original user before impersonation or null
+ */
+export const useOriginalUser = () => useAuthStore(state => state.originalUser);

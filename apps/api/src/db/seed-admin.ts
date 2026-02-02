@@ -32,7 +32,9 @@ export async function seedSuperAdmin() {
   }).run();
 
   console.log(`✓ Super admin created: ${adminEmail}`);
-  console.log(`  Password: ${adminPassword}`);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`  Password: ${adminPassword}`);
+  }
   console.log(`  ⚠️  IMPORTANT: Change this password after first login!`);
 }
 

@@ -2,6 +2,8 @@ import { FastifyInstance } from 'fastify';
 import { db, auditLogs, users } from '../db';
 import { eq, desc, asc, and, gte, lte, or, like } from 'drizzle-orm';
 import { requireAdmin, TokenPayload } from '../middleware/auth';
+import { safeJsonParse, safeJsonParseArray, safeJsonParseObject } from '../utils/safe-json';
+import { PAGINATION } from '../constants/pagination';
 
 interface ListAuditLogsQuery {
   page?: string;
@@ -19,10 +21,10 @@ export default async function auditLogsRoutes(fastify: FastifyInstance) {
   fastify.get<{ Querystring: ListAuditLogsQuery }>('/', {
     preHandler: requireAdmin,
   }, async (request, reply) => {
-    const { page = '1', limit = '50', action, entityType, userId, startDate, endDate, sortOrder = 'desc' } = request.query;
+    const { page = '1', limit = String(PAGINATION.AUDIT_LOGS_PAGE_SIZE), action, entityType, userId, startDate, endDate, sortOrder = 'desc' } = request.query;
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+    const limitNum = Math.min(PAGINATION.MAX_PAGE_SIZE, Math.max(1, parseInt(limit, 10) || PAGINATION.AUDIT_LOGS_PAGE_SIZE));
     const offset = (pageNum - 1) * limitNum;
 
     // Get all logs and filter in memory (simpler for SQLite)
@@ -76,8 +78,8 @@ export default async function auditLogsRoutes(fastify: FastifyInstance) {
         ipAddress: log.ipAddress || 'Unknown',
         userAgent: log.userAgent || 'Unknown',
         details: {
-          oldValues: log.oldValues ? JSON.parse(log.oldValues) : null,
-          newValues: log.newValues ? JSON.parse(log.newValues) : null,
+          oldValues: safeJsonParseObject(log.oldValues, null),
+          newValues: safeJsonParseObject(log.newValues, null),
         },
       })),
       pagination: {
@@ -125,8 +127,8 @@ export default async function auditLogsRoutes(fastify: FastifyInstance) {
       ipAddress: log.ipAddress || 'Unknown',
       userAgent: log.userAgent || 'Unknown',
       details: {
-        oldValues: log.oldValues ? JSON.parse(log.oldValues) : null,
-        newValues: log.newValues ? JSON.parse(log.newValues) : null,
+        oldValues: safeJsonParseObject(log.oldValues, null),
+        newValues: safeJsonParseObject(log.newValues, null),
       },
     };
   });

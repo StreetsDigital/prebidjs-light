@@ -8,6 +8,14 @@ import { eq, and } from 'drizzle-orm';
 const PREBID_SOURCE_DIR = path.join(__dirname, '../../prebid-builds/prebid-source');
 const BUILDS_OUTPUT_DIR = path.join(__dirname, '../../prebid-builds/output');
 
+/**
+ * Validate module name to prevent command injection
+ * Only allow alphanumeric characters, hyphens, and underscores
+ */
+function validateModuleName(name: string): boolean {
+  return /^[a-zA-Z0-9_-]+$/.test(name);
+}
+
 interface BuildOptions {
   publisherId: string;
   buildId: string;
@@ -125,6 +133,16 @@ async function executeBuild(
 ): Promise<BuildResult> {
   const { onProgress } = options;
 
+  // Validate all module names to prevent command injection
+  for (const module of modules) {
+    if (!validateModuleName(module)) {
+      return {
+        success: false,
+        errorMessage: `Invalid module name: ${module}`,
+      };
+    }
+  }
+
   // Create output directory if it doesn't exist
   await fs.mkdir(BUILDS_OUTPUT_DIR, { recursive: true });
 
@@ -143,7 +161,7 @@ async function executeBuild(
     const buildProcess = spawn('npx', ['gulp', ...args], {
       cwd: PREBID_SOURCE_DIR,
       env: { ...process.env },
-      shell: true,
+      // shell: true removed for security - prevents command injection
     });
 
     let stdout = '';
@@ -250,7 +268,7 @@ export async function buildPrebidJs(options: BuildOptions): Promise<BuildResult>
       };
     }
 
-    console.log(`Building Prebid.js with ${modules.length} modules for publisher ${publisherId}`);
+    // Building Prebid.js bundle with selected modules
 
     // Generate version number (in production, this would be semantic versioning)
     const version = '1.0.0';
@@ -312,7 +330,5 @@ export async function cleanupOldBuilds(publisherId: string, keepCount: number = 
   const toDelete = sorted.slice(keepCount);
   await Promise.all(toDelete.map(build => fs.unlink(build.path)));
 
-  if (toDelete.length > 0) {
-    console.log(`Cleaned up ${toDelete.length} old builds for publisher ${publisherId}`);
-  }
+  // Old builds cleaned up successfully
 }

@@ -9,6 +9,7 @@ import { publishers, websites, adUnits, users } from '../db/schema';
 import { sql } from 'drizzle-orm';
 import * as fs from 'fs';
 import * as path from 'path';
+import { requireSuperAdmin } from '../middleware/auth';
 
 const WRAPPER_PATH = path.join(process.cwd(), '../wrapper/dist/pb.min.js');
 
@@ -18,7 +19,9 @@ export default async function systemRoutes(fastify: FastifyInstance) {
    * GET /api/system/status
    * Note: Renamed from /health to avoid conflict with monitoring.ts
    */
-  fastify.get('/status', async (request, reply) => {
+  fastify.get('/status', {
+    preHandler: requireSuperAdmin,
+  }, async (request, reply) => {
     try {
       // Database health check
       const dbStart = Date.now();
@@ -75,7 +78,9 @@ export default async function systemRoutes(fastify: FastifyInstance) {
    * Get system statistics
    * GET /api/system/stats
    */
-  fastify.get('/stats', async (request, reply) => {
+  fastify.get('/stats', {
+    preHandler: requireSuperAdmin,
+  }, async (request, reply) => {
     try {
       // Count totals
       const publishersCount = db.select({ count: sql<number>`COUNT(*)` })
@@ -114,7 +119,9 @@ export default async function systemRoutes(fastify: FastifyInstance) {
    * Get database information
    * GET /api/system/database
    */
-  fastify.get('/database', async (request, reply) => {
+  fastify.get('/database', {
+    preHandler: requireSuperAdmin,
+  }, async (request, reply) => {
     try {
       const dbPath = path.join(process.cwd(), 'data/pbjs_engine.db');
       const walPath = `${dbPath}-wal`;
@@ -167,7 +174,10 @@ export default async function systemRoutes(fastify: FastifyInstance) {
    * Rebuild wrapper
    * POST /api/system/rebuild-wrapper
    */
-  fastify.post('/rebuild-wrapper', async (request, reply) => {
+  fastify.post('/rebuild-wrapper', {
+    preHandler: requireSuperAdmin,
+    preHandler: requireSuperAdmin,
+  }, async (request, reply) => {
     try {
       const { exec } = await import('child_process');
       const { promisify } = await import('util');
@@ -214,7 +224,9 @@ export default async function systemRoutes(fastify: FastifyInstance) {
    * Clear database cache (WAL checkpoint)
    * POST /api/system/clear-cache
    */
-  fastify.post('/clear-cache', async (request, reply) => {
+  fastify.post('/clear-cache', {
+    preHandler: requireSuperAdmin,
+  }, async (request, reply) => {
     try {
       // Run VACUUM to reclaim space
       // Note: Drizzle doesn't support exec, so we just return success
@@ -234,7 +246,9 @@ export default async function systemRoutes(fastify: FastifyInstance) {
    * Get system configuration
    * GET /api/system/config
    */
-  fastify.get('/config', async (request, reply) => {
+  fastify.get('/config', {
+    preHandler: requireSuperAdmin,
+  }, async (request, reply) => {
     return {
       environment: process.env.NODE_ENV || 'development',
       apiPort: process.env.PORT || 3001,

@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { db, optimizationRules, ruleExecutions, publishers, publisherBidders, analyticsEvents } from '../db';
 import { eq, and, desc, gte, lte } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
+import { safeJsonParse, safeJsonParseArray, safeJsonParseObject } from '../utils/safe-json';
 
 interface Condition {
   metric: string; // e.g., 'timeout_rate', 'response_rate', 'revenue', 'latency'
@@ -71,9 +72,9 @@ export default async function optimizationRulesRoutes(fastify: FastifyInstance) 
 
     return rules.map(rule => ({
       ...rule,
-      conditions: JSON.parse(rule.conditions),
-      actions: JSON.parse(rule.actions),
-      schedule: rule.schedule ? JSON.parse(rule.schedule) : null,
+      conditions: safeJsonParseArray(rule.conditions, []),
+      actions: safeJsonParseArray(rule.actions, []),
+      schedule: safeJsonParseObject(rule.schedule, null),
     }));
   });
 
@@ -96,9 +97,9 @@ export default async function optimizationRulesRoutes(fastify: FastifyInstance) 
 
     return {
       ...rule,
-      conditions: JSON.parse(rule.conditions),
-      actions: JSON.parse(rule.actions),
-      schedule: rule.schedule ? JSON.parse(rule.schedule) : null,
+      conditions: safeJsonParseArray(rule.conditions, []),
+      actions: safeJsonParseArray(rule.actions, []),
+      schedule: safeJsonParseObject(rule.schedule, null),
     };
   });
 
@@ -145,7 +146,7 @@ export default async function optimizationRulesRoutes(fastify: FastifyInstance) 
       executionCount: 0,
       createdAt: now,
       updatedAt: now,
-    } as any);
+    } as any).run();
 
     const createdRule = db
       .select()
@@ -155,9 +156,9 @@ export default async function optimizationRulesRoutes(fastify: FastifyInstance) 
 
     return reply.code(201).send({
       ...createdRule,
-      conditions: JSON.parse(createdRule!.conditions),
-      actions: JSON.parse(createdRule!.actions),
-      schedule: createdRule!.schedule ? JSON.parse(createdRule!.schedule) : null,
+      conditions: safeJsonParseArray(createdRule!.conditions, []),
+      actions: safeJsonParseArray(createdRule!.actions, []),
+      schedule: safeJsonParseObject(createdRule!.schedule, null),
     });
   });
 
@@ -191,7 +192,7 @@ export default async function optimizationRulesRoutes(fastify: FastifyInstance) 
     if (body.enabled !== undefined) updates.enabled = body.enabled ? 1 : 0;
     if (body.priority !== undefined) updates.priority = body.priority;
 
-    db.update(optimizationRules).set(updates).where(eq(optimizationRules.id, ruleId));
+    db.update(optimizationRules).set(updates).where(eq(optimizationRules.id, ruleId)).run();
 
     const updatedRule = db
       .select()
@@ -201,9 +202,9 @@ export default async function optimizationRulesRoutes(fastify: FastifyInstance) 
 
     return {
       ...updatedRule,
-      conditions: JSON.parse(updatedRule!.conditions),
-      actions: JSON.parse(updatedRule!.actions),
-      schedule: updatedRule!.schedule ? JSON.parse(updatedRule!.schedule) : null,
+      conditions: safeJsonParseArray(updatedRule!.conditions, []),
+      actions: safeJsonParseArray(updatedRule!.actions, []),
+      schedule: safeJsonParseObject(updatedRule!.schedule, null),
     };
   });
 
@@ -224,7 +225,7 @@ export default async function optimizationRulesRoutes(fastify: FastifyInstance) 
       return reply.code(404).send({ error: 'Rule not found' });
     }
 
-    db.delete(optimizationRules).where(eq(optimizationRules.id, ruleId));
+    db.delete(optimizationRules).where(eq(optimizationRules.id, ruleId)).run();
 
     return { success: true };
   });
@@ -253,8 +254,7 @@ export default async function optimizationRulesRoutes(fastify: FastifyInstance) 
         enabled: newEnabled,
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(optimizationRules.id, ruleId))
-      ;
+      .where(eq(optimizationRules.id, ruleId)).run();
 
     return { enabled: newEnabled };
   });
@@ -277,9 +277,9 @@ export default async function optimizationRulesRoutes(fastify: FastifyInstance) 
 
     return executions.map(exec => ({
       ...exec,
-      conditionsMet: JSON.parse(exec.conditionsMet),
-      actionsPerformed: JSON.parse(exec.actionsPerformed),
-      metricsSnapshot: exec.metricsSnapshot ? JSON.parse(exec.metricsSnapshot) : null,
+      conditionsMet: safeJsonParseArray(exec.conditionsMet, []),
+      actionsPerformed: safeJsonParseArray(exec.actionsPerformed, []),
+      metricsSnapshot: safeJsonParseObject(exec.metricsSnapshot, null),
     }));
   });
 
@@ -312,9 +312,9 @@ export default async function optimizationRulesRoutes(fastify: FastifyInstance) 
         ...exec,
         ruleName: rule?.name || 'Deleted Rule',
         ruleType: rule?.ruleType || 'unknown',
-        conditionsMet: JSON.parse(exec.conditionsMet),
-        actionsPerformed: JSON.parse(exec.actionsPerformed),
-        metricsSnapshot: exec.metricsSnapshot ? JSON.parse(exec.metricsSnapshot) : null,
+        conditionsMet: safeJsonParseArray(exec.conditionsMet, []),
+        actionsPerformed: safeJsonParseArray(exec.actionsPerformed, []),
+        metricsSnapshot: safeJsonParseObject(exec.metricsSnapshot, null),
       };
     });
 
@@ -343,8 +343,8 @@ export default async function optimizationRulesRoutes(fastify: FastifyInstance) 
       return reply.code(404).send({ error: 'Rule not found' });
     }
 
-    const conditions = JSON.parse(rule.conditions) as Condition[];
-    const actions = JSON.parse(rule.actions) as Action[];
+    const conditions = safeJsonParseArray(rule.conditions, []) as Condition[];
+    const actions = safeJsonParseArray(rule.actions, []) as Action[];
 
     // Evaluate conditions against current metrics
     const now = new Date();

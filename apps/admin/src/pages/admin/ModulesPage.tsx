@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || '${API_BASE_URL}';
+
 interface Module {
   id?: string;
   code: string;
@@ -32,7 +34,7 @@ export function ModulesPage() {
         setError(null);
 
         const response = await fetch(
-          `http://localhost:3001/api/publishers/${publisherId}/modules`
+          `${API_BASE_URL}/api/publishers/${publisherId}/modules`
         );
 
         if (!response.ok) {
@@ -73,7 +75,7 @@ export function ModulesPage() {
       setDeletingModule(module.code);
 
       const response = await fetch(
-        `http://localhost:3001/api/publishers/${publisherId}/modules/${module.code}`,
+        `${API_BASE_URL}/api/publishers/${publisherId}/modules/${module.code}`,
         { method: 'DELETE' }
       );
 

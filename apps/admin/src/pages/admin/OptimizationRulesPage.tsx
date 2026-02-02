@@ -1,61 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
-
-interface Condition {
-  metric: string;
-  operator: '>' | '<' | '>=' | '<=' | '==' | '!=';
-  value: number;
-  timeWindow: string;
-  target?: string;
-}
-
-interface Action {
-  type: string;
-  target?: string;
-  value?: any;
-  notification?: {
-    channels: ('email' | 'slack' | 'webhook')[];
-    message: string;
-  };
-}
-
-interface Schedule {
-  daysOfWeek?: number[];
-  hoursOfDay?: number[];
-  startDate?: string;
-  endDate?: string;
-}
-
-interface OptimizationRule {
-  id: string;
-  publisherId: string;
-  name: string;
-  description: string | null;
-  ruleType: 'auto_disable_bidder' | 'auto_adjust_timeout' | 'auto_adjust_floor' | 'auto_enable_bidder' | 'alert_notification' | 'traffic_allocation';
-  conditions: Condition[];
-  actions: Action[];
-  schedule: Schedule | null;
-  enabled: boolean;
-  priority: number;
-  lastExecuted: string | null;
-  executionCount: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface RuleExecution {
-  id: string;
-  ruleId: string;
-  ruleName: string;
-  ruleType: string;
-  conditionsMet: Condition[];
-  actionsPerformed: Action[];
-  result: 'success' | 'failure' | 'skipped';
-  errorMessage: string | null;
-  metricsSnapshot: any;
-  executedAt: string;
-}
+import { OptimizationRule, RuleExecution, Condition, Action } from '../../types/optimization';
+import { RuleCard } from '../../components/RuleCard';
+import { RuleModal } from '../../components/RuleModal';
+import { RuleTestModal } from '../../components/RuleTestModal';
 
 export function OptimizationRulesPage() {
   const { publisherId } = useParams<{ publisherId: string }>();
@@ -65,8 +14,6 @@ export function OptimizationRulesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingRule, setEditingRule] = useState<OptimizationRule | null>(null);
-  const [selectedRule, setSelectedRule] = useState<OptimizationRule | null>(null);
-  const [showExecutionsModal, setShowExecutionsModal] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
   const [showTestModal, setShowTestModal] = useState(false);
 
@@ -399,97 +346,21 @@ export function OptimizationRulesPage() {
         ) : (
           <div className="divide-y divide-gray-200">
             {rules.map((rule) => (
-              <div key={rule.id} className="p-6 hover:bg-gray-50">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3 mb-2">
-                      <h4 className="text-lg font-semibold text-gray-900">{rule.name}</h4>
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${getRuleTypeColor(rule.ruleType)}`}>
-                        {getRuleTypeLabel(rule.ruleType)}
-                      </span>
-                      {rule.enabled ? (
-                        <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-800">
-                          Enabled
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-800">
-                          Disabled
-                        </span>
-                      )}
-                    </div>
-                    {rule.description && (
-                      <p className="text-sm text-gray-600 mb-3">{rule.description}</p>
-                    )}
-
-                    <div className="space-y-2">
-                      <div>
-                        <span className="text-xs font-medium text-gray-500">CONDITIONS:</span>
-                        <div className="mt-1 flex flex-wrap gap-2">
-                          {rule.conditions.map((condition, idx) => (
-                            <span key={idx} className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-800 border border-blue-200">
-                              {formatCondition(condition)}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div>
-                        <span className="text-xs font-medium text-gray-500">ACTIONS:</span>
-                        <div className="mt-1 flex flex-wrap gap-2">
-                          {rule.actions.map((action, idx) => (
-                            <span key={idx} className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-50 text-green-800 border border-green-200">
-                              {formatAction(action)}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 flex items-center space-x-4 text-xs text-gray-500">
-                      <span>Priority: {rule.priority}</span>
-                      <span>Executed: {rule.executionCount} times</span>
-                      {rule.lastExecuted && (
-                        <span>Last: {new Date(rule.lastExecuted).toLocaleString()}</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center space-x-2 ml-4">
-                    <button
-                      onClick={() => handleTestRule(rule)}
-                      className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-                      title="Test rule"
-                    >
-                      Test
-                    </button>
-                    <button
-                      onClick={() => handleToggleRule(rule)}
-                      className={`px-3 py-1.5 text-sm rounded ${
-                        rule.enabled
-                          ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
-                          : 'bg-green-100 text-green-700 hover:bg-green-200'
-                      }`}
-                    >
-                      {rule.enabled ? 'Disable' : 'Enable'}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEditingRule(rule);
-                        setShowCreateModal(true);
-                      }}
-                      className="px-3 py-1.5 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDeleteRule(rule)}
-                      className="px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <RuleCard
+                key={rule.id}
+                rule={rule}
+                onToggle={handleToggleRule}
+                onEdit={(rule) => {
+                  setEditingRule(rule);
+                  setShowCreateModal(true);
+                }}
+                onDelete={handleDeleteRule}
+                onTest={handleTestRule}
+                formatCondition={formatCondition}
+                formatAction={formatAction}
+                getRuleTypeLabel={getRuleTypeLabel}
+                getRuleTypeColor={getRuleTypeColor}
+              />
             ))}
           </div>
         )}
@@ -539,86 +410,29 @@ export function OptimizationRulesPage() {
       )}
 
       {/* Test Result Modal */}
-      {showTestModal && testResult && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-gray-900">Rule Test Results</h2>
-                <button
-                  onClick={() => setShowTestModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
+      <RuleTestModal
+        isOpen={showTestModal}
+        onClose={() => setShowTestModal(false)}
+        testResult={testResult}
+        formatCondition={formatCondition}
+        formatAction={formatAction}
+      />
 
-            <div className="p-6 space-y-4">
-              <div className={`p-4 rounded-lg ${testResult.wouldExecute ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}>
-                <p className="font-semibold text-gray-900">
-                  {testResult.wouldExecute ? '✓ Rule would execute' : '✗ Rule would NOT execute'}
-                </p>
-                <p className="text-sm text-gray-600 mt-1">
-                  {testResult.wouldExecute
-                    ? 'All conditions are currently met. This rule would take action.'
-                    : 'One or more conditions are not met. No action would be taken.'}
-                </p>
-              </div>
-
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-2">Condition Results:</h3>
-                <div className="space-y-2">
-                  {testResult.conditionResults.map((result: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className={`p-3 rounded border ${result.met ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-gray-900">
-                          {formatCondition(result.condition)}
-                        </span>
-                        <span className={`text-xs font-semibold ${result.met ? 'text-green-600' : 'text-red-600'}`}>
-                          {result.met ? '✓ MET' : '✗ NOT MET'}
-                        </span>
-                      </div>
-                      <div className="mt-1 text-xs text-gray-600">
-                        Current: {result.currentValue.toFixed(2)} | Threshold: {result.threshold}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {testResult.wouldExecute && testResult.plannedActions.length > 0 && (
-                <div>
-                  <h3 className="font-semibold text-gray-900 mb-2">Planned Actions:</h3>
-                  <div className="space-y-2">
-                    {testResult.plannedActions.map((action: Action, idx: number) => (
-                      <div key={idx} className="p-3 bg-blue-50 rounded border border-blue-200">
-                        <span className="text-sm font-medium text-gray-900">
-                          {formatAction(action)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4">
-              <button
-                onClick={() => setShowTestModal(false)}
-                className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Create/Edit Modal */}
+      <RuleModal
+        isOpen={showCreateModal}
+        onClose={() => {
+          setShowCreateModal(false);
+          setEditingRule(null);
+        }}
+        onSuccess={() => {
+          fetchRules();
+          setShowCreateModal(false);
+          setEditingRule(null);
+        }}
+        publisherId={publisherId || ''}
+        editingRule={editingRule}
+      />
     </div>
   );
 }

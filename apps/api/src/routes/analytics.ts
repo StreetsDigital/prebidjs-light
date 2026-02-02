@@ -2,6 +2,9 @@ import { FastifyInstance } from 'fastify';
 import { db, analyticsEvents } from '../db';
 import { eq, desc, sql, and, gte } from 'drizzle-orm';
 import { EventEmitter } from 'events';
+import { requireAuth } from '../middleware/auth';
+import { v4 as uuidv4 } from 'uuid';
+import { PAGINATION } from '../constants/pagination';
 
 interface AnalyticsQuery {
   publisherId?: string;
@@ -15,9 +18,16 @@ interface AnalyticsQuery {
 export const analyticsEmitter = new EventEmitter();
 analyticsEmitter.setMaxListeners(100); // Support many SSE clients
 
+// Track active SSE connections to prevent leaks
+const activeConnections = new Map<string, { reply: any; cleanup: () => void }>();
+
 export default async function analyticsRoutes(fastify: FastifyInstance) {
   // SSE endpoint for real-time analytics updates
-  fastify.get('/stream', async (request, reply) => {
+  fastify.get('/stream', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const connectionId = uuidv4();
+
     // Set SSE headers
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -29,14 +39,18 @@ export default async function analyticsRoutes(fastify: FastifyInstance) {
 
     // Send initial connection event
     const sendEvent = (eventName: string, data: any) => {
-      reply.raw.write(`event: ${eventName}\n`);
-      reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+      if (!reply.raw.destroyed) {
+        reply.raw.write(`event: ${eventName}\n`);
+        reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+      }
     };
 
     // Send heartbeat every 30 seconds to keep connection alive
     const heartbeatInterval = setInterval(() => {
-      sendEvent('heartbeat', { timestamp: new Date().toISOString() });
-    }, 30000);
+      if (!reply.raw.destroyed) {
+        sendEvent('heartbeat', { timestamp: new Date().toISOString() });
+      }
+    }, 30000); // 30 seconds
 
     // Initial stats push
     const getStats = () => {
@@ -91,25 +105,39 @@ export default async function analyticsRoutes(fastify: FastifyInstance) {
 
     // Listen for new events
     const onNewEvent = (eventData: any) => {
-      sendEvent('newEvent', eventData);
-      // Also send updated stats
-      sendEvent('stats', getStats());
+      if (!reply.raw.destroyed) {
+        sendEvent('newEvent', eventData);
+        // Also send updated stats
+        sendEvent('stats', getStats());
+      }
     };
 
     analyticsEmitter.on('newEvent', onNewEvent);
 
-    // Clean up on client disconnect
-    request.raw.on('close', () => {
+    // Centralized cleanup function
+    const cleanup = () => {
       clearInterval(heartbeatInterval);
       analyticsEmitter.off('newEvent', onNewEvent);
-    });
+      activeConnections.delete(connectionId);
+    };
+
+    // Track this connection
+    activeConnections.set(connectionId, { reply, cleanup });
+
+    // Clean up on client disconnect
+    request.raw.on('close', cleanup);
+
+    // Clean up on error
+    reply.raw.on('error', cleanup);
 
     // Keep the connection open
     return reply;
   });
   // Get analytics events
-  fastify.get<{ Querystring: AnalyticsQuery }>('/events', async (request, reply) => {
-    const { publisherId, eventType, startDate, endDate, limit = 100 } = request.query;
+  fastify.get<{ Querystring: AnalyticsQuery }>('/events', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const { publisherId, eventType, startDate, endDate, limit = PAGINATION.ANALYTICS_PAGE_SIZE } = request.query;
 
     const conditions = [];
 
@@ -138,7 +166,9 @@ export default async function analyticsRoutes(fastify: FastifyInstance) {
   });
 
   // Get analytics summary/stats
-  fastify.get('/stats', async (request, reply) => {
+  fastify.get('/stats', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
     // Get total events by type
     const eventsByType = db.select({
       eventType: analyticsEvents.eventType,
@@ -191,7 +221,9 @@ export default async function analyticsRoutes(fastify: FastifyInstance) {
   });
 
   // Get bidder performance
-  fastify.get('/bidders', async (request, reply) => {
+  fastify.get('/bidders', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
     const bidderStats = db.select({
       bidderCode: analyticsEvents.bidderCode,
       bidsRequested: sql<number>`count(case when event_type = 'bidRequested' then 1 end)`.as('bids_requested'),

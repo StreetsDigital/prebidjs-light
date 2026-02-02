@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import { ConfirmDialog } from '../../components/ui';
+import { UserTableRow } from '../../components/UserTableRow';
+import { CreateUserModal } from '../../components/CreateUserModal';
+import { EditUserModal } from '../../components/EditUserModal';
 
 interface User {
   id: string;
@@ -21,6 +24,13 @@ interface CreateUserForm {
   publisherId: string;
 }
 
+interface EditUserForm {
+  name: string;
+  role: 'super_admin' | 'admin' | 'publisher';
+  publisherId: string;
+  status: 'active' | 'disabled';
+}
+
 interface Publisher {
   id: string;
   name: string;
@@ -34,11 +44,13 @@ export function UsersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [impersonating, setImpersonating] = useState<string | null>(null);
+
   const [createDialog, setCreateDialog] = useState({
     isOpen: false,
     isLoading: false,
     error: null as string | null,
   });
+
   const [deleteDialog, setDeleteDialog] = useState<{
     isOpen: boolean;
     user: User | null;
@@ -48,13 +60,7 @@ export function UsersPage() {
     user: null,
     isDeleting: false,
   });
-  const [formData, setFormData] = useState<CreateUserForm>({
-    email: '',
-    password: '',
-    name: '',
-    role: 'admin',
-    publisherId: '',
-  });
+
   const [editDialog, setEditDialog] = useState<{
     isOpen: boolean;
     isLoading: boolean;
@@ -65,17 +71,6 @@ export function UsersPage() {
     isLoading: false,
     error: null,
     user: null,
-  });
-  const [editFormData, setEditFormData] = useState<{
-    name: string;
-    role: 'super_admin' | 'admin' | 'publisher';
-    publisherId: string;
-    status: 'active' | 'disabled';
-  }>({
-    name: '',
-    role: 'admin',
-    publisherId: '',
-    status: 'active',
   });
 
   const fetchUsers = async () => {
@@ -124,13 +119,6 @@ export function UsersPage() {
   }, [token]);
 
   const handleCreateClick = () => {
-    setFormData({
-      email: '',
-      password: '',
-      name: '',
-      role: 'admin',
-      publisherId: '',
-    });
     setCreateDialog({
       isOpen: true,
       isLoading: false,
@@ -146,8 +134,7 @@ export function UsersPage() {
     });
   };
 
-  const handleCreateSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateSubmit = async (formData: CreateUserForm) => {
     setCreateDialog((prev) => ({ ...prev, isLoading: true, error: null }));
 
     try {
@@ -226,12 +213,6 @@ export function UsersPage() {
   };
 
   const handleEditClick = (user: User) => {
-    setEditFormData({
-      name: user.name,
-      role: user.role,
-      publisherId: user.publisherId || '',
-      status: user.status,
-    });
     setEditDialog({
       isOpen: true,
       isLoading: false,
@@ -249,8 +230,7 @@ export function UsersPage() {
     });
   };
 
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleEditSubmit = async (formData: EditUserForm) => {
     if (!editDialog.user) return;
 
     setEditDialog((prev) => ({ ...prev, isLoading: true, error: null }));
@@ -263,10 +243,10 @@ export function UsersPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          name: editFormData.name,
-          role: editFormData.role,
-          publisherId: editFormData.role === 'publisher' ? editFormData.publisherId : null,
-          status: editFormData.status,
+          name: formData.name,
+          role: formData.role,
+          publisherId: formData.role === 'publisher' ? formData.publisherId : null,
+          status: formData.status,
         }),
       });
 
@@ -293,7 +273,6 @@ export function UsersPage() {
     try {
       const success = await impersonateUser(user.id);
       if (success) {
-        // Redirect based on user role
         if (user.role === 'publisher') {
           window.location.href = '/publisher/dashboard';
         } else {
@@ -307,44 +286,6 @@ export function UsersPage() {
     } finally {
       setImpersonating(null);
     }
-  };
-
-  const getRoleBadge = (role: string) => {
-    const styles = {
-      super_admin: 'bg-purple-100 text-purple-800',
-      admin: 'bg-blue-100 text-blue-800',
-      publisher: 'bg-green-100 text-green-800',
-    };
-    const labels = {
-      super_admin: 'Super Admin',
-      admin: 'Admin',
-      publisher: 'Publisher',
-    };
-    return (
-      <span
-        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-          styles[role as keyof typeof styles] || 'bg-gray-100 text-gray-800'
-        }`}
-      >
-        {labels[role as keyof typeof labels] || role}
-      </span>
-    );
-  };
-
-  const getStatusBadge = (status: string) => {
-    const styles = {
-      active: 'bg-green-100 text-green-800',
-      disabled: 'bg-red-100 text-red-800',
-    };
-    return (
-      <span
-        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-          styles[status as keyof typeof styles] || 'bg-gray-100 text-gray-800'
-        }`}
-      >
-        {status}
-      </span>
-    );
   };
 
   if (isLoading) {
@@ -430,337 +371,40 @@ export function UsersPage() {
               </tr>
             ) : (
               users.map((user) => (
-                <tr key={user.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="flex-shrink-0 h-10 w-10 bg-gray-100 rounded-full flex items-center justify-center">
-                        <span className="text-gray-600 font-semibold text-sm">
-                          {user.name.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">{user.name}</div>
-                        <div className="text-sm text-gray-500">{user.email}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {getRoleBadge(user.role)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {getStatusBadge(user.status)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(user.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-4">
-                    {currentUser?.role === 'super_admin' && user.role !== 'super_admin' && (
-                      <button
-                        type="button"
-                        onClick={() => handleImpersonate(user)}
-                        disabled={impersonating === user.id}
-                        className="text-purple-600 hover:text-purple-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {impersonating === user.id ? (
-                          <span className="inline-flex items-center">
-                            <svg className="animate-spin h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            Impersonating...
-                          </span>
-                        ) : (
-                          'Impersonate'
-                        )}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => handleEditClick(user)}
-                      className="text-blue-600 hover:text-blue-900"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteClick(user)}
-                      className="text-red-600 hover:text-red-900"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
+                <UserTableRow
+                  key={user.id}
+                  user={user}
+                  currentUserRole={currentUser?.role}
+                  impersonating={impersonating}
+                  onImpersonate={handleImpersonate}
+                  onEdit={handleEditClick}
+                  onDelete={handleDeleteClick}
+                />
               ))
             )}
           </tbody>
         </table>
       </div>
 
-      {/* Create User Dialog */}
-      {createDialog.isOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-          <div
-            className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
-            onClick={handleCreateCancel}
-            aria-hidden="true"
-          />
-          <div className="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
-            <div className="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
-              <form onSubmit={handleCreateSubmit}>
-                <div className="bg-white px-4 pb-4 pt-5 sm:p-6">
-                  <h3 className="text-lg font-semibold leading-6 text-gray-900 mb-4">
-                    Create New User
-                  </h3>
+      <CreateUserModal
+        isOpen={createDialog.isOpen}
+        isLoading={createDialog.isLoading}
+        error={createDialog.error}
+        publishers={publishers}
+        onSubmit={handleCreateSubmit}
+        onCancel={handleCreateCancel}
+      />
 
-                  {createDialog.error && (
-                    <div className="rounded-md bg-red-50 p-3 mb-4">
-                      <p className="text-sm text-red-700">{createDialog.error}</p>
-                    </div>
-                  )}
+      <EditUserModal
+        isOpen={editDialog.isOpen}
+        isLoading={editDialog.isLoading}
+        error={editDialog.error}
+        user={editDialog.user}
+        publishers={publishers}
+        onSubmit={handleEditSubmit}
+        onCancel={handleEditCancel}
+      />
 
-                  <div className="space-y-4">
-                    <div>
-                      <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                        Name
-                      </label>
-                      <input
-                        type="text"
-                        id="name"
-                        required
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                      />
-                    </div>
-
-                    <div>
-                      <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                        Email
-                      </label>
-                      <input
-                        type="email"
-                        id="email"
-                        required
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                      />
-                    </div>
-
-                    <div>
-                      <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                        Password
-                      </label>
-                      <input
-                        type="password"
-                        id="password"
-                        required
-                        value={formData.password}
-                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                      />
-                      <p className="mt-1 text-xs text-gray-500">
-                        Must be at least 8 characters with uppercase, lowercase, and a number.
-                      </p>
-                    </div>
-
-                    <div>
-                      <label htmlFor="role" className="block text-sm font-medium text-gray-700">
-                        Role
-                      </label>
-                      <select
-                        id="role"
-                        value={formData.role}
-                        onChange={(e) => setFormData({ ...formData, role: e.target.value as CreateUserForm['role'], publisherId: '' })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                      >
-                        <option value="admin">Admin</option>
-                        <option value="super_admin">Super Admin</option>
-                        <option value="publisher">Publisher</option>
-                      </select>
-                    </div>
-
-                    {formData.role === 'publisher' && (
-                      <div>
-                        <label htmlFor="publisherId" className="block text-sm font-medium text-gray-700">
-                          Publisher
-                        </label>
-                        <select
-                          id="publisherId"
-                          required
-                          value={formData.publisherId}
-                          onChange={(e) => setFormData({ ...formData, publisherId: e.target.value })}
-                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                        >
-                          <option value="">Select a publisher...</option>
-                          {publishers.map((pub) => (
-                            <option key={pub.id} value={pub.id}>
-                              {pub.name} ({pub.slug})
-                            </option>
-                          ))}
-                        </select>
-                        <p className="mt-1 text-xs text-gray-500">
-                          This user will only have access to data for the selected publisher.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
-                  <button
-                    type="submit"
-                    disabled={createDialog.isLoading}
-                    className="inline-flex w-full justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 sm:ml-3 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {createDialog.isLoading ? (
-                      <>
-                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Creating...
-                      </>
-                    ) : (
-                      'Create User'
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCreateCancel}
-                    disabled={createDialog.isLoading}
-                    className="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit User Dialog */}
-      {editDialog.isOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="edit-modal-title" role="dialog" aria-modal="true">
-          <div className="flex min-h-screen items-end justify-center px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onClick={handleEditCancel} />
-            <span className="hidden sm:inline-block sm:h-screen sm:align-middle" aria-hidden="true">&#8203;</span>
-            <div className="relative inline-block transform overflow-hidden rounded-lg bg-white text-left align-bottom shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:align-middle">
-              <form onSubmit={handleEditSubmit}>
-                <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                  <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4" id="edit-modal-title">
-                    Edit User
-                  </h3>
-                  {editDialog.error && (
-                    <div className="mb-4 rounded-md bg-red-50 p-4">
-                      <p className="text-sm text-red-700">{editDialog.error}</p>
-                    </div>
-                  )}
-                  <div className="space-y-4">
-                    <div>
-                      <label htmlFor="edit-name" className="block text-sm font-medium text-gray-700">
-                        Name
-                      </label>
-                      <input
-                        type="text"
-                        id="edit-name"
-                        required
-                        value={editFormData.name}
-                        onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                      />
-                    </div>
-
-                    <div>
-                      <label htmlFor="edit-role" className="block text-sm font-medium text-gray-700">
-                        Role
-                      </label>
-                      <select
-                        id="edit-role"
-                        value={editFormData.role}
-                        onChange={(e) => setEditFormData({ ...editFormData, role: e.target.value as 'super_admin' | 'admin' | 'publisher', publisherId: '' })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                      >
-                        <option value="admin">Admin</option>
-                        <option value="super_admin">Super Admin</option>
-                        <option value="publisher">Publisher</option>
-                      </select>
-                    </div>
-
-                    {editFormData.role === 'publisher' && (
-                      <div>
-                        <label htmlFor="edit-publisherId" className="block text-sm font-medium text-gray-700">
-                          Publisher
-                        </label>
-                        <select
-                          id="edit-publisherId"
-                          required
-                          value={editFormData.publisherId}
-                          onChange={(e) => setEditFormData({ ...editFormData, publisherId: e.target.value })}
-                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                        >
-                          <option value="">Select a publisher...</option>
-                          {publishers.map((pub) => (
-                            <option key={pub.id} value={pub.id}>
-                              {pub.name} ({pub.slug})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    <div>
-                      <label htmlFor="edit-status" className="block text-sm font-medium text-gray-700">
-                        Status
-                      </label>
-                      <select
-                        id="edit-status"
-                        value={editFormData.status}
-                        onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value as 'active' | 'disabled' })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                      >
-                        <option value="active">Active</option>
-                        <option value="disabled">Disabled</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
-                  <button
-                    type="submit"
-                    disabled={editDialog.isLoading}
-                    className="inline-flex w-full justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 sm:ml-3 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {editDialog.isLoading ? (
-                      <>
-                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Saving...
-                      </>
-                    ) : (
-                      'Save Changes'
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleEditCancel}
-                    disabled={editDialog.isLoading}
-                    className="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         isOpen={deleteDialog.isOpen}
         onClose={handleDeleteCancel}

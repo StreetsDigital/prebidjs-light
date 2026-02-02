@@ -10,6 +10,9 @@ import { eq, and, desc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import * as crypto from 'crypto';
 import { buildPrebidJs, getBuildFile } from '../services/prebid-build-service.js';
+import { requireAdmin } from '../middleware/auth';
+import { validateUUID } from '../utils/validation';
+import { safeJsonParse, safeJsonParseArray, safeJsonParseObject } from '../utils/safe-json';
 
 interface TriggerBuildBody {
   force?: boolean;
@@ -22,7 +25,9 @@ interface TriggerBuildBody {
 export default async function prebidBuildsRoutes(fastify: FastifyInstance) {
 
   // Trigger new build
-  fastify.post('/publishers/:publisherId/builds', async (request, reply) => {
+  fastify.post('/publishers/:publisherId/builds', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId } = request.params as { publisherId: string };
     const { force = false } = request.body as TriggerBuildBody;
 
@@ -187,11 +192,20 @@ export default async function prebidBuildsRoutes(fastify: FastifyInstance) {
   });
 
   // Get build status
-  fastify.get('/publishers/:publisherId/builds/:buildId', async (request, reply) => {
+  fastify.get('/publishers/:publisherId/builds/:buildId', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId, buildId } = request.params as {
       publisherId: string;
       buildId: string;
     };
+
+    // Validate UUID parameter
+    try {
+      validateUUID(buildId, 'Build ID');
+    } catch (err) {
+      return reply.code(400).send({ error: err.message });
+    }
 
     try {
       const build = db
@@ -217,9 +231,9 @@ export default async function prebidBuildsRoutes(fastify: FastifyInstance) {
           cdnUrl: build.cdnUrl,
           fileSize: build.fileSize,
           componentsHash: build.componentsHash,
-          biddersIncluded: build.biddersIncluded ? JSON.parse(build.biddersIncluded) : [],
-          modulesIncluded: build.modulesIncluded ? JSON.parse(build.modulesIncluded) : [],
-          analyticsIncluded: build.analyticsIncluded ? JSON.parse(build.analyticsIncluded) : [],
+          biddersIncluded: safeJsonParseArray(build.biddersIncluded, []),
+          modulesIncluded: safeJsonParseArray(build.modulesIncluded, []),
+          analyticsIncluded: safeJsonParseArray(build.analyticsIncluded, []),
           buildDurationMs: build.buildDurationMs,
           errorMessage: build.errorMessage,
           isActive: Boolean(build.isActive),
@@ -238,7 +252,9 @@ export default async function prebidBuildsRoutes(fastify: FastifyInstance) {
   });
 
   // List builds
-  fastify.get('/publishers/:publisherId/builds', async (request, reply) => {
+  fastify.get('/publishers/:publisherId/builds', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId } = request.params as { publisherId: string };
     const { limit = 20, status } = request.query as { limit?: number; status?: string };
 
@@ -287,7 +303,9 @@ export default async function prebidBuildsRoutes(fastify: FastifyInstance) {
   });
 
   // Get current active build
-  fastify.get('/publishers/:publisherId/builds/current', async (request, reply) => {
+  fastify.get('/publishers/:publisherId/builds/current', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId } = request.params as { publisherId: string };
 
     try {
@@ -325,11 +343,20 @@ export default async function prebidBuildsRoutes(fastify: FastifyInstance) {
   });
 
   // Set active build (activate/rollback)
-  fastify.post('/publishers/:publisherId/builds/:buildId/activate', async (request, reply) => {
+  fastify.post('/publishers/:publisherId/builds/:buildId/activate', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId, buildId } = request.params as {
       publisherId: string;
       buildId: string;
     };
+
+    // Validate UUID parameter
+    try {
+      validateUUID(buildId, 'Build ID');
+    } catch (err) {
+      return reply.code(400).send({ error: err.message });
+    }
 
     try {
       // Verify build exists and belongs to publisher
@@ -385,16 +412,20 @@ export default async function prebidBuildsRoutes(fastify: FastifyInstance) {
   });
 
   // Serve build files
+  // This endpoint serves build files and should remain public (no auth)
   fastify.get('/builds/:filename', async (request, reply) => {
     const { filename } = request.params as { filename: string };
 
     try {
-      // Security: Only allow .js files and sanitize filename
-      if (!filename.endsWith('.js') || filename.includes('..')) {
+      // Security: Use basename to prevent path traversal and validate format
+      const safeFilename = filename.split('/').pop() || '';
+
+      // Validate filename format: must end with .js and match expected pattern
+      if (!safeFilename.endsWith('.js') || !/^prebid-[a-f0-9-]+-\d+\.js$/.test(safeFilename)) {
         return reply.code(400).send({ error: 'Invalid filename' });
       }
 
-      const fileContent = await getBuildFile(filename);
+      const fileContent = await getBuildFile(safeFilename);
 
       return reply
         .type('application/javascript')

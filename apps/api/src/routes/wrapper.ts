@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { db, wrapperConfigs, configTargetingRules, configServeLog, publishers } from '../db';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import {
   detectAttributes,
   evaluateRules,
@@ -21,6 +21,7 @@ import {
   getCachedWrapper,
   cacheWrapper,
 } from '../utils/wrapper-generator';
+import { safeJsonParseArray } from '../utils/safe-json';
 
 const WRAPPER_PATH = path.join(process.cwd(), '../wrapper/dist/pb.min.js');
 const WRAPPER_SOURCE_MAP_PATH = path.join(process.cwd(), '../wrapper/dist/pb.min.js.map');
@@ -146,7 +147,7 @@ export default async function wrapperRoutes(fastify: FastifyInstance) {
               config: row.config as any,
               rule: {
                 ...row.rule,
-                conditions: JSON.parse(row.rule.conditions),
+                conditions: safeJsonParseArray(row.rule.conditions, []),
               },
             });
           }
@@ -206,8 +207,7 @@ export default async function wrapperRoutes(fastify: FastifyInstance) {
   if (typeof window !== 'undefined') {
     window.pbjs_blocked = true;
     window.pbjs_block_reason = 'config_match';
-    window.pbjs_config_id = '${matchedConfig.id}';
-    console.log('[pbjs_engine] Wrapper initialization blocked by config: ${matchedConfig.name || matchedConfig.id}');
+    window.pbjs_config_id = ${JSON.stringify(matchedConfig.id)};
   }
 })();
 `.trim();
@@ -323,22 +323,16 @@ async function logConfigServe(
 
 /**
  * Update impression count for config (async)
+ * Uses atomic SQL increment to prevent race conditions
  */
 async function updateImpressionCount(configId: string): Promise<void> {
-  const config = await db
-    .select()
-    .from(wrapperConfigs)
+  // Use SQL helper for atomic increment operation
+  await db
+    .update(wrapperConfigs)
+    .set({
+      impressionsServed: sql`COALESCE(impressions_served, 0) + 1`,
+      lastServedAt: new Date().toISOString(),
+    })
     .where(eq(wrapperConfigs.id, configId))
-    .get();
-
-  if (config) {
-    await db
-      .update(wrapperConfigs)
-      .set({
-        impressionsServed: (config.impressionsServed || 0) + 1,
-        lastServedAt: new Date().toISOString(),
-      })
-      .where(eq(wrapperConfigs.id, configId))
-      .run();
-  }
+    .run();
 }

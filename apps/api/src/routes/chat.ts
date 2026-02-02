@@ -2,6 +2,27 @@ import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth } from '../middleware/auth';
 
+// Validate Anthropic API key at module level
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+
+if (!ANTHROPIC_API_KEY) {
+  console.warn('⚠️  ANTHROPIC_API_KEY not configured - AI chat functionality will be disabled');
+  console.warn('   Set ANTHROPIC_API_KEY environment variable to enable Claude AI responses');
+}
+
+// Initialize Anthropic client only if API key is available
+let Anthropic: any = null;
+let anthropic: any = null;
+
+try {
+  if (ANTHROPIC_API_KEY) {
+    Anthropic = require('@anthropic-ai/sdk');
+    anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+  }
+} catch (error) {
+  // Anthropic SDK not available - chat features will be disabled
+}
+
 // Mock chat store - In production, this would be a database
 const chatSessions = new Map<string, {
   session_id: string;
@@ -27,6 +48,15 @@ export default async function chatRoutes(fastify: FastifyInstance) {
   fastify.post('/chat/messages', {
     preHandler: [requireAuth],
     handler: async (request, reply) => {
+      // Check if AI chat is available
+      if (!anthropic) {
+        return reply.code(503).send({
+          error: 'Chat service not configured',
+          message: 'ANTHROPIC_API_KEY environment variable is not set. AI chat functionality is currently disabled.',
+          details: 'Please contact your system administrator to enable AI chat features.',
+        });
+      }
+
       const { session_id, message, context } = request.body as {
         session_id?: string;
         message: string;
@@ -179,7 +209,6 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 }
 
 // AI response generator - Using Claude Haiku for cost-effective responses
-// To enable real AI, install @anthropic-ai/sdk and set ANTHROPIC_API_KEY
 async function generateAIResponse(
   message: string,
   history: Array<any>,
@@ -188,37 +217,34 @@ async function generateAIResponse(
   content: string;
   actions?: Array<{ tool: string; status: 'success' | 'error'; details?: string }>;
 }> {
-  // Claude Haiku integration ENABLED ✅
-  const Anthropic = require('@anthropic-ai/sdk');
-  const anthropic = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
+  // Try to use Claude API if available
+  if (anthropic) {
+    try {
+      const response = await anthropic.messages.create({
+        model: 'claude-3-5-haiku-20241022', // Haiku - fast and cost-effective
+        max_tokens: 1024,
+        system: `You are an AdOps Assistant for a Prebid.js platform. Help users manage publishers, ad units, bidders, and revenue optimization. Keep responses concise and actionable.`,
+        messages: [
+          // Include conversation history for context
+          ...history.slice(-5).map(msg => ({
+            role: msg.role === 'assistant' ? 'assistant' : 'user',
+            content: msg.content
+          })),
+          {
+            role: 'user',
+            content: message
+          }
+        ],
+      });
 
-  try {
-    const response = await anthropic.messages.create({
-      model: 'claude-3-5-haiku-20241022', // Haiku - fast and cost-effective
-      max_tokens: 1024,
-      system: `You are an AdOps Assistant for a Prebid.js platform. Help users manage publishers, ad units, bidders, and revenue optimization. Keep responses concise and actionable.`,
-      messages: [
-        // Include conversation history for context
-        ...history.slice(-5).map(msg => ({
-          role: msg.role === 'assistant' ? 'assistant' : 'user',
-          content: msg.content
-        })),
-        {
-          role: 'user',
-          content: message
-        }
-      ],
-    });
-
-    return {
-      content: response.content[0].text,
-      actions: [] // Parse actions from response if needed
-    };
-  } catch (error) {
-    console.error('Claude API error:', error);
-    // Fall back to mock response on error
+      return {
+        content: response.content[0].text,
+        actions: [] // Parse actions from response if needed
+      };
+    } catch (error) {
+      console.error('Claude API error:', error);
+      // Fall back to mock response on error
+    }
   }
 
   // MOCK RESPONSES - Remove this section when Claude Haiku is enabled

@@ -3,6 +3,8 @@ import { db, publisherModules } from '../db';
 import { eq, and } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { getAllModules, getRecommendedModules, getComponentInfo } from '../utils/prebid-data-fetcher';
+import { requireAdmin } from '../middleware/auth';
+import { safeJsonParse, safeJsonParseArray, safeJsonParseObject } from '../utils/safe-json';
 
 interface AddModuleRequest {
   moduleCode: string;
@@ -25,7 +27,9 @@ export default async function publisherModulesRoutes(fastify: FastifyInstance) {
    * GET /api/publishers/:publisherId/modules
    * List all enabled modules for a publisher
    */
-  fastify.get('/:publisherId/modules', async (request: FastifyRequest<{ Params: { publisherId: string } }>, reply: FastifyReply) => {
+  fastify.get('/:publisherId/modules', {
+    preHandler: requireAdmin,
+  }, async (request: FastifyRequest<{ Params: { publisherId: string } }>, reply: FastifyReply) => {
     const { publisherId } = request.params;
 
     try {
@@ -49,7 +53,7 @@ export default async function publisherModulesRoutes(fastify: FastifyInstance) {
           code: module.moduleCode,
           name: module.moduleName,
           category: module.category,
-          params: module.params ? JSON.parse(module.params) : null,
+          params: safeJsonParseObject(module.params, null),
           enabled: module.enabled,
           documentationUrl: info?.documentationUrl || null,
           description: null,
@@ -69,7 +73,9 @@ export default async function publisherModulesRoutes(fastify: FastifyInstance) {
    * POST /api/publishers/:publisherId/modules
    * Add a module to a publisher's account
    */
-  fastify.post('/:publisherId/modules', async (request: FastifyRequest<{ Params: { publisherId: string }; Body: AddModuleRequest }>, reply: FastifyReply) => {
+  fastify.post('/:publisherId/modules', {
+    preHandler: requireAdmin,
+  }, async (request: FastifyRequest<{ Params: { publisherId: string }; Body: AddModuleRequest }>, reply: FastifyReply) => {
     const { publisherId } = request.params;
     const { moduleCode, moduleName, category, params } = request.body;
 
@@ -144,7 +150,9 @@ export default async function publisherModulesRoutes(fastify: FastifyInstance) {
    * DELETE /api/publishers/:publisherId/modules/:moduleCode
    * Remove a module from a publisher's account
    */
-  fastify.delete('/:publisherId/modules/:moduleCode', async (request: FastifyRequest<DeleteModuleRequest>, reply: FastifyReply) => {
+  fastify.delete('/:publisherId/modules/:moduleCode', {
+    preHandler: requireAdmin,
+  }, async (request: FastifyRequest<DeleteModuleRequest>, reply: FastifyReply) => {
     const { publisherId, moduleCode } = request.params;
 
     try {

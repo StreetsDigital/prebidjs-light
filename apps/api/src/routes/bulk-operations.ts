@@ -8,6 +8,8 @@ import {
 } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
+import { requireAdmin } from '../middleware/auth';
+import { safeJsonParse, safeJsonParseArray, safeJsonParseObject } from '../utils/safe-json';
 
 interface BulkAddBody {
   componentType: 'bidder' | 'module' | 'analytics';
@@ -47,7 +49,9 @@ interface ImportBody {
 export default async function bulkOperationsRoutes(fastify: FastifyInstance) {
 
   // Bulk add components
-  fastify.post('/publishers/:publisherId/bulk/add', async (request, reply) => {
+  fastify.post('/publishers/:publisherId/bulk/add', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId } = request.params as { publisherId: string };
     const { componentType, componentCodes, targetSites, parameters } = request.body as BulkAddBody;
 
@@ -186,7 +190,9 @@ export default async function bulkOperationsRoutes(fastify: FastifyInstance) {
   });
 
   // Bulk remove components
-  fastify.post('/publishers/:publisherId/bulk/remove', async (request, reply) => {
+  fastify.post('/publishers/:publisherId/bulk/remove', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId } = request.params as { publisherId: string };
     const { componentType, componentCodes, targetSites } = request.body as BulkRemoveBody;
 
@@ -242,7 +248,9 @@ export default async function bulkOperationsRoutes(fastify: FastifyInstance) {
   });
 
   // Export configuration
-  fastify.get('/publishers/:publisherId/export', async (request, reply) => {
+  fastify.get('/publishers/:publisherId/export', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId } = request.params as { publisherId: string };
     const { websiteId, format = 'json', scope = 'full' } = request.query as ExportQuery;
 
@@ -273,13 +281,13 @@ export default async function bulkOperationsRoutes(fastify: FastifyInstance) {
             code: m.moduleCode,
             name: m.moduleName,
             category: m.category,
-            params: m.params ? JSON.parse(m.params) : null,
+            params: safeJsonParseObject(m.params, null),
             enabled: Boolean(m.enabled),
           })),
           analytics: analytics.map((a) => ({
             code: a.analyticsCode,
             name: a.analyticsName,
-            params: a.params ? JSON.parse(a.params) : null,
+            params: safeJsonParseObject(a.params, null),
             enabled: Boolean(a.enabled),
           })),
         },
@@ -303,7 +311,9 @@ export default async function bulkOperationsRoutes(fastify: FastifyInstance) {
   });
 
   // Import configuration
-  fastify.post('/publishers/:publisherId/import', async (request, reply) => {
+  fastify.post('/publishers/:publisherId/import', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId } = request.params as { publisherId: string };
     const { config, mergeStrategy } = request.body as ImportBody;
 
@@ -410,7 +420,9 @@ export default async function bulkOperationsRoutes(fastify: FastifyInstance) {
   });
 
   // Get bulk operation status
-  fastify.get('/publishers/:publisherId/bulk/operations/:operationId', async (request, reply) => {
+  fastify.get('/publishers/:publisherId/bulk/operations/:operationId', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId, operationId } = request.params as {
       publisherId: string;
       operationId: string;

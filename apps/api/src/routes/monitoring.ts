@@ -7,13 +7,16 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { db, wrapperConfigs, configServeLog, publishers } from '../db';
 import { eq, and, gte, sql } from 'drizzle-orm';
 import { getCacheStats } from '../utils/wrapper-generator';
+import { requireSuperAdmin } from '../middleware/auth';
 
 export default async function monitoringRoutes(fastify: FastifyInstance) {
   /**
    * System Health Check (Detailed)
    * GET /api/system/health
    */
-  fastify.get('/health', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.get('/health', {
+    preHandler: requireSuperAdmin,
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const startTime = Date.now();
 
@@ -26,7 +29,7 @@ export default async function monitoringRoutes(fastify: FastifyInstance) {
         dbResponseTime = Date.now() - dbStart;
         dbHealthy = true;
       } catch (err) {
-        fastify.log.error('Database health check failed:', err);
+        fastify.log.error(err as Error, 'Database health check failed');
       }
 
       // Cache health
@@ -62,7 +65,7 @@ export default async function monitoringRoutes(fastify: FastifyInstance) {
         },
       };
     } catch (err) {
-      fastify.log.error('Health check failed:', err);
+      fastify.log.error(err as Error, 'Health check failed');
       return reply.status(503).send({
         status: 'unhealthy',
         error: 'Health check failed',
@@ -74,7 +77,9 @@ export default async function monitoringRoutes(fastify: FastifyInstance) {
    * Cache Statistics
    * GET /api/system/cache-stats
    */
-  fastify.get('/cache-stats', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.get('/cache-stats', {
+    preHandler: requireSuperAdmin,
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const stats = getCacheStats();
 
@@ -94,7 +99,7 @@ export default async function monitoringRoutes(fastify: FastifyInstance) {
         estimatedMemoryUsage: `${(stats.size * 4).toFixed(2)} KB`, // Rough estimate
       };
     } catch (err) {
-      fastify.log.error('Cache stats failed:', err);
+      fastify.log.error(err as Error, 'Cache stats failed');
       return reply.status(500).send({ error: 'Failed to get cache stats' });
     }
   });
@@ -103,7 +108,9 @@ export default async function monitoringRoutes(fastify: FastifyInstance) {
    * Performance Metrics
    * GET /api/system/metrics
    */
-  fastify.get('/metrics', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.get('/metrics', {
+    preHandler: requireSuperAdmin,
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const now = new Date();
       const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -161,7 +168,7 @@ export default async function monitoringRoutes(fastify: FastifyInstance) {
         })),
       };
     } catch (err) {
-      fastify.log.error('Metrics failed:', err);
+      fastify.log.error(err as Error, 'Metrics failed');
       return reply.status(500).send({ error: 'Failed to get metrics' });
     }
   });
@@ -170,7 +177,9 @@ export default async function monitoringRoutes(fastify: FastifyInstance) {
    * Config Performance Analytics
    * GET /api/system/config-performance
    */
-  fastify.get('/config-performance', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.get('/config-performance', {
+    preHandler: requireSuperAdmin,
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const configs = await db.select().from(wrapperConfigs).all();
 
@@ -196,7 +205,7 @@ export default async function monitoringRoutes(fastify: FastifyInstance) {
         },
       };
     } catch (err) {
-      fastify.log.error('Config performance failed:', err);
+      fastify.log.error(err as Error, 'Config performance failed');
       return reply.status(500).send({ error: 'Failed to get config performance' });
     }
   });
@@ -205,7 +214,9 @@ export default async function monitoringRoutes(fastify: FastifyInstance) {
    * Real-Time Dashboard Data
    * GET /api/system/dashboard
    */
-  fastify.get('/dashboard', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.get('/dashboard', {
+    preHandler: requireSuperAdmin,
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const now = new Date();
       const last1h = new Date(now.getTime() - 60 * 60 * 1000);
@@ -248,7 +259,7 @@ export default async function monitoringRoutes(fastify: FastifyInstance) {
           })),
       };
     } catch (err) {
-      fastify.log.error('Dashboard failed:', err);
+      fastify.log.error(err as Error, 'Dashboard failed');
       return reply.status(500).send({ error: 'Failed to get dashboard data' });
     }
   });
@@ -257,7 +268,9 @@ export default async function monitoringRoutes(fastify: FastifyInstance) {
    * Alert Thresholds Check
    * GET /api/system/alerts
    */
-  fastify.get('/alerts', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.get('/alerts', {
+    preHandler: requireSuperAdmin,
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const alerts: any[] = [];
 
@@ -312,7 +325,7 @@ export default async function monitoringRoutes(fastify: FastifyInstance) {
         alerts,
       };
     } catch (err) {
-      fastify.log.error('Alerts check failed:', err);
+      fastify.log.error(err as Error, 'Alerts check failed');
       return reply.status(500).send({ error: 'Failed to check alerts' });
     }
   });

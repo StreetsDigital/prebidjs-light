@@ -8,6 +8,8 @@ import {
 } from '../db/schema.js';
 import { eq, and, or, isNull } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
+import { requireAdmin } from '../middleware/auth';
+import { safeJsonParse, safeJsonParseArray, safeJsonParseObject } from '../utils/safe-json';
 
 interface CreateTemplateBody {
   name: string;
@@ -22,6 +24,21 @@ interface ApplyTemplateBody {
   mergeStrategy: 'replace' | 'append';
 }
 
+interface TemplateConfig {
+  bidders?: any[];
+  modules?: Array<{
+    code: string;
+    name: string;
+    category?: string;
+    params?: any;
+  }>;
+  analytics?: Array<{
+    code: string;
+    name: string;
+    params?: any;
+  }>;
+}
+
 /**
  * Configuration Templates Routes
  * Handles preset and custom configuration templates
@@ -29,7 +46,9 @@ interface ApplyTemplateBody {
 export default async function templatesRoutes(fastify: FastifyInstance) {
 
   // List all templates (preset + custom)
-  fastify.get('/templates', async (request, reply) => {
+  fastify.get('/templates', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { type, isPublic } = request.query as { type?: string; isPublic?: string };
 
     try {
@@ -42,7 +61,7 @@ export default async function templatesRoutes(fastify: FastifyInstance) {
       }
 
       if (isPublic !== undefined) {
-        conditions.push(eq(configurationTemplates.isPublic, isPublic === '1' ? 1 : 0));
+        conditions.push(eq(configurationTemplates.isPublic, isPublic === '1' || isPublic === 'true'));
       }
 
       const templates = conditions.length > 0
@@ -51,7 +70,7 @@ export default async function templatesRoutes(fastify: FastifyInstance) {
 
       // Transform for response
       const templatesWithPreview = templates.map((template) => {
-        const config = JSON.parse(template.configJson);
+        const config = safeJsonParseObject<TemplateConfig>(template.configJson, {});
         return {
           id: template.id,
           name: template.name,
@@ -79,7 +98,9 @@ export default async function templatesRoutes(fastify: FastifyInstance) {
   });
 
   // Get template details
-  fastify.get('/templates/:templateId', async (request, reply) => {
+  fastify.get('/templates/:templateId', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { templateId } = request.params as { templateId: string };
 
     try {
@@ -100,7 +121,7 @@ export default async function templatesRoutes(fastify: FastifyInstance) {
           description: template.description,
           templateType: template.templateType,
           isPublic: Boolean(template.isPublic),
-          configJson: JSON.parse(template.configJson),
+          configJson: safeJsonParseObject(template.configJson, {}),
           useCount: template.useCount,
           createdAt: template.createdAt,
         },
@@ -115,7 +136,9 @@ export default async function templatesRoutes(fastify: FastifyInstance) {
   });
 
   // Create custom template from existing configuration
-  fastify.post('/publishers/:publisherId/templates', async (request, reply) => {
+  fastify.post('/publishers/:publisherId/templates', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId } = request.params as { publisherId: string };
     const { name, description, sourceWebsiteId, isPublic } = request.body as CreateTemplateBody;
 
@@ -157,12 +180,12 @@ export default async function templatesRoutes(fastify: FastifyInstance) {
           code: m.moduleCode,
           name: m.moduleName,
           category: m.category,
-          params: m.params ? JSON.parse(m.params) : null,
+          params: m.params ? safeJsonParseObject(m.params, {}) : undefined,
         })),
         analytics: analytics.map((a) => ({
           code: a.analyticsCode,
           name: a.analyticsName,
-          params: a.params ? JSON.parse(a.params) : null,
+          params: a.params ? safeJsonParseObject(a.params, {}) : undefined,
         })),
       };
 
@@ -175,7 +198,7 @@ export default async function templatesRoutes(fastify: FastifyInstance) {
           description: description || null,
           templateType: 'custom',
           creatorPublisherId: publisherId,
-          isPublic: isPublic ? 1 : 0,
+          isPublic: Boolean(isPublic),
           configJson: JSON.stringify(configJson),
           useCount: 0,
           createdAt: now,
@@ -197,7 +220,9 @@ export default async function templatesRoutes(fastify: FastifyInstance) {
   });
 
   // Apply template to sites
-  fastify.post('/publishers/:publisherId/apply-template', async (request, reply) => {
+  fastify.post('/publishers/:publisherId/apply-template', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId } = request.params as { publisherId: string };
     const { templateId, targetSites, mergeStrategy } = request.body as ApplyTemplateBody;
 
@@ -217,7 +242,7 @@ export default async function templatesRoutes(fastify: FastifyInstance) {
         return reply.code(404).send({ error: 'Template not found' });
       }
 
-      const config = JSON.parse(template.configJson);
+      const config = safeJsonParseObject<TemplateConfig>(template.configJson, {});
       const now = new Date().toISOString();
 
       // Increment use count
@@ -261,7 +286,7 @@ export default async function templatesRoutes(fastify: FastifyInstance) {
                 publisherId,
                 moduleCode: module.code,
                 moduleName: module.name,
-                category: module.category || 'general',
+                category: (module.category || 'general') as 'general' | 'userId' | 'rtd' | 'vendor' | 'recommended',
                 params: module.params ? JSON.stringify(module.params) : null,
                 enabled: true,
                 createdAt: now,
@@ -317,7 +342,9 @@ export default async function templatesRoutes(fastify: FastifyInstance) {
   });
 
   // Delete custom template
-  fastify.delete('/publishers/:publisherId/templates/:templateId', async (request, reply) => {
+  fastify.delete('/publishers/:publisherId/templates/:templateId', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
     const { publisherId, templateId } = request.params as {
       publisherId: string;
       templateId: string;

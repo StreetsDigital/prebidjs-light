@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import { FileText, Plus, Trash2, Download } from 'lucide-react';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || '${API_BASE_URL}';
+
 interface Template {
   id: string;
   name: string;
@@ -35,7 +37,7 @@ export function TemplatesPage() {
         setLoading(true);
         setError(null);
 
-        const response = await fetch('http://localhost:3001/api/templates');
+        const response = await fetch('${API_BASE_URL}/api/templates');
 
         if (!response.ok) {
           throw new Error('Failed to fetch templates');
@@ -70,7 +72,7 @@ export function TemplatesPage() {
       setApplyingTemplate(templateId);
 
       const response = await fetch(
-        `http://localhost:3001/api/publishers/${publisherId}/apply-template`,
+        `${API_BASE_URL}/api/publishers/${publisherId}/apply-template`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

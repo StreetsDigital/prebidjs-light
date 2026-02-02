@@ -3,6 +3,8 @@ import { db, publisherAnalytics } from '../db';
 import { eq, and } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { getAllAnalytics } from '../utils/prebid-data-fetcher';
+import { requireAdmin } from '../middleware/auth';
+import { safeJsonParse, safeJsonParseArray, safeJsonParseObject } from '../utils/safe-json';
 
 interface AddAnalyticsRequest {
   analyticsCode: string;
@@ -24,7 +26,9 @@ export default async function publisherAnalyticsRoutes(fastify: FastifyInstance)
    * GET /api/publishers/:publisherId/analytics
    * List enabled analytics adapters for a publisher
    */
-  fastify.get('/:publisherId/analytics', async (request: FastifyRequest<{ Params: { publisherId: string } }>, reply: FastifyReply) => {
+  fastify.get('/:publisherId/analytics', {
+    preHandler: requireAdmin,
+  }, async (request: FastifyRequest<{ Params: { publisherId: string } }>, reply: FastifyReply) => {
     const { publisherId } = request.params;
 
     try {
@@ -51,7 +55,7 @@ export default async function publisherAnalyticsRoutes(fastify: FastifyInstance)
           id: adapter.id,
           code: adapter.analyticsCode,
           name: adapter.analyticsName,
-          params: adapter.params ? JSON.parse(adapter.params) : null,
+          params: safeJsonParseObject(adapter.params, null),
           enabled: adapter.enabled,
           isPrebidMember: !!prebidInfo, // If in Prebid docs, it's official
           documentationUrl: prebidInfo?.documentationUrl || null,
@@ -72,7 +76,9 @@ export default async function publisherAnalyticsRoutes(fastify: FastifyInstance)
    * POST /api/publishers/:publisherId/analytics
    * Add an analytics adapter to a publisher
    */
-  fastify.post('/:publisherId/analytics', async (request: FastifyRequest<{ Params: { publisherId: string }; Body: AddAnalyticsRequest }>, reply: FastifyReply) => {
+  fastify.post('/:publisherId/analytics', {
+    preHandler: requireAdmin,
+  }, async (request: FastifyRequest<{ Params: { publisherId: string }; Body: AddAnalyticsRequest }>, reply: FastifyReply) => {
     const { publisherId } = request.params;
     const { analyticsCode, analyticsName, params } = request.body;
 
@@ -143,7 +149,9 @@ export default async function publisherAnalyticsRoutes(fastify: FastifyInstance)
    * DELETE /api/publishers/:publisherId/analytics/:analyticsCode
    * Remove an analytics adapter from a publisher
    */
-  fastify.delete('/:publisherId/analytics/:analyticsCode', async (request: FastifyRequest<DeleteAnalyticsRequest>, reply: FastifyReply) => {
+  fastify.delete('/:publisherId/analytics/:analyticsCode', {
+    preHandler: requireAdmin,
+  }, async (request: FastifyRequest<DeleteAnalyticsRequest>, reply: FastifyReply) => {
     const { publisherId, analyticsCode } = request.params;
 
     try {

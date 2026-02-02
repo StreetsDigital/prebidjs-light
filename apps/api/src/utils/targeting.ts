@@ -7,6 +7,7 @@ export interface RequestAttributes {
   device: 'mobile' | 'tablet' | 'desktop';
   browser: string | null;
   os: string | null;
+  domain?: string | null;
 }
 
 // Targeting condition types
@@ -49,6 +50,7 @@ export interface WrapperConfig {
   adUnits?: string;
   version?: number;
   isDefault?: boolean;
+  blockWrapper?: boolean;
 }
 
 /**
@@ -59,8 +61,8 @@ export function detectAttributes(request: FastifyRequest): RequestAttributes {
   const userAgentString = headers['user-agent'] as string || '';
 
   // Parse User-Agent
-  const parser = new UAParser(userAgentString);
-  const ua = parser.getResult();
+  const parser = new UAParser();
+  const ua = parser.setUA(userAgentString).getResult();
 
   // Get GEO from CloudFlare header or default to null
   const geo = (headers['cf-ipcountry'] as string) || null;

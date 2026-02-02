@@ -73,7 +73,7 @@ export function BidderHealthPage() {
     fetchHealthData();
     const interval = setInterval(fetchHealthData, 30000); // Refresh every 30 seconds
     return () => clearInterval(interval);
-  }, [publisherId, token, timeRange]);
+  }, []);
 
   const fetchHealthData = async () => {
     if (!publisherId) return;

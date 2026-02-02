@@ -38,6 +38,7 @@ import bulkOperationsRoutes from '../routes/bulk-operations';
 import analyticsDashboardRoutes from '../routes/analytics-dashboard';
 import prebidBuildsRoutes from '../routes/prebid-builds';
 import publicRoutes from '../routes/public-routes';
+import currencyRoutes from '../routes/currency';
 
 /**
  * Register all application routes
@@ -105,6 +106,9 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(templatesRoutes, { prefix: '/api' });
   await app.register(bulkOperationsRoutes, { prefix: '/api' });
   await app.register(prebidBuildsRoutes, { prefix: '/api' });
+
+  // Currency conversion
+  await app.register(currencyRoutes, { prefix: '/api/currency' });
 
   // Note: Old build system routes commented out - replaced by prebidBuildsRoutes
   // await app.register(buildsRoutes, { prefix: '/api' });

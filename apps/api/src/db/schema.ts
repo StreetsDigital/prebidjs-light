@@ -42,6 +42,7 @@ export const publishers = sqliteTable('publishers', {
   slug: text('slug').notNull().unique(),
   apiKey: text('api_key').notNull().unique(),
   domains: text('domains'), // JSON array stored as text - allowed domains for CORS
+  currency: text('currency').default('USD'), // Default currency for bidding (USD, EUR, GBP, etc.)
   status: text('status', { enum: ['active', 'paused', 'disabled'] }).notNull().default('active'),
   notes: text('notes'),
   createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),

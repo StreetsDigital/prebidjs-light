@@ -3,6 +3,7 @@
  */
 
 import { FastifyInstance } from 'fastify';
+import { authenticatedApiRateLimit } from './rate-limit-configs';
 import authRoutes from '../routes/auth';
 import impersonationRoutes from '../routes/impersonation';
 import publisherRoutes from '../routes/publishers';
@@ -39,23 +40,42 @@ import analyticsDashboardRoutes from '../routes/analytics-dashboard';
 import prebidBuildsRoutes from '../routes/prebid-builds';
 import publicRoutes from '../routes/public-routes';
 import currencyRoutes from '../routes/currency';
+import healthRoutes from '../routes/health';
 
 /**
  * Register all application routes
  */
 export async function registerRoutes(app: FastifyInstance) {
+  // Health check routes (must be first, no rate limiting for simple /health)
+  await app.register(healthRoutes);
+
   // Public routes (no authentication required)
   await app.register(publicRoutes);
 
-  // Authentication routes
+  // Authentication routes (login has its own stricter rate limit)
   await app.register(authRoutes, { prefix: '/api/auth' });
-  await app.register(impersonationRoutes, { prefix: '/api/auth' });
+  await app.register(impersonationRoutes, {
+    prefix: '/api/auth',
+    config: { rateLimit: authenticatedApiRateLimit },
+  });
 
-  // Core resource routes
-  await app.register(publisherRoutes, { prefix: '/api/publishers' });
-  await app.register(websiteRoutes, { prefix: '/api' });
-  await app.register(adUnitsRoutes, { prefix: '/api' });
-  await app.register(userRoutes, { prefix: '/api/users' });
+  // Core resource routes - rate limited for authenticated users
+  await app.register(publisherRoutes, {
+    prefix: '/api/publishers',
+    config: { rateLimit: authenticatedApiRateLimit },
+  });
+  await app.register(websiteRoutes, {
+    prefix: '/api',
+    config: { rateLimit: authenticatedApiRateLimit },
+  });
+  await app.register(adUnitsRoutes, {
+    prefix: '/api',
+    config: { rateLimit: authenticatedApiRateLimit },
+  });
+  await app.register(userRoutes, {
+    prefix: '/api/users',
+    config: { rateLimit: authenticatedApiRateLimit },
+  });
 
   // Dashboard and reporting routes
   await app.register(dashboardRoutes, { prefix: '/api/dashboard' });

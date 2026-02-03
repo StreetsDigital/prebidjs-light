@@ -11,19 +11,38 @@ import { safeJsonParseArray, safeJsonParseObject } from '../utils/safe-json';
  * Register all public routes
  */
 export default async function publicRoutes(fastify: FastifyInstance) {
-  // Health check endpoint
-  fastify.get('/health', async () => {
-    return { status: 'ok', timestamp: new Date().toISOString() };
+  // Wrapper script endpoint - rate limited for public access
+  fastify.get('/pb.js', {
+    config: {
+      rateLimit: {
+        max: 100, // 100 requests
+        timeWindow: '1 minute',
+      },
+    },
+    handler: wrapperScriptHandler,
   });
 
-  // Wrapper script endpoint
-  fastify.get('/pb.js', wrapperScriptHandler);
+  // Public config endpoint - rate limited for public access
+  fastify.get('/c/:publisherSlug', {
+    config: {
+      rateLimit: {
+        max: 100, // 100 requests
+        timeWindow: '1 minute',
+      },
+    },
+    handler: configEndpointHandler,
+  });
 
-  // Public config endpoint
-  fastify.get('/c/:publisherSlug', configEndpointHandler);
-
-  // Analytics beacon endpoint
-  fastify.post('/b', analyticsBeaconHandler);
+  // Analytics beacon endpoint - higher limit for tracking
+  fastify.post('/b', {
+    config: {
+      rateLimit: {
+        max: 500, // Higher limit for analytics tracking
+        timeWindow: '1 minute',
+      },
+    },
+    handler: analyticsBeaconHandler,
+  });
 }
 
 /**

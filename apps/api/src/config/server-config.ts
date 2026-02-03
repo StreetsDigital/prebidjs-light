@@ -14,12 +14,58 @@ import { TIMEOUTS } from '../constants/timeouts';
  * Validate required environment variables
  */
 export function validateEnvironment() {
+  const errors: string[] = [];
+
+  // Required variables
   if (!process.env.JWT_SECRET) {
-    throw new Error('JWT_SECRET environment variable must be set');
+    errors.push('JWT_SECRET is required (generate with: openssl rand -base64 32)');
   }
   if (!process.env.COOKIE_SECRET) {
-    throw new Error('COOKIE_SECRET environment variable must be set');
+    errors.push('COOKIE_SECRET is required (generate with: openssl rand -base64 32)');
   }
+
+  // Production-specific checks
+  if (process.env.NODE_ENV === 'production') {
+    // Check for weak default secrets
+    if (process.env.JWT_SECRET === 'your-super-secret-jwt-key-change-this-in-production') {
+      errors.push('JWT_SECRET must be changed from default value in production');
+    }
+    if (process.env.COOKIE_SECRET === 'your-super-secret-cookie-key-change-this-in-production') {
+      errors.push('COOKIE_SECRET must be changed from default value in production');
+    }
+
+    // Warn about default admin password
+    if (process.env.SUPER_ADMIN_PASSWORD === 'ChangeMe123!') {
+      console.warn(
+        '\x1b[33m[WARN]\x1b[0m Default super admin password detected. Change it immediately after first login!'
+      );
+    }
+
+    // Warn about missing optional but recommended services
+    if (!process.env.REDIS_HOST) {
+      console.warn(
+        '\x1b[33m[WARN]\x1b[0m REDIS_HOST not configured. In-memory caching will be used (not recommended for production)'
+      );
+    }
+  }
+
+  // Security check: Ensure secrets are strong enough
+  if (process.env.JWT_SECRET && process.env.JWT_SECRET.length < 32) {
+    errors.push('JWT_SECRET must be at least 32 characters long');
+  }
+  if (process.env.COOKIE_SECRET && process.env.COOKIE_SECRET.length < 32) {
+    errors.push('COOKIE_SECRET must be at least 32 characters long');
+  }
+
+  // Throw error if any validation failed
+  if (errors.length > 0) {
+    throw new Error(
+      `Environment validation failed:\n${errors.map((e) => `  - ${e}`).join('\n')}\n\nPlease check your .env file. See .env.example for reference.`
+    );
+  }
+
+  // Log successful validation
+  console.log('\x1b[32m[INFO]\x1b[0m Environment validation passed');
 }
 
 /**
@@ -51,22 +97,21 @@ export async function registerPlugins(app: FastifyInstance) {
     secret: process.env.COOKIE_SECRET!,
   });
 
-  // Rate limiting
+  // Rate limiting - global default (will be overridden per route)
   await app.register(rateLimit, {
-    max: TIMEOUTS.RATE_LIMIT_MAX_REQUESTS,
-    timeWindow: TIMEOUTS.RATE_LIMIT_WINDOW,
+    global: false, // Disable global, configure per-route
   });
 
-  // Security headers
+  // Security headers - Now enabled with compatible Helmet version
   await app.register(helmet, {
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", "data:", "https:"],
-      },
-    },
+    contentSecurityPolicy: false, // Disable CSP for now (wrapper needs to be embedded on any domain)
+    crossOriginEmbedderPolicy: false, // Allow embedding
+    crossOriginResourcePolicy: false, // Allow cross-origin resources
+    // Keep these security headers enabled:
+    // - X-Frame-Options: SAMEORIGIN
+    // - X-Content-Type-Options: nosniff
+    // - X-XSS-Protection: 1; mode=block
+    // - Strict-Transport-Security (HSTS)
   });
 }
 

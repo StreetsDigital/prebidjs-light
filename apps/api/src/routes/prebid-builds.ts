@@ -413,7 +413,14 @@ export default async function prebidBuildsRoutes(fastify: FastifyInstance) {
 
   // Serve build files
   // This endpoint serves build files and should remain public (no auth)
-  fastify.get('/builds/:filename', async (request, reply) => {
+  fastify.get('/builds/:filename', {
+    config: {
+      rateLimit: {
+        max: 100, // 100 requests per minute for public build downloads
+        timeWindow: '1 minute',
+      },
+    },
+  }, async (request, reply) => {
     const { filename } = request.params as { filename: string };
 
     try {

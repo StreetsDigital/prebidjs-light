@@ -71,6 +71,50 @@ const start = async () => {
   }
 };
 
+/**
+ * Graceful shutdown handler
+ * Properly closes connections and cleans up resources
+ */
+const gracefulShutdown = async (signal: string) => {
+  app.log.info(`Received ${signal}, starting graceful shutdown...`);
+
+  try {
+    // Stop accepting new connections
+    await app.close();
+
+    // Close database connection
+    const { db } = await import('./db');
+    db.close();
+
+    app.log.info('Graceful shutdown complete');
+    process.exit(0);
+  } catch (err) {
+    app.log.error('Error during shutdown:', err);
+    process.exit(1);
+  }
+};
+
+// Register shutdown handlers
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+/**
+ * Uncaught exception handler
+ * Logs fatal errors and exits cleanly
+ */
+process.on('uncaughtException', (error) => {
+  console.error('FATAL: Uncaught exception:', error);
+  console.error('Stack trace:', error.stack);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('FATAL: Unhandled promise rejection at:', promise);
+  console.error('Reason:', reason);
+  process.exit(1);
+});
+
+// Start the server
 start();
 
 export default app;

@@ -6,7 +6,8 @@ import { BuildManagementService } from '../services/build-management-service';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const BUILDS_DIR = path.join(process.cwd(), 'data', 'builds');
+// Use the same output directory as PrebidBuildService
+const BUILDS_DIR = path.join(process.cwd(), 'prebid-builds', 'output');
 
 // Auth middleware
 async function verifyAuth(request: FastifyRequest, reply: FastifyReply) {

@@ -151,10 +151,10 @@ export async function triggerPrebidBuild(
  */
 async function queueBuildJob(buildId: string, publisherId: string): Promise<void> {
   // Import here to avoid circular dependencies
-  const { BuildManagementService } = await import('../services/build-management-service');
+  const { buildPrebidJs } = await import('../services/prebid-build-service');
 
-  // Delay slightly to simulate async processing
-  setTimeout(() => {
+  // Run build asynchronously
+  setTimeout(async () => {
     try {
       const build = db.select()
         .from(publisherBuilds)
@@ -165,19 +165,57 @@ async function queueBuildJob(buildId: string, publisherId: string): Promise<void
         throw new Error('Build record not found');
       }
 
-      // Process the build
-      BuildManagementService.processBuild(
-        buildId,
-        publisherId,
-        build.prebidVersion || '9.0.0'
-      );
+      console.log(`Starting real Prebid.js build for ${buildId}...`);
 
-      console.log(`Build ${buildId} completed successfully`);
-    } catch (err) {
+      // Execute real Prebid.js build using Gulp
+      const result = await buildPrebidJs({
+        publisherId,
+        buildId,
+        onProgress: (progress, message) => {
+          console.log(`Build ${buildId}: ${progress}% - ${message}`);
+        }
+      });
+
+      if (result.success) {
+        // Extract filename from cdnUrl (e.g., "/builds/filename.js" -> "filename.js")
+        const fileName = result.cdnUrl?.split('/').pop() || `prebid-${publisherId}.js`;
+
+        // Update build record with success
+        db.update(publisherBuilds)
+          .set({
+            status: 'ready',
+            buildPath: result.cdnUrl,
+            fileSize: result.fileSize,
+          })
+          .where(eq(publisherBuilds.id, buildId))
+          .run();
+
+        console.log(`Build ${buildId} completed successfully - ${result.fileSize} bytes`);
+      } else {
+        // Update build record with failure
+        db.update(publisherBuilds)
+          .set({
+            status: 'failed',
+          })
+          .where(eq(publisherBuilds.id, buildId))
+          .run();
+
+        console.error(`Build ${buildId} failed: ${result.errorMessage}`);
+      }
+    } catch (err: any) {
       console.error(`Build ${buildId} failed:`, err);
+
+      // Update build record with error
+      db.update(publisherBuilds)
+        .set({
+          status: 'failed',
+        })
+        .where(eq(publisherBuilds.id, buildId))
+        .run();
+
       throw err;
     }
-  }, 100); // Small delay to simulate async job
+  }, 100); // Small delay to avoid blocking
 }
 
 /**
